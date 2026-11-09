@@ -44,8 +44,11 @@ before you write the code.
 - **Shell:** [Tauri 2](https://v2.tauri.app) with a Rust backend in
   `src-tauri/`. Tauri draws the UI in the operating system's own web view:
   WebKit (WKWebView) on macOS and Chromium-based WebView2 on Windows.
-- **UI:** TypeScript. <!-- TODO: name the front-end library (React, Angular,
-  Svelte, ...) and its folder once it's chosen. -->
+- **UI:** React and TypeScript in `src/`, built with Vite and tested with
+  Vitest and Testing Library.
+- **Core:** a Rust library in `crates/redline-core/` with the Redmine client,
+  the local SQLite cache and the sync engine. It has no Tauri dependency, so it
+  can be tested on any OS.
 - **Data:** Redline talks to Redmine only through its
   [REST API](https://www.redmine.org/projects/redmine/wiki/Rest_api), using the
   signed-in person's own API key. It must work with a regular (non-admin) key
@@ -62,10 +65,9 @@ Two rules follow from that and apply to every change:
 2. **Be gentle with the server.** Keep request counts low, respect Redmine's
    page limit of 100, and only send the fields a change actually edits.
 
-Background on how Redmine's model maps to Linear's is in the design doc
-[Redline: Redmine to Linear model map](https://claude.ai/artifact/Dr5orR446TNABYoUBbTQdB).
-<!-- TODO: move this into docs/ in the repo so contributors don't need a
-claude.ai link. -->
+[docs/architecture.md](docs/architecture.md) maps the code and how
+Redmine's model maps to Linear's, and [docs/adr/](docs/adr/README.md) records
+why things are built this way.
 
 ## Set up your machine
 
@@ -141,15 +143,13 @@ Other scripts you'll use (the same ones CI runs):
 | `npm test`            | Runs the TypeScript unit tests           |
 | `npm run tauri build` | Builds a release app for your platform   |
 
-For the Rust side, from `src-tauri/`:
+For the Rust side, from the repo root (it's a Cargo workspace):
 
 ```sh
 cargo fmt --all
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
 ```
-
-<!-- TODO: adjust script names once the app is scaffolded. -->
 
 ## Run against a test Redmine
 
