@@ -17,7 +17,19 @@ function sameRoute(a: Route, b: Route): boolean {
   return true;
 }
 
-function NavItem({ route, icon, label, depth = 0 }: { route: Route; icon: React.ReactNode; label: string; depth?: number }) {
+function NavItem({
+  route,
+  icon,
+  label,
+  depth = 0,
+  badge,
+}: {
+  route: Route;
+  icon: React.ReactNode;
+  label: string;
+  depth?: number;
+  badge?: string;
+}) {
   const current = useApp((s) => s.route);
   const navigate = useApp((s) => s.navigate);
   const active = sameRoute(current, route);
@@ -31,6 +43,7 @@ function NavItem({ route, icon, label, depth = 0 }: { route: Route; icon: React.
     >
       {icon}
       <span className="nav-label">{label}</span>
+      {badge && <span className="nav-badge">{badge}</span>}
     </button>
   );
 }
@@ -59,6 +72,7 @@ export function Sidebar() {
   const setPaletteOpen = useApp((s) => s.setPaletteOpen);
   const syncNow = useApp((s) => s.syncNow);
   const meta = useApp((s) => s.meta);
+  const unread = useApp((s) => s.inbox.items.filter((i) => !i.read).length);
   const { teams, teamProjects } = useDerived();
   const hasCycles = useMemo(
     () => new Set(meta ? meta.versions.map((v) => teamOf(v.project.id, meta)) : []),
@@ -99,6 +113,12 @@ export function Sidebar() {
       </div>
 
       <div className="sidebar-scroll">
+        <NavItem
+          route={{ view: "inbox" }}
+          icon={<Icon name="inbox" />}
+          label="Inbox"
+          badge={unread ? String(unread) : undefined}
+        />
         <NavItem route={{ view: "my-issues", tab: "assigned" }} icon={<Icon name="my-issues" />} label="My issues" />
 
         <div className="nav-section">Your teams</div>

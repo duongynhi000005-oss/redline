@@ -90,6 +90,7 @@ function PaletteContent() {
       }
     }
     list.push(
+      { id: "go-inbox", label: "Go to Inbox", group: "Navigation", icon: <Icon name="inbox" />, run: go({ view: "inbox" }) },
       { id: "go-my", label: "Go to My issues", group: "Navigation", icon: <Icon name="my-issues" />, run: go({ view: "my-issues", tab: "assigned" }) },
     );
     for (const team of d.teams) {

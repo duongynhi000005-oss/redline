@@ -144,6 +144,7 @@ export function issuesForRoute(
         if (issue.fixed_version?.id === route.versionId) out.push(issue);
         break;
       case "cycles":
+      case "inbox":
         break;
     }
   }
@@ -171,6 +172,8 @@ export function groupByCategory(issues: Issue[], d: Derived): IssueGroup[] {
 
 export function routeTitle(route: Route, d: Derived): string {
   switch (route.view) {
+    case "inbox":
+      return "Inbox";
     case "my-issues":
       return "My issues";
     case "team":

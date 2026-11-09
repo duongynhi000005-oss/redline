@@ -5,9 +5,12 @@ import { errorMessage } from "../lib/types";
 import { applyChanges } from "../lib/edit";
 import type { ServerSettings } from "../lib/settings";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "../lib/settings";
+import type { Inbox } from "../lib/inbox";
+import { isMine, itemsFrom, loadInbox, mergeItems, saveInbox } from "../lib/inbox";
 
 /** Where the main pane is. Teams are top-level Redmine projects. */
 export type Route =
+  | { view: "inbox" }
   | { view: "my-issues"; tab: MyIssuesTab }
   | { view: "team"; teamId: number; tab: TeamTab }
   | { view: "project"; projectId: number }
@@ -45,6 +48,7 @@ export interface AppState {
   composerOpen: boolean;
   settingsOpen: boolean;
   settings: ServerSettings;
+  inbox: Inbox;
   /** A short message shown at the bottom of the window, like a failed edit. */
   toast: string | null;
 
@@ -63,6 +67,7 @@ export interface AppState {
   setComposerOpen(open: boolean): void;
   setSettingsOpen(open: boolean): void;
   updateSettings(change: Partial<ServerSettings>): void;
+  markInboxRead(keys: string[] | "all"): void;
   createIssue(fields: IssueChanges): Promise<Issue | null>;
 }
 
@@ -89,6 +94,7 @@ function initial() {
     composerOpen: false,
     settingsOpen: false,
     settings: DEFAULT_SETTINGS,
+    inbox: { since: new Date().toISOString(), items: [] } as Inbox,
     toast: null as string | null,
   };
 }
@@ -104,6 +110,7 @@ export const useApp = create<AppState>()((set, get) => {
       meta,
       issues: new Map(list.map((i) => [i.id, i])),
       settings: account ? loadSettings(account.serverUrl, account.userId) : DEFAULT_SETTINGS,
+      ...(account ? { inbox: loadInbox(account.serverUrl, account.userId) } : {}),
       phase: "ready",
     });
     unlisten.forEach((u) => u());
@@ -117,6 +124,7 @@ export const useApp = create<AppState>()((set, get) => {
         fresh.forEach((i) => issues.set(i.id, i));
         set({ issues });
         if (removed.includes(get().openIssueId ?? -1)) set({ openIssueId: null });
+        void collectInbox(backend, fresh);
       }),
       backend.onMetadataChanged(async () => set({ meta: await backend.getMetadata() })),
       backend.onMenu((id) => handleMenu(id)),
@@ -129,6 +137,26 @@ export const useApp = create<AppState>()((set, get) => {
     // The shell may have synced before we started listening.
     const sync = await backend.getSyncState();
     if (sync && gen === generation) set({ sync });
+  }
+
+  /** Looks for other people's changes to my issues and adds them to the inbox. */
+  async function collectInbox(backend: Backend, changed: Issue[]) {
+    const { account, meta } = get();
+    if (!account || !meta) return;
+    const since = get().inbox.since;
+    const candidates = changed.filter((i) => isMine(i, account.userId) && Date.parse(i.updated_on) > Date.parse(since));
+    for (const issue of candidates) {
+      try {
+        const details = await backend.getIssueDetails(issue.id, true);
+        const inbox = mergeItems(get().inbox, itemsFrom(details, account.userId, since, meta));
+        if (inbox !== get().inbox) {
+          set({ inbox });
+          saveInbox(account.serverUrl, account.userId, inbox);
+        }
+      } catch {
+        // The next change to this issue tries again.
+      }
+    }
   }
 
   /** The macOS menu bar's commands. */
@@ -260,6 +288,17 @@ export const useApp = create<AppState>()((set, get) => {
 
     setSettingsOpen(open) {
       set({ settingsOpen: open, paletteOpen: false, picker: null });
+    },
+
+    markInboxRead(keys) {
+      const { inbox, account } = get();
+      const which = keys === "all" ? null : new Set(keys);
+      const next = {
+        ...inbox,
+        items: inbox.items.map((i) => (!i.read && (!which || which.has(i.key)) ? { ...i, read: true } : i)),
+      };
+      set({ inbox: next });
+      if (account) saveInbox(account.serverUrl, account.userId, next);
     },
 
     updateSettings(change) {

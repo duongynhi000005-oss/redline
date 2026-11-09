@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { CommandPalette } from "./components/CommandPalette";
 import { CycleList } from "./components/CycleList";
+import { InboxView } from "./components/InboxView";
 import { IssueDetail } from "./components/IssueDetail";
 import { IssueList } from "./components/IssueList";
 import { NewIssue } from "./components/NewIssue";
@@ -51,6 +52,8 @@ export function App({ backend }: { backend?: Backend }) {
       <Sidebar />
       {openIssueId !== null ? (
         <IssueDetail id={openIssueId} />
+      ) : route.view === "inbox" ? (
+        <InboxView />
       ) : route.view === "cycles" ? (
         <CycleList teamId={route.teamId} />
       ) : (
