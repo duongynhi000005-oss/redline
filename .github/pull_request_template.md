@@ -26,7 +26,9 @@ Closes #
 
 ## Screenshots
 
-<!-- Required for UI changes. Before and after, from macOS and Windows if you can.
+<!-- Required for every PR that changes the UI: each changed screen in light and
+dark mode, before and after, from macOS and Windows where you can.
+Use the test Redmine or the demo data (`npm run dev`).
 Don't include real API keys, server URLs or anyone else's data. -->
 
 ## Checklist
@@ -35,4 +37,5 @@ Don't include real API keys, server URLs or anyone else's data. -->
 - [ ] Doesn't add unnecessary requests to the Redmine server
 - [ ] Keyboard shortcuts use Cmd on macOS and Ctrl on Windows
 - [ ] New dependencies are explained above
+- [ ] Screenshots of changed screens, light and dark (UI changes only)
 - [ ] Docs updated if behaviour or setup changed

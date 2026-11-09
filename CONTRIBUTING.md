@@ -229,8 +229,12 @@ someone else's data.
 2. Push to your fork and open a PR against `main`. Opening it as a draft is
    fine while you're still working.
 3. Fill in the template: what changed, before and after, the linked issue, and
-   how you tested it. Add a screenshot or short recording for any UI change,
-   ideally from both macOS and Windows.
+   how you tested it. **Every PR that changes the UI must include
+   screenshots in its description**: each screen you changed, in light and
+   dark mode, from macOS and Windows where you can. Run the app against the
+   test Redmine (see [Run against a test Redmine](#run-against-a-test-redmine))
+   or the demo data (`npm run dev`) so no real team's data shows. A short
+   recording helps for anything that moves.
 4. CI runs lint, type checks, tests and a Tauri build on macOS and Windows.
    All of it must be green before merge.
 5. Mark the PR ready for review. A maintainer will review it; see
