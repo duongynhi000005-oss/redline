@@ -1158,3 +1158,78 @@ h2 {
   gap: 8px;
   min-height: 28px;
 }
+
+/* Cycles */
+
+.cycle-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.cycle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.cycle-section {
+  margin: 20px 22px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+}
+
+.cycle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 44px;
+  padding: 0 16px 0 22px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.cycle-row:hover {
+  background: var(--bg-hover);
+}
+
+.cycle-name {
+  font-weight: 500;
+}
+
+.chip-current {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.cycle-dates {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.cycle-progress {
+  display: flex;
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--bg-active);
+}
+
+.cycle-progress-done {
+  background: var(--status-completed);
+}
+
+.cycle-progress-started {
+  background: var(--status-started);
+}
+
+.cycle-count {
+  width: 88px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}

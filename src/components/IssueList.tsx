@@ -29,7 +29,7 @@ const MY_TABS: { tab: MyIssuesTab; label: string }[] = [
 
 function Tabs({ route }: { route: Route }) {
   const navigate = useApp((s) => s.navigate);
-  if (route.view === "project") return null;
+  if (route.view !== "team" && route.view !== "my-issues") return null;
   const items =
     route.view === "team"
       ? TEAM_TABS.map((t) => ({ key: t.tab, label: t.label, active: route.tab === t.tab, go: () => navigate({ ...route, tab: t.tab }) }))
@@ -50,6 +50,7 @@ export function IssueRow({
   d,
   focused,
   showProject,
+  showCycle = true,
   onOpen,
   onFocus,
 }: {
@@ -57,6 +58,7 @@ export function IssueRow({
   d: Derived;
   focused: boolean;
   showProject: boolean;
+  showCycle?: boolean;
   onOpen: () => void;
   onFocus: () => void;
 }) {
@@ -83,7 +85,7 @@ export function IssueRow({
           </span>
         ))}
         {showProject && <span className="chip chip-plain">{issue.project.name}</span>}
-        {issue.fixed_version && <span className="chip chip-plain">{issue.fixed_version.name}</span>}
+        {issue.fixed_version && showCycle && <span className="chip chip-plain">{issue.fixed_version.name}</span>}
         <Avatar name={issue.assigned_to?.name} />
         <span className="issue-date">{relativeTime(issue.updated_on)}</span>
       </span>
@@ -181,7 +183,11 @@ export function IssueList() {
         <div className="empty-state">
           <p>No issues here.</p>
           <p className="muted">
-            {route.view === "my-issues" ? "Issues assigned to you in Redmine show up here." : "Nothing matches this view yet."}
+            {route.view === "my-issues"
+              ? "Issues assigned to you in Redmine show up here."
+              : route.view === "cycle"
+                ? "Set an issue's cycle with Shift+C to add it here."
+                : "Nothing matches this view yet."}
           </p>
         </div>
       ) : (
@@ -219,7 +225,11 @@ export function IssueList() {
                       issue={row.issue}
                       d={d}
                       focused={row.issue.id === focusedId}
-                      showProject={route.view === "my-issues" || (route.view === "team" && row.issue.project.id !== route.teamId)}
+                      showProject={
+                        route.view === "my-issues" ||
+                        ((route.view === "team" || route.view === "cycle") && row.issue.project.id !== route.teamId)
+                      }
+                      showCycle={route.view !== "cycle"}
                       onOpen={() => openIssue(row.issue.id)}
                       onFocus={() => focusedId !== row.issue.id && setFocusedId(row.issue.id)}
                     />

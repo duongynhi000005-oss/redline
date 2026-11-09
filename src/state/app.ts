@@ -10,7 +10,9 @@ import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "../lib/settings";
 export type Route =
   | { view: "my-issues"; tab: MyIssuesTab }
   | { view: "team"; teamId: number; tab: TeamTab }
-  | { view: "project"; projectId: number };
+  | { view: "project"; projectId: number }
+  | { view: "cycles"; teamId: number }
+  | { view: "cycle"; teamId: number; versionId: number };
 
 export type MyIssuesTab = "assigned" | "created";
 export type TeamTab = "all" | "active" | "backlog";

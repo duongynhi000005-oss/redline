@@ -101,6 +101,13 @@ function PaletteContent() {
         keywords: team.identifier,
         run: go({ view: "team", teamId: team.id, tab: "active" }),
       });
+      list.push({
+        id: `go-cycles-${team.id}`,
+        label: `Go to ${team.name} cycles`,
+        group: "Navigation",
+        icon: <Icon name="cycle" />,
+        run: go({ view: "cycles", teamId: team.id }),
+      });
       for (const p of d.teamProjects.get(team.id) ?? []) {
         list.push({
           id: `go-project-${p.id}`,

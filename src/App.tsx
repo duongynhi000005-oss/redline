@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { CommandPalette } from "./components/CommandPalette";
+import { CycleList } from "./components/CycleList";
 import { IssueDetail } from "./components/IssueDetail";
 import { IssueList } from "./components/IssueList";
 import { NewIssue } from "./components/NewIssue";
@@ -32,6 +33,7 @@ function Toast() {
 export function App({ backend }: { backend?: Backend }) {
   const phase = useApp((s) => s.phase);
   const openIssueId = useApp((s) => s.openIssueId);
+  const route = useApp((s) => s.route);
   const start = useApp((s) => s.start);
   useIssueShortcuts();
 
@@ -47,7 +49,13 @@ export function App({ backend }: { backend?: Backend }) {
   return (
     <div className="app">
       <Sidebar />
-      {openIssueId !== null ? <IssueDetail id={openIssueId} /> : <IssueList />}
+      {openIssueId !== null ? (
+        <IssueDetail id={openIssueId} />
+      ) : route.view === "cycles" ? (
+        <CycleList teamId={route.teamId} />
+      ) : (
+        <IssueList />
+      )}
       <CommandPalette />
       <Picker />
       <NewIssue />

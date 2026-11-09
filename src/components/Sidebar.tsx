@@ -1,4 +1,5 @@
-import { useEffect, useReducer, useState } from "react";
+import { useEffect, useMemo, useReducer, useState } from "react";
+import { teamOf } from "../lib/model";
 import { shortcutLabel } from "../lib/platform";
 import type { Route } from "../state/app";
 import { useApp } from "../state/app";
@@ -7,9 +8,12 @@ import { Avatar } from "./Avatar";
 import { Icon } from "./icons";
 
 function sameRoute(a: Route, b: Route): boolean {
+  if (a.view === "cycle" && b.view === "cycles") return a.teamId === b.teamId;
   if (a.view !== b.view) return false;
   if (a.view === "team" && b.view === "team") return a.teamId === b.teamId;
   if (a.view === "project" && b.view === "project") return a.projectId === b.projectId;
+  // A cycle's issues light up the team's Cycles item.
+  if ((a.view === "cycles" || a.view === "cycle") && (b.view === "cycles" || b.view === "cycle")) return a.teamId === b.teamId;
   return true;
 }
 
@@ -54,7 +58,12 @@ export function Sidebar() {
   const sync = useApp((s) => s.sync);
   const setPaletteOpen = useApp((s) => s.setPaletteOpen);
   const syncNow = useApp((s) => s.syncNow);
+  const meta = useApp((s) => s.meta);
   const { teams, teamProjects } = useDerived();
+  const hasCycles = useMemo(
+    () => new Set(meta ? meta.versions.map((v) => teamOf(v.project.id, meta)) : []),
+    [meta],
+  );
   const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
   // Keeps "Synced 5m ago" current.
   const [, tick] = useReducer((n: number) => n + 1, 0);
@@ -117,6 +126,14 @@ export function Sidebar() {
                     label="Issues"
                     depth={1}
                   />
+                  {hasCycles.has(team.id) && (
+                    <NavItem
+                      route={{ view: "cycles", teamId: team.id }}
+                      icon={<Icon name="cycle" />}
+                      label="Cycles"
+                      depth={1}
+                    />
+                  )}
                   {teamProjects.get(team.id)?.map((p) => (
                     <NavItem
                       key={p.id}
