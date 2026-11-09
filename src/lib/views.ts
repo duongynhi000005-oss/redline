@@ -8,14 +8,30 @@ import type { Issue, Metadata } from "./types";
 
 export type Grouping = "status" | "assignee" | "priority" | "cycle" | "none";
 export type Ordering = "priority" | "updated" | "created";
+/** How a list is laid out: rows, or a board of columns. */
+export type Layout = "list" | "board";
 
 export interface ViewOptions {
   filters: Filter[];
   grouping: Grouping;
   ordering: Ordering;
+  layout: Layout;
+  /** On a board, show columns that have no issues, so issues can be dropped there. */
+  showEmptyColumns: boolean;
 }
 
-export const DEFAULT_VIEW: ViewOptions = { filters: [], grouping: "status", ordering: "priority" };
+export const DEFAULT_VIEW: ViewOptions = {
+  filters: [],
+  grouping: "status",
+  ordering: "priority",
+  layout: "list",
+  showEmptyColumns: true,
+};
+
+export const LAYOUTS: { value: Layout; label: string; shortcut: string }[] = [
+  { value: "list", label: "List", shortcut: "mod+1" },
+  { value: "board", label: "Board", shortcut: "mod+2" },
+];
 
 export const GROUPINGS: { value: Grouping; label: string }[] = [
   { value: "status", label: "Status" },
@@ -32,7 +48,13 @@ export const ORDERINGS: { value: Ordering; label: string }[] = [
 ];
 
 export function isDefaultView(v: ViewOptions): boolean {
-  return !v.filters.length && v.grouping === DEFAULT_VIEW.grouping && v.ordering === DEFAULT_VIEW.ordering;
+  return (
+    !v.filters.length &&
+    v.grouping === DEFAULT_VIEW.grouping &&
+    v.ordering === DEFAULT_VIEW.ordering &&
+    v.layout === DEFAULT_VIEW.layout &&
+    v.showEmptyColumns === DEFAULT_VIEW.showEmptyColumns
+  );
 }
 
 function storageKey(serverUrl: string, userId: number) {
@@ -41,6 +63,7 @@ function storageKey(serverUrl: string, userId: number) {
 
 const GROUPING_VALUES = new Set(GROUPINGS.map((g) => g.value));
 const ORDERING_VALUES = new Set(ORDERINGS.map((o) => o.value));
+const LAYOUT_VALUES = new Set(LAYOUTS.map((l) => l.value));
 
 export function loadViews(serverUrl: string, userId: number): Record<string, ViewOptions> {
   try {
@@ -53,6 +76,8 @@ export function loadViews(serverUrl: string, userId: number): Record<string, Vie
         filters: Array.isArray(v.filters) ? v.filters.filter((f) => f && Array.isArray(f.values)) : [],
         grouping: v.grouping && GROUPING_VALUES.has(v.grouping) ? v.grouping : DEFAULT_VIEW.grouping,
         ordering: v.ordering && ORDERING_VALUES.has(v.ordering) ? v.ordering : DEFAULT_VIEW.ordering,
+        layout: v.layout && LAYOUT_VALUES.has(v.layout) ? v.layout : DEFAULT_VIEW.layout,
+        showEmptyColumns: typeof v.showEmptyColumns === "boolean" ? v.showEmptyColumns : DEFAULT_VIEW.showEmptyColumns,
       };
     }
     return out;

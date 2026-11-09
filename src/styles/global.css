@@ -1517,6 +1517,221 @@ h2 {
   color: var(--text-tertiary);
 }
 
+/* Layout switcher: List or Board */
+
+.layout-switcher {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: 7px;
+  background: var(--bg-hover);
+}
+
+.layout-option {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  border-radius: 5px;
+  color: var(--text-secondary);
+}
+
+.layout-option:hover {
+  color: var(--text);
+}
+
+.layout-option[aria-checked="true"] {
+  color: var(--text);
+  background: var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+/* Board (Kanban) */
+
+.board {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  outline: none;
+}
+
+.board.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.board-column {
+  flex: none;
+  width: 288px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-hover) 75%, transparent);
+  transition: background-color 120ms ease, opacity 120ms ease, box-shadow 120ms ease;
+}
+
+.board-column.drop-over {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-hover));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.board-column.drop-dim {
+  opacity: 0.45;
+}
+
+.board-column.drop-blocked {
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--danger) 55%, transparent);
+}
+
+.board-column-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 12px;
+  font-weight: 500;
+}
+
+.board-column-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-column-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 6px 6px;
+}
+
+.board-column-empty {
+  padding: 18px 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.board-card-slot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding-bottom: 6px;
+}
+
+.board-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 11px 10px;
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--border), 0 1px 2px rgba(0, 0, 0, 0.05);
+  cursor: default;
+  touch-action: none;
+}
+
+.board-card.focused {
+  box-shadow: 0 0 0 1px var(--border-strong), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+
+.board:focus-visible .board-card.focused {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.board-card.drag-source {
+  opacity: 0.35;
+}
+
+.board-card-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.board-card-top .issue-id {
+  min-width: 0;
+}
+
+.board-card-project {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-card-title {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  line-height: 1.35;
+}
+
+.board-card-title svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.board-card-title span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.board-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.board-card-meta:empty {
+  display: none;
+}
+
+.board-card-pill {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 20px;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.chip-overdue {
+  color: var(--danger);
+}
+
+.board-ghost {
+  position: fixed;
+  z-index: 30;
+  pointer-events: none;
+  transform: rotate(1.5deg);
+}
+
+.board-ghost .board-card {
+  box-shadow: var(--shadow);
+  cursor: grabbing;
+}
+
+@media (forced-colors: active) {
+  .board-card.focused,
+  .board-column.drop-over {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
 /* Native materials and floating panels.
    The window's backdrop (Liquid Glass or vibrancy on macOS, Mica on Windows 11)
    shows through the sidebar; each view floats over it as a rounded panel.

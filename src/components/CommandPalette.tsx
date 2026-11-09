@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { issueCategory } from "../lib/model";
 import { matchesShortcut, shortcutLabel } from "../lib/platform";
 import type { Route } from "../state/app";
-import { targetIssueId, useApp } from "../state/app";
+import { routeKey, targetIssueId, useApp } from "../state/app";
+import { LAYOUTS } from "../lib/views";
 import { ISSUE_SHORTCUTS, runIssueCommand } from "./useIssueShortcuts";
 import { useDerived } from "../state/derived";
 import { Icon, StatusIcon } from "./icons";
@@ -72,6 +73,7 @@ function PaletteContent() {
   const setComposerOpen = useApp((s) => s.setComposerOpen);
   const setSettingsOpen = useApp((s) => s.setSettingsOpen);
   const openFilterMenu = useApp((s) => s.openFilterMenu);
+  const updateView = useApp((s) => s.updateView);
   const route = useApp((s) => s.route);
   const detailOpen = useApp((s) => s.openIssueId !== null);
   const issues = useApp((s) => s.issues);
@@ -87,6 +89,17 @@ function PaletteContent() {
     // Lists of issues can be filtered; the inbox and cycle overview can't.
     if (route.view !== "inbox" && route.view !== "cycles" && !detailOpen) {
       list.push({ id: "filter", label: "Filter…", group: "Issues", shortcut: "f", icon: <Icon name="filter" />, run: () => openFilterMenu(null) });
+      for (const l of LAYOUTS) {
+        list.push({
+          id: `layout-${l.value}`,
+          label: `Show as ${l.label.toLowerCase()}`,
+          group: "View",
+          shortcut: l.shortcut,
+          keywords: l.value === "board" ? "kanban columns" : "rows",
+          icon: <Icon name={l.value === "board" ? "board" : "list"} />,
+          run: () => updateView(routeKey(route), { layout: l.value }),
+        });
+      }
     }
     if (target !== null) {
       for (const s of ISSUE_SHORTCUTS) {
@@ -136,7 +149,7 @@ function PaletteContent() {
       { id: "sign-out", label: "Sign out", group: "Redline", run: () => void signOut() },
     );
     return list;
-  }, [d, navigate, syncNow, signOut, target, setComposerOpen, setSettingsOpen, openFilterMenu, route, detailOpen]);
+  }, [d, navigate, syncNow, signOut, target, setComposerOpen, setSettingsOpen, openFilterMenu, updateView, route, detailOpen]);
 
   const q = query.trim();
   const visibleActions = q ? actions.filter((a) => matchesQuery(`${a.label} ${a.keywords ?? ""}`, q)) : actions;

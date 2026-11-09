@@ -65,9 +65,11 @@ export function DisplayMenu({ route }: { route: Route }) {
           }}
         >
           <label className="display-row">
-            <span>Grouping</span>
-            <select value={view.grouping} onChange={(e) => updateView(key, { grouping: e.target.value as Grouping })}>
-              {GROUPINGS.map((g) => (
+            <span>{view.layout === "board" ? "Columns" : "Grouping"}</span>
+            <select
+              value={view.layout === "board" && view.grouping === "none" ? "status" : view.grouping}
+              onChange={(e) => updateView(key, { grouping: e.target.value as Grouping })}>
+              {GROUPINGS.filter((g) => view.layout !== "board" || g.value !== "none").map((g) => (
                 <option key={g.value} value={g.value}>
                   {g.label}
                 </option>
@@ -84,6 +86,16 @@ export function DisplayMenu({ route }: { route: Route }) {
               ))}
             </select>
           </label>
+          {view.layout === "board" && (
+            <label className="display-row">
+              <span>Show empty columns</span>
+              <input
+                type="checkbox"
+                checked={view.showEmptyColumns}
+                onChange={(e) => updateView(key, { showEmptyColumns: e.target.checked })}
+              />
+            </label>
+          )}
           <p className="display-note">Saved for this list on this server.</p>
         </div>
       )}

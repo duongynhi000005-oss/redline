@@ -209,6 +209,20 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <circle cx="5.5" cy="10" r="1.5" {...stroke} />
         </Svg>
       );
+    case "list":
+      return (
+        <Svg {...props}>
+          <path d="M2.5 3.5h9M2.5 7h9M2.5 10.5h9" {...stroke} />
+        </Svg>
+      );
+    case "board":
+      return (
+        <Svg {...props}>
+          <rect x="1.8" y="2.5" width="3" height="9" rx="1" {...stroke} />
+          <rect x="5.5" y="2.5" width="3" height="6" rx="1" {...stroke} />
+          <rect x="9.2" y="2.5" width="3" height="7.5" rx="1" {...stroke} />
+        </Svg>
+      );
     case "plus":
       return (
         <Svg {...props}>
@@ -222,6 +236,8 @@ export type IconName =
   | "filter"
   | "close"
   | "plus"
+  | "list"
+  | "board"
   | "display"
   | "inbox"
   | "my-issues"
