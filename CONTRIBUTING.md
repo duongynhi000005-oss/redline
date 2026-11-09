@@ -21,6 +21,7 @@ By taking part you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 - [Open a pull request](#open-a-pull-request)
 - [Testing on WebKit and WebView2](#testing-on-webkit-and-webview2)
 - [Code review](#code-review)
+- [Releases](#releases)
 - [Reporting security issues](#reporting-security-issues)
 - [License](#license)
 
@@ -276,6 +277,12 @@ So:
   resolves the conversation once they're happy.
 - New dependencies (npm or crates) need a short reason in the PR. Prefer
   small, well-maintained ones.
+
+## Releases
+
+Maintainers release by pushing a version tag; a workflow builds the macOS and
+Windows installers into a draft GitHub release. See
+[docs/releasing.md](docs/releasing.md) for the steps and the signing secrets.
 
 ## Reporting security issues
 

@@ -1,0 +1,139 @@
+# Builds installers when a version tag is pushed (for example v0.1.0) and
+# attaches them to a draft GitHub release for a maintainer to publish.
+#
+# Signing and notarization switch on by themselves once the secrets listed
+# in docs/releasing.md exist. Without them the installers are unsigned:
+# macOS Gatekeeper and Windows SmartScreen will warn when they're opened.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build, for example v0.1.0
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  installers:
+    name: Installers (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+            # One app for Apple silicon and Intel Macs.
+            args: --target universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - name: Windows
+            os: windows-latest
+            args: ""
+            rust-targets: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - name: Check the tag matches package.json
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG doesn't match package.json version $version. Bump the version, then tag."
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Only exports signing settings that are actually configured, so an
+      # unsigned build doesn't trip over empty values.
+      - name: Use macOS signing secrets when present
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "::warning::No APPLE_CERTIFICATE secret: building an unsigned macOS app."
+            exit 0
+          fi
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do
+            echo "$name=${!name}" >> "$GITHUB_ENV"
+          done
+          if [ -n "$APPLE_ID" ] && [ -n "$APPLE_PASSWORD" ] && [ -n "$APPLE_TEAM_ID" ]; then
+            for name in APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+              echo "$name=${!name}" >> "$GITHUB_ENV"
+            done
+          else
+            echo "::warning::Signing without notarization: set APPLE_ID, APPLE_PASSWORD and APPLE_TEAM_ID to notarize."
+          fi
+
+      - name: Use the Windows signing certificate when present
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE) {
+            Write-Output "::warning::No WINDOWS_CERTIFICATE secret: building unsigned Windows installers."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP "redline.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          Remove-Item $pfx
+          # Tauri signs with signtool when the config names a certificate.
+          $config = @{ bundle = @{ windows = @{
+            certificateThumbprint = $cert.Thumbprint
+            digestAlgorithm = "sha256"
+            timestampUrl = "http://timestamp.digicert.com"
+          } } } | ConvertTo-Json -Depth 5
+          Set-Content -Path src-tauri/tauri.signing.conf.json -Value $config
+          "TAURI_EXTRA_ARGS=--config src-tauri/tauri.signing.conf.json" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ env.TAG }}
+          releaseName: Redline ${{ env.TAG }}
+          releaseBody: |
+            See the assets below for the macOS (.dmg) and Windows (.msi and setup .exe) installers.
+          releaseDraft: true
+          prerelease: ${{ contains(env.TAG, '-') }}
+          args: ${{ matrix.args }} ${{ env.TAURI_EXTRA_ARGS }}
