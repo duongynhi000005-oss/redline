@@ -1,0 +1,9 @@
+# Owners are asked to review every PR that touches matching files.
+# With "Require review from Code Owners" on, their approval is needed to merge.
+
+*                    @odonckers
+
+# Security-sensitive areas: API key storage, Tauri permissions, CI and releases.
+/src-tauri/          @odonckers
+/.github/            @odonckers
+/SECURITY.md         @odonckers

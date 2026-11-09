@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest an idea or improvement for Redline.
+labels: ["enhancement", "needs triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe what you're trying to do and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Redline to do?
+      description: If Linear does something similar, describe how it works there.
+    validations:
+      required: true
+  - type: textarea
+    id: redmine
+    attributes:
+      label: Redmine details
+      description: >
+        Redline works with any Redmine using a regular API key and no plugins.
+        Does this need anything special from Redmine, such as admin rights,
+        a plugin or a recent version?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I'd like to work on this myself.
