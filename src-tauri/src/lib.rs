@@ -1,5 +1,16 @@
 //! Redline's desktop shell: window, menus and the commands the UI calls.
 
+mod account;
+mod commands;
+mod menu;
+mod session;
+
+use std::sync::atomic::Ordering;
+
+use tauri::{Emitter, Manager, WindowEvent};
+
+use commands::AppState;
+
 /// Basic facts about the running app, shown in About and used by the UI to
 /// pick platform conventions.
 #[derive(Debug, serde::Serialize)]
@@ -19,8 +30,52 @@ fn app_info() -> AppInfo {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![app_info])
+    let builder = tauri::Builder::default();
+    // A menu bar is part of a Mac app; Windows apps like this one don't have one.
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(menu::build);
+
+    builder
+        .manage(AppState::default())
+        .on_menu_event(|app, event| {
+            let _ = app.emit(menu::EVENT_MENU, event.id().as_ref());
+        })
+        .setup(|app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::block_on(async {
+                let state = handle.state::<AppState>();
+                commands::resume(&handle, &state).await;
+            });
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::Focused(focused) = event {
+                let state = window.state::<AppState>();
+                state.focused.store(*focused, Ordering::Relaxed);
+                if *focused {
+                    // Coming back to Redline is a good moment to catch up.
+                    if let Ok(guard) = state.session.try_read()
+                        && let Some(session) = guard.as_ref()
+                    {
+                        session.sync_now();
+                    }
+                }
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            app_info,
+            commands::get_account,
+            commands::sign_in,
+            commands::sign_out,
+            commands::get_metadata,
+            commands::list_issues,
+            commands::get_issues,
+            commands::get_issue_details,
+            commands::get_sync_state,
+            commands::sync_now,
+            commands::update_issue,
+            commands::create_issue,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running Redline");
 }
