@@ -1,0 +1,148 @@
+import { useEffect, useReducer, useState } from "react";
+import { shortcutLabel } from "../lib/platform";
+import type { Route } from "../state/app";
+import { useApp } from "../state/app";
+import { useDerived } from "../state/derived";
+import { Avatar } from "./Avatar";
+import { Icon } from "./icons";
+
+function sameRoute(a: Route, b: Route): boolean {
+  if (a.view !== b.view) return false;
+  if (a.view === "team" && b.view === "team") return a.teamId === b.teamId;
+  if (a.view === "project" && b.view === "project") return a.projectId === b.projectId;
+  return true;
+}
+
+function NavItem({ route, icon, label, depth = 0 }: { route: Route; icon: React.ReactNode; label: string; depth?: number }) {
+  const current = useApp((s) => s.route);
+  const navigate = useApp((s) => s.navigate);
+  const active = sameRoute(current, route);
+  return (
+    <button
+      type="button"
+      className={`nav-item${active ? " active" : ""}`}
+      style={{ paddingLeft: 8 + depth * 14 }}
+      aria-current={active ? "page" : undefined}
+      onClick={() => navigate(route)}
+    >
+      {icon}
+      <span className="nav-label">{label}</span>
+    </button>
+  );
+}
+
+export function syncLabel(
+  state: "syncing" | "idle" | "offline" | "error",
+  message: string | null,
+  lastSyncedAt: number | null,
+  now = Date.now(),
+): string {
+  if (state === "syncing") return "Syncing…";
+  if (state === "offline") return "Offline, showing saved issues";
+  if (state === "error") return message ?? "Couldn't sync";
+  if (!lastSyncedAt) return "Up to date";
+  const minutes = Math.floor((now - lastSyncedAt) / 60_000);
+  if (minutes < 1) return "Synced just now";
+  if (minutes < 60) return `Synced ${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Synced ${hours}h ago`;
+  return `Synced ${new Date(lastSyncedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+}
+
+export function Sidebar() {
+  const account = useApp((s) => s.account);
+  const sync = useApp((s) => s.sync);
+  const setPaletteOpen = useApp((s) => s.setPaletteOpen);
+  const syncNow = useApp((s) => s.syncNow);
+  const { teams, teamProjects } = useDerived();
+  const [collapsed, setCollapsed] = useState<Set<number>>(new Set());
+  // Keeps "Synced 5m ago" current.
+  const [, tick] = useReducer((n: number) => n + 1, 0);
+  useEffect(() => {
+    const timer = setInterval(tick, 30_000);
+    return () => clearInterval(timer);
+  }, []);
+  const host = account ? new URL(account.serverUrl).host : "";
+
+  const toggle = (id: number) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  return (
+    <nav className="sidebar" aria-label="Main">
+      <div className="sidebar-top" data-tauri-drag-region>
+        <div className="workspace" title={account?.serverUrl}>
+          <span className="workspace-mark" aria-hidden>
+            {host.slice(0, 1).toUpperCase()}
+          </span>
+          <span className="workspace-name">{host}</span>
+          <Avatar name={account?.name} size={20} />
+        </div>
+        <button type="button" className="search-button" onClick={() => setPaletteOpen(true)}>
+          <Icon name="search" />
+          <span>Search or run a command</span>
+          <kbd>{shortcutLabel("mod+k")}</kbd>
+        </button>
+      </div>
+
+      <div className="sidebar-scroll">
+        <NavItem route={{ view: "my-issues", tab: "assigned" }} icon={<Icon name="my-issues" />} label="My issues" />
+
+        <div className="nav-section">Your teams</div>
+        {teams.map((team) => {
+          const open = !collapsed.has(team.id);
+          return (
+            <div key={team.id} className="nav-team">
+              <button
+                type="button"
+                className="nav-item nav-team-header"
+                aria-expanded={open}
+                onClick={() => toggle(team.id)}
+              >
+                <span className="team-mark" aria-hidden>
+                  {team.identifier.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="nav-label">{team.name}</span>
+                <Icon name={open ? "chevron-down" : "chevron-right"} size={12} className="nav-chevron" />
+              </button>
+              {open && (
+                <>
+                  <NavItem
+                    route={{ view: "team", teamId: team.id, tab: "active" }}
+                    icon={<Icon name="issues" />}
+                    label="Issues"
+                    depth={1}
+                  />
+                  {teamProjects.get(team.id)?.map((p) => (
+                    <NavItem
+                      key={p.id}
+                      route={{ view: "project", projectId: p.id }}
+                      icon={<Icon name="project" />}
+                      label={p.name}
+                      depth={1}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <button
+        type="button"
+        className={`sync-status sync-${sync.state}`}
+        onClick={() => void syncNow()}
+        title="Sync now"
+        aria-live="polite"
+      >
+        <Icon name={sync.state === "offline" ? "offline" : "sync"} className={sync.state === "syncing" ? "spin" : ""} />
+        <span>{syncLabel(sync.state, sync.message, sync.lastSyncedAt)}</span>
+      </button>
+    </nav>
+  );
+}

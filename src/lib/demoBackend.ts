@@ -194,8 +194,9 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   const wait = <T>(value: T) => new Promise<T>((r) => setTimeout(() => r(value), latency));
   const meta = buildMetadata();
   const issues = new Map(buildIssues(meta).map((i) => [i.id, i]));
-  let account: Account | null = options.signedIn === false ? null : null;
-  if (options.signedIn) account = { serverUrl: DEMO_SERVER, userId: 1, login: "dev", name: "Dana Developer" };
+  let account: Account | null = options.signedIn
+    ? { serverUrl: DEMO_SERVER, userId: 1, login: "dev", name: "Dana Developer" }
+    : null;
   const syncHandlers = new Set<(s: SyncState) => void>();
   const changeHandlers = new Set<(c: IssuesChanged) => void>();
   let lastSyncedAt = Date.now();
