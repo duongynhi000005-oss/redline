@@ -218,10 +218,16 @@ function ServerHeaders() {
   return (
     <section aria-labelledby="settings-connection">
       <h2 id="settings-connection">Connection</h2>
-      <p className="muted">Only for a server behind a proxy or gateway that needs more than your API key.</p>
+      <p className="muted">
+        Only for a server behind a proxy or gateway that needs more than your API key, or one that limits how fast
+        apps may ask it for data.
+      </p>
       {draft && (
         <form
           className="settings-connection"
+          // Redline explains what's wrong itself, in words, instead of the
+          // web view's bubbles.
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             void save();

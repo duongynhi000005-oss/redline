@@ -48,8 +48,13 @@ design doc
    setup. Read statuses, trackers and custom fields from the API, and detect
    what the server supports at runtime. Older Redmine releases aren't
    supported (see ADR 0005).
-2. **Be gentle with the server.** Few requests, pages of 100, a small
-   concurrency limit, back off on 429 and 503, and only send the fields an
-   edit changes.
+2. **Be gentle with the server.** Few requests, pages of 100, and only the
+   fields an edit changes. Every request goes through the server's pacer
+   (`crates/redline-core/src/pacer.rs`): two at a time and two a second by
+   default (a per-server setting under Advanced), what someone is waiting on
+   ahead of background sync, and on 429 or 503 every request pauses for
+   `Retry-After` or a backoff with jitter, then the pace halves and recovers.
+   Sync loads the newest issues first and the rest a few pages per pass
+   (open, then closed), so the first screen never waits on a full pull.
 3. **Keyboard first and native.** Every action has a shortcut that uses Cmd on
    macOS and Ctrl on Windows, real menus, and the system font and theme.

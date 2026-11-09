@@ -10,6 +10,7 @@ use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
+use crate::pacer::RequestLimits;
 
 /// The header the Username field is sent as.
 pub const USERNAME_HEADER: &str = "X-Redmine-Username";
@@ -46,7 +47,8 @@ impl std::fmt::Debug for Header {
     }
 }
 
-/// A server's username and custom headers. Empty by default.
+/// A server's username, custom headers and request limits. Empty by
+/// default.
 #[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConnectionOptions {
     /// Sent as [`USERNAME_HEADER`] when set.
@@ -54,6 +56,9 @@ pub struct ConnectionOptions {
     pub username: Option<String>,
     #[serde(default)]
     pub headers: Vec<Header>,
+    /// How hard Redline may use the server. `None` uses the defaults.
+    #[serde(default)]
+    pub limits: Option<RequestLimits>,
 }
 
 impl std::fmt::Debug for ConnectionOptions {
@@ -61,13 +66,19 @@ impl std::fmt::Debug for ConnectionOptions {
         f.debug_struct("ConnectionOptions")
             .field("username", &self.username.as_ref().map(|_| "…"))
             .field("headers", &self.headers)
+            .field("limits", &self.limits)
             .finish()
     }
 }
 
 impl ConnectionOptions {
     pub fn is_empty(&self) -> bool {
-        self.username.is_none() && self.headers.is_empty()
+        self.username.is_none() && self.headers.is_empty() && self.limits.is_none()
+    }
+
+    /// The limits to pace requests by: the saved ones, or the defaults.
+    pub fn request_limits(&self) -> RequestLimits {
+        self.limits.unwrap_or_default().clamped()
     }
 
     /// Trims names and values, drops a blank username and rows left fully
@@ -88,7 +99,17 @@ impl ConnectionOptions {
             })
             .filter(|h| !(h.name.is_empty() && h.value.is_empty()))
             .collect();
-        Self { username, headers }
+        // Limits the same as the defaults aren't worth saving: a later
+        // release may pick better defaults.
+        let limits = self
+            .limits
+            .map(RequestLimits::clamped)
+            .filter(|l| *l != RequestLimits::default());
+        Self {
+            username,
+            headers,
+            limits,
+        }
     }
 
     /// Checks the options and builds the headers to send. Values are marked
@@ -177,6 +198,7 @@ mod tests {
         let options = ConnectionOptions {
             username: Some("  dana ".into()),
             headers: vec![header(" X-Gateway-Token ", " abc "), header("", "")],
+            ..Default::default()
         };
         let map = options.header_map().unwrap();
         assert_eq!(map.len(), 2);
@@ -190,6 +212,7 @@ mod tests {
         let options = ConnectionOptions {
             username: Some("   ".into()),
             headers: vec![header(" ", "")],
+            ..Default::default()
         };
         assert!(options.normalized().is_empty());
         assert!(options.header_map().unwrap().is_empty());
@@ -200,6 +223,7 @@ mod tests {
         let options = ConnectionOptions {
             username: None,
             headers: vec![header("x-redmine-api-key", "other")],
+            ..Default::default()
         };
         let err = options.header_map().unwrap_err();
         assert_eq!(err.code(), "invalid_header");
@@ -212,6 +236,7 @@ mod tests {
             let options = ConnectionOptions {
                 username: None,
                 headers: vec![header(name, "x")],
+                ..Default::default()
             };
             assert!(options.header_map().is_err(), "{name}");
         }
@@ -230,6 +255,7 @@ mod tests {
             let options = ConnectionOptions {
                 username: None,
                 headers: headers.clone(),
+                ..Default::default()
             };
             assert!(options.header_map().is_err(), "{headers:?}");
         }
@@ -240,9 +266,35 @@ mod tests {
         let options = ConnectionOptions {
             username: Some("dana".into()),
             headers: vec![header("X-Redmine-Username", "dana")],
+            ..Default::default()
         };
         let err = options.header_map().unwrap_err();
         assert!(err.to_string().contains("Username field"));
+    }
+
+    #[test]
+    fn keeps_only_limits_that_differ_from_the_defaults() {
+        let options = ConnectionOptions {
+            limits: Some(RequestLimits::default()),
+            ..Default::default()
+        };
+        assert_eq!(options.normalized().limits, None);
+        assert!(options.normalized().is_empty());
+
+        let slow = ConnectionOptions {
+            limits: Some(RequestLimits {
+                at_once: 1,
+                per_minute: 30,
+            }),
+            ..Default::default()
+        };
+        assert_eq!(slow.normalized().limits, slow.limits);
+        assert_eq!(slow.request_limits().per_minute, 30);
+
+        // Options saved before limits existed still load.
+        let old: ConnectionOptions =
+            serde_json::from_str(r#"{"username":"dana","headers":[]}"#).unwrap();
+        assert_eq!(old.request_limits(), RequestLimits::default());
     }
 
     #[test]
@@ -250,6 +302,7 @@ mod tests {
         let options = ConnectionOptions {
             username: Some("dana".into()),
             headers: vec![header("X-Token", "s3cret")],
+            ..Default::default()
         };
         let text = format!("{options:?}");
         assert!(!text.contains("s3cret"));
