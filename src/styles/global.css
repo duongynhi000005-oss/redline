@@ -4021,3 +4021,278 @@ textarea.team-description {
   color: var(--text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
+/* Wiki */
+.button-secondary.small {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  gap: 5px;
+}
+
+.wiki-view .main-header .button-secondary.small {
+  margin-right: 4px;
+}
+
+.breadcrumb-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.wiki-tree {
+  width: 220px;
+  flex: none;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 12px 8px;
+}
+
+.wiki-tree-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.wiki-tree-note {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.wiki-tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wiki-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 28px;
+  padding-right: 8px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.wiki-tree-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wiki-tree-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.wiki-tree-item.is-current {
+  background: var(--bg-active);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.wiki-byline {
+  margin: -8px 0 20px;
+  font-size: 12.5px;
+}
+
+.wiki-page .attachments {
+  margin-top: 24px;
+}
+
+.markdown .wiki-link {
+  color: var(--accent);
+}
+
+.markdown .wiki-link-new {
+  color: var(--text-tertiary);
+  text-decoration: underline dashed;
+  text-underline-offset: 3px;
+}
+
+.markdown .wiki-link-unknown {
+  color: var(--text-secondary);
+}
+
+.wiki-old-version {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.wiki-missing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-top: 64px;
+  color: var(--text-secondary);
+}
+
+.wiki-missing .button-primary {
+  height: 30px;
+  border-radius: 6px;
+}
+
+.wiki-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100%;
+}
+
+.wiki-title-input {
+  margin-top: 0;
+  font-size: 22px;
+}
+
+.wiki-editor .detail-title {
+  margin-bottom: 0;
+}
+
+.wiki-editor-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.wiki-editor-tabs [role="tab"] {
+  padding: 6px 10px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.wiki-editor-tabs [role="tab"].is-active {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+
+.wiki-editor-hint {
+  font-size: 11.5px;
+}
+
+.wiki-text {
+  flex: 1;
+  min-height: 320px;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: 13px/1.6 ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  resize: vertical;
+}
+
+.wiki-text:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+}
+
+.wiki-preview {
+  flex: 1;
+  min-height: 320px;
+  padding: 4px 2px;
+}
+
+.wiki-editor-fields {
+  display: flex;
+  gap: 10px;
+}
+
+.wiki-comment-field {
+  flex: 1;
+}
+
+.wiki-parent-field {
+  width: 220px;
+}
+
+.wiki-editor-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.wiki-history {
+  padding: 12px 8px;
+}
+
+.wiki-versions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wiki-version {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 12.5px;
+}
+
+.wiki-version:hover {
+  background: var(--bg-hover);
+}
+
+.wiki-version.is-current {
+  background: var(--bg-active);
+}
+
+.wiki-version-line {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.wiki-version-comment {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* The wiki has a page tree beside it, so its text column is sized from its own pane. */
+.wiki-content {
+  padding: 28px 40px 64px;
+}
+
+.wiki-page,
+.wiki-editor,
+.wiki-missing {
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.wiki-old-version-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.wiki-old-version .button-secondary {
+  flex: none;
+  white-space: nowrap;
+}

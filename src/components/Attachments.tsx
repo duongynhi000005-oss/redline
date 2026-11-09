@@ -30,8 +30,22 @@ export function AttachmentImage({ attachment, alt, className }: { attachment: At
 
 /** The issue's files, as tiles: images show themselves, other files their type. */
 export function Attachments({ issue, onAttach }: { issue: Issue; onAttach: () => void }) {
-  const attachments = issue.attachments;
   const deleteAttachment = useApp((s) => s.deleteAttachment);
+  return (
+    <AttachmentGrid attachments={issue.attachments} onAttach={onAttach} onDelete={(a) => void deleteAttachment(issue.id, a)} />
+  );
+}
+
+/** Files as thumbnails that preview or save, with adding and deleting where the caller allows them. */
+export function AttachmentGrid({
+  attachments,
+  onAttach,
+  onDelete,
+}: {
+  attachments: Attachment[] | null | undefined;
+  onAttach?: () => void;
+  onDelete?: (attachment: Attachment) => void;
+}) {
   const saveAttachment = useApp((s) => s.saveAttachment);
   const [previewing, setPreviewing] = useState<number | null>(null);
   const images = (attachments ?? []).filter(canPreview);
@@ -44,9 +58,11 @@ export function Attachments({ issue, onAttach }: { issue: Issue; onAttach: () =>
         <h2>
           Attachments <span className="count">{attachments.length}</span>
         </h2>
-        <button type="button" className="icon-button" onClick={onAttach} aria-label="Attach more files" title="Attach files">
-          <Icon name="plus" />
-        </button>
+        {onAttach && (
+          <button type="button" className="icon-button" onClick={onAttach} aria-label="Attach more files" title="Attach files">
+            <Icon name="plus" />
+          </button>
+        )}
       </header>
       <ul className="attachment-grid">
         {attachments.map((a) => (
@@ -84,15 +100,17 @@ export function Attachments({ issue, onAttach }: { issue: Issue; onAttach: () =>
               >
                 <Icon name="download" size={12} />
               </button>
-              <button
-                type="button"
-                className="icon-button small"
-                onClick={() => void deleteAttachment(issue.id, a)}
-                aria-label={`Delete ${a.filename}`}
-                title="Delete"
-              >
-                <Icon name="trash" size={12} />
-              </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  className="icon-button small"
+                  onClick={() => onDelete(a)}
+                  aria-label={`Delete ${a.filename}`}
+                  title="Delete"
+                >
+                  <Icon name="trash" size={12} />
+                </button>
+              )}
             </span>
           </li>
         ))}

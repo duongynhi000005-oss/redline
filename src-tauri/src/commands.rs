@@ -571,6 +571,64 @@ pub async fn delete_version(app: AppHandle, state: State<'_, AppState>, id: u64)
     Ok(())
 }
 
+// ----- Wiki ---------------------------------------------------------------
+
+/// A team's wiki pages, without their text. Read from Redmine each time.
+#[tauri::command]
+pub async fn wiki_index(
+    state: State<'_, AppState>,
+    project_id: u64,
+) -> CmdResult<Vec<redline_core::models::WikiPage>> {
+    Ok(syncer(&state)
+        .await?
+        .client()
+        .wiki_index(project_id)
+        .await?)
+}
+
+/// One wiki page, or the start page when there's no title.
+#[tauri::command]
+pub async fn wiki_page(
+    state: State<'_, AppState>,
+    project_id: u64,
+    title: Option<String>,
+    version: Option<u64>,
+) -> CmdResult<redline_core::models::WikiPage> {
+    Ok(syncer(&state)
+        .await?
+        .client()
+        .wiki_page(project_id, title.as_deref(), version)
+        .await?)
+}
+
+#[tauri::command]
+pub async fn save_wiki_page(
+    state: State<'_, AppState>,
+    project_id: u64,
+    title: String,
+    changes: redline_core::models::WikiPageChanges,
+) -> CmdResult<()> {
+    Ok(syncer(&state)
+        .await?
+        .client()
+        .save_wiki_page(project_id, &title, &changes)
+        .await?)
+}
+
+#[tauri::command]
+pub async fn delete_wiki_page(
+    state: State<'_, AppState>,
+    project_id: u64,
+    title: String,
+    with_children: bool,
+) -> CmdResult<()> {
+    Ok(syncer(&state)
+        .await?
+        .client()
+        .delete_wiki_page(project_id, &title, with_children)
+        .await?)
+}
+
 // ----- Time ---------------------------------------------------------------
 
 /// Time entries, read from Redmine each time (they aren't cached).

@@ -318,6 +318,95 @@ impl Client {
         Ok(())
     }
 
+    // ----- Wiki ----------------------------------------------------------
+
+    /// Every page of a project's wiki, without their text.
+    pub async fn wiki_index(&self, project_id: u64) -> Result<Vec<WikiPage>> {
+        take(
+            self.get(&format!("projects/{project_id}/wiki/index.json"), &[])
+                .await?,
+            "wiki_pages",
+        )
+    }
+
+    /// One wiki page with its text and attachments: its latest version, or
+    /// an older one (which needs "View wiki history"). With no title, the
+    /// wiki's start page.
+    pub async fn wiki_page(
+        &self,
+        project_id: u64,
+        title: Option<&str>,
+        version: Option<u64>,
+    ) -> Result<WikiPage> {
+        let url = match title {
+            Some(title) => self.wiki_url(project_id, title, version)?,
+            None => self.url(&format!("projects/{project_id}/wiki.json"))?,
+        };
+        let response = self
+            .send(|| {
+                self.http
+                    .get(url.clone())
+                    .query(&[("include", "attachments")])
+            })
+            .await?;
+        take(decode(response).await?, "wiki_page")
+    }
+
+    /// Saves a wiki page, creating it when the title is new.
+    pub async fn save_wiki_page(
+        &self,
+        project_id: u64,
+        title: &str,
+        changes: &WikiPageChanges,
+    ) -> Result<()> {
+        let url = self.wiki_url(project_id, title, None)?;
+        let body = json!({ "wiki_page": changes });
+        match self.send(|| self.http.put(url.clone()).json(&body)).await {
+            Ok(_) => Ok(()),
+            // Redmine answers 409 when the page changed since `version`.
+            Err(Error::Http(409)) => Err(Error::Rejected(vec![
+                "Someone else saved this page while you were editing it. Copy your text, reload the page and edit it again.".into(),
+            ])),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Deletes a wiki page. Its sub-pages are deleted with it, or move up
+    /// to the top of the wiki.
+    pub async fn delete_wiki_page(
+        &self,
+        project_id: u64,
+        title: &str,
+        with_children: bool,
+    ) -> Result<()> {
+        let url = self.wiki_url(project_id, title, None)?;
+        let todo = if with_children { "destroy" } else { "nullify" };
+        self.send(|| self.http.delete(url.clone()).query(&[("todo", todo)]))
+            .await?;
+        Ok(())
+    }
+
+    /// `projects/:id/wiki/:title.json`, or `…/:title/:version.json`, with the
+    /// title escaped as one path segment.
+    fn wiki_url(&self, project_id: u64, title: &str, version: Option<u64>) -> Result<Url> {
+        let mut url = self.url(&format!("projects/{project_id}/wiki/"))?;
+        {
+            let mut path = url
+                .path_segments_mut()
+                .map_err(|_| Error::InvalidUrl(self.base.to_string()))?;
+            path.pop_if_empty();
+            match version {
+                Some(v) => {
+                    path.push(title).push(&format!("{v}.json"));
+                }
+                None => {
+                    path.push(&format!("{title}.json"));
+                }
+            }
+        }
+        Ok(url)
+    }
+
     /// The members of a project. This is how Redline knows who can be
     /// assigned, since listing all users needs an admin key.
     pub async fn memberships(&self, project_id: u64) -> Result<Vec<Membership>> {

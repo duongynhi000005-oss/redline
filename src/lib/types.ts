@@ -363,3 +363,28 @@ export function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   return String(e);
 }
+
+/** A wiki page. The index leaves out its text, author and comments. */
+export interface WikiPage {
+  /** Redmine's title, with underscores for spaces. */
+  title: string;
+  parent?: { title: string } | null;
+  text?: string | null;
+  version: number;
+  author?: Named | null;
+  /** The comment saved with this version. */
+  comments?: string | null;
+  created_on?: string | null;
+  updated_on?: string | null;
+  attachments?: Attachment[];
+}
+
+/** What to save to a wiki page; a new title makes a new page. */
+export interface WikiPageChanges {
+  text: string;
+  comments?: string;
+  /** The version the edit started from, so Redmine can refuse a save over someone else's. */
+  version?: number;
+  /** The parent's title; empty moves the page to the top. */
+  parent_title?: string;
+}

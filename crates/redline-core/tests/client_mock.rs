@@ -995,3 +995,99 @@ async fn creates_closes_reopens_and_deletes_projects() {
     c.set_project_closed(3, false).await.unwrap();
     c.delete_project(3).await.unwrap();
 }
+
+#[tokio::test]
+async fn reads_saves_and_deletes_wiki_pages() {
+    use redline_core::models::WikiPageChanges;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/projects/1/wiki/index.json"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"wiki_pages": [
+                {"title": "Wiki", "version": 3},
+                {"title": "Release_checklist", "parent": {"title": "Wiki"}, "version": 1}
+            ]})),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/projects/1/wiki.json"))
+        .and(query_param("include", "attachments"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"wiki_page": {
+                "title": "Wiki", "text": "# Web", "version": 3, "author": {"id": 5, "name": "Dana"},
+                "attachments": [{"id": 9, "filename": "map.png"}]
+            }})),
+        )
+        .mount(&server)
+        .await;
+    // A title with a space and a version, escaped as path segments.
+    Mock::given(method("GET"))
+        .and(path("/projects/1/wiki/Q&A%20notes/2.json"))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_json(json!({"wiki_page": {
+                "title": "Q&A notes", "text": "old", "version": 2, "comments": "typo"
+            }})),
+        )
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/projects/1/wiki/Release_checklist.json"))
+        .and(body_json(json!({"wiki_page": {
+            "text": "Ship it", "comments": "Steps", "version": 1, "parent_title": "Wiki"
+        }})))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/projects/1/wiki/Stale.json"))
+        .respond_with(ResponseTemplate::new(409))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/projects/1/wiki/Wiki.json"))
+        .and(query_param("todo", "nullify"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let c = client(&server);
+    let index = c.wiki_index(1).await.unwrap();
+    assert_eq!(index.len(), 2);
+    assert_eq!(index[1].parent.as_ref().unwrap().title, "Wiki");
+    assert_eq!(index[1].text, None);
+
+    let start = c.wiki_page(1, None, None).await.unwrap();
+    assert_eq!(start.text.as_deref(), Some("# Web"));
+    assert_eq!(start.attachments[0].filename, "map.png");
+
+    let old = c.wiki_page(1, Some("Q&A notes"), Some(2)).await.unwrap();
+    assert_eq!(old.comments.as_deref(), Some("typo"));
+
+    c.save_wiki_page(
+        1,
+        "Release_checklist",
+        &WikiPageChanges {
+            text: "Ship it".into(),
+            comments: Some("Steps".into()),
+            version: Some(1),
+            parent_title: Some("Wiki".into()),
+        },
+    )
+    .await
+    .unwrap();
+
+    let stale = c
+        .save_wiki_page(1, "Stale", &WikiPageChanges::default())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&stale, Error::Rejected(m) if m[0].contains("while you were editing")),
+        "{stale:?}"
+    );
+
+    c.delete_wiki_page(1, "Wiki", false).await.unwrap();
+}

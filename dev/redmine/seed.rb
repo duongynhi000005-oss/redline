@@ -268,6 +268,29 @@ if web
     end
     say "wrote wiki pages"
   end
+  # Pages under the start page, for the wiki's tree, links and history.
+  {
+    "Getting_started" => ["Wiki", "# Getting started\n\n1. Clone the repository.\n2. Run `npm install`.\n3. Start the app with `npm run tauri dev`.\n\nRead [[Code review]] before your first pull request."],
+    "Code_review" => ["Getting_started", "# Code review\n\nEvery change gets one review. Keep pull requests small, and add screenshots for UI changes."]
+  }.each do |title, (parent, text)|
+    next if wiki.find_page(title)
+    page = WikiPage.new(wiki: wiki, title: title, parent: wiki.find_page(parent))
+    page.content = WikiContent.new(page: page, text: text, author: user)
+    page.save!
+    say "wrote wiki page #{title}"
+  end
+  release = wiki.find_page("Release_checklist")
+  if release && release.parent.nil?
+    release.update!(parent: wiki.find_page("Wiki"))
+  end
+  start = wiki.find_page("Wiki")
+  if start && start.content.version < 2
+    start.content.text = "# Web\n\nThe Redline web team's notes. Start with [[Getting started]], and read [[Release checklist]] before shipping.\n\nIdeas that aren't issues yet go in [[Roadmap]]."
+    start.content.comments = "Point at the guides"
+    start.content.author = user
+    start.content.save!
+    say "edited the wiki start page"
+  end
   if News.where(project: web).none?
     News.create!(project: web, author: user, title: "Board view ships in Sprint 2",
                  summary: "Issues as columns you can drag between.",

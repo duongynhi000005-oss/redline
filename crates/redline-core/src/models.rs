@@ -409,6 +409,56 @@ pub struct NewRelation {
     pub delay: Option<i64>,
 }
 
+/// The parent of a wiki page: `{"title": "Wiki"}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WikiParent {
+    pub title: String,
+}
+
+/// A wiki page. The index (`/projects/:id/wiki/index.json`) leaves out the
+/// text, author and comments; one page (`/projects/:id/wiki/:title.json`)
+/// has them, and its attachments when asked.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WikiPage {
+    /// Redmine's title, with underscores for spaces, like `Release_checklist`.
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent: Option<WikiParent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// Starts at 1 and goes up with each saved edit.
+    #[serde(default)]
+    pub version: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<Named>,
+    /// The comment saved with this version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comments: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_on: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_on: Option<String>,
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
+}
+
+/// What to save to a wiki page. Saving to a title that doesn't exist yet
+/// creates the page.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WikiPageChanges {
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comments: Option<String>,
+    /// The version the edit started from. Redmine refuses the save when the
+    /// page has moved on since, so one edit doesn't silently undo another.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<u64>,
+    /// The parent page's title; empty moves the page to the top. Changing it
+    /// on an existing page needs "Rename wiki pages".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_title: Option<String>,
+}
+
 /// One hit from Redmine's search (`/search.json`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchResult {

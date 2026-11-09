@@ -58,3 +58,17 @@ export function canEditComment(meta: Metadata | null, projectId: number, authorI
   if (allowed(meta, projectId, "edit_issue_notes") !== false) return true;
   return authorId !== undefined && authorId === me && allowed(meta, projectId, "edit_own_issue_notes") !== false;
 }
+
+/** What the user can do in a project's wiki, as far as Redline knows. A closed project's wiki is read-only. */
+export function wikiAccess(meta: Metadata | null, projectId: number) {
+  const on = moduleEnabled(meta, projectId, "wiki") === true;
+  const may = (permission: string) => on && allowed(meta, projectId, permission) !== false;
+  const open = meta?.projects.find((p) => p.id === projectId)?.status !== 5;
+  return {
+    view: may("view_wiki_pages"),
+    history: may("view_wiki_edits"),
+    edit: open && may("edit_wiki_pages"),
+    move: open && may("rename_wiki_pages"),
+    delete: open && may("delete_wiki_pages"),
+  };
+}

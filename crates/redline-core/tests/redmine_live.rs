@@ -700,3 +700,63 @@ async fn a_developer_cannot_create_close_or_delete_teams() {
         Some(1)
     );
 }
+
+#[tokio::test]
+async fn writes_reads_and_deletes_a_wiki_page() {
+    use redline_core::models::WikiPageChanges;
+
+    let client = live!();
+    let projects = client.projects().await.unwrap();
+    let web = projects
+        .iter()
+        .find(|p| p.identifier == "web")
+        .expect("web");
+    let title = "Live_test_page";
+    // Clean up after an earlier run that stopped half way.
+    let _ = client.delete_wiki_page(web.id, title, true).await;
+
+    let start = client.wiki_page(web.id, None, None).await.unwrap();
+    assert_eq!(start.title, "Wiki");
+
+    let first = WikiPageChanges {
+        text: "First".into(),
+        parent_title: Some("Wiki".into()),
+        ..Default::default()
+    };
+    client.save_wiki_page(web.id, title, &first).await.unwrap();
+    let made = client.wiki_page(web.id, Some(title), None).await.unwrap();
+    assert_eq!(made.version, 1);
+    assert_eq!(made.parent.as_ref().map(|p| p.title.as_str()), Some("Wiki"));
+
+    let second = WikiPageChanges {
+        text: "Second".into(),
+        comments: Some("Reworded".into()),
+        version: Some(1),
+        parent_title: None,
+    };
+    client.save_wiki_page(web.id, title, &second).await.unwrap();
+    // Saving other text from the old version is a conflict. (The same
+    // text again isn't: Redmine sees nothing to save.)
+    let third = WikiPageChanges {
+        text: "Third".into(),
+        ..second.clone()
+    };
+    let stale = client.save_wiki_page(web.id, title, &third).await;
+    assert!(matches!(stale, Err(Error::Rejected(_))), "{stale:?}");
+
+    let latest = client.wiki_page(web.id, Some(title), None).await.unwrap();
+    assert_eq!(latest.version, 2);
+    assert_eq!(latest.text.as_deref(), Some("Second"));
+    assert_eq!(latest.comments.as_deref(), Some("Reworded"));
+    let old = client
+        .wiki_page(web.id, Some(title), Some(1))
+        .await
+        .unwrap();
+    assert_eq!(old.text.as_deref(), Some("First"));
+
+    let index = client.wiki_index(web.id).await.unwrap();
+    assert!(index.iter().any(|p| p.title == title));
+    client.delete_wiki_page(web.id, title, false).await.unwrap();
+    let gone = client.wiki_page(web.id, Some(title), None).await;
+    assert!(matches!(gone, Err(Error::NotFound)), "{gone:?}");
+}
