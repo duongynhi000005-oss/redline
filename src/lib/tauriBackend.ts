@@ -6,7 +6,9 @@ import type { IssuesChanged, SyncState } from "./types";
 export const tauriBackend: Backend = {
   appInfo: () => invoke("app_info"),
   getAccount: () => invoke("get_account"),
-  signIn: (serverUrl, apiKey) => invoke("sign_in", { serverUrl, apiKey }),
+  signIn: (serverUrl, apiKey, connection) => invoke("sign_in", { serverUrl, apiKey, connection: connection ?? null }),
+  getConnection: () => invoke("get_connection"),
+  updateConnection: (connection) => invoke("update_connection", { connection }),
   signOut: () => invoke("sign_out"),
   getMetadata: () => invoke("get_metadata"),
   listIssues: () => invoke("list_issues"),

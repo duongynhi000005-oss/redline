@@ -35,8 +35,9 @@ Please don't include real API keys or another person's data in the report.
 
 ## In scope
 
-- Leaking or mishandling a Redmine API key (storage, logs, crash reports,
-  network requests to anyone other than the configured Redmine server)
+- Leaking or mishandling a Redmine API key, username or custom header value
+  (storage, logs, crash reports, network requests to anyone other than the
+  configured Redmine server)
 - Script injection through Redmine content (issue text, comments, custom
   fields, attachments' names) reaching the app's web view
 - Tauri command or permission misuse that lets web content reach the file

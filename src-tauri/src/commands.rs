@@ -7,7 +7,7 @@ use std::sync::atomic::AtomicBool;
 use redline_core::models::{
     Found, Issue, IssueChanges, NewRelation, Relation, SearchResult, SearchScope,
 };
-use redline_core::{Client, Error, IssueDetails, Metadata, Store, Syncer};
+use redline_core::{Client, ConnectionOptions, Error, IssueDetails, Metadata, Store, Syncer};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
@@ -84,7 +84,8 @@ pub async fn resume(app: &AppHandle, state: &AppState) -> Option<Account> {
     let dir = config_dir(app).ok()?;
     let account = account::load(&dir)?;
     let key = account.load_key().ok()?;
-    let client = Client::new(&account.server_url, &key).ok()?;
+    let options = account.load_connection().ok()?;
+    let client = Client::with_options(&account.server_url, &key, &options).ok()?;
     let store = open_store(app, &account).ok()?;
     let session = Session::start(
         app.clone(),
@@ -106,18 +107,22 @@ pub async fn get_account(state: State<'_, AppState>) -> CmdResult<Option<Account
         .map(|s| s.account.clone()))
 }
 
-/// Checks the server and key, saves them, and starts syncing.
+/// Checks the server and key, saves them, and starts syncing. `connection`
+/// holds the username and custom headers a proxy in front of the server
+/// needs, if any.
 #[tauri::command]
 pub async fn sign_in(
     app: AppHandle,
     state: State<'_, AppState>,
     server_url: String,
     api_key: String,
+    connection: Option<ConnectionOptions>,
 ) -> CmdResult<Account> {
     if api_key.trim().is_empty() {
         return Err(UiError::new("unauthorized", "Paste your Redmine API key."));
     }
-    let client = Client::new(&server_url, &api_key)?;
+    let options = connection.unwrap_or_default().normalized();
+    let client = Client::with_options(&server_url, &api_key, &options)?;
     let user = client.current_user().await?;
     let account = Account {
         server_url: client.server_url().to_string(),
@@ -127,6 +132,9 @@ pub async fn sign_in(
     };
     account
         .save_key(api_key.trim())
+        .map_err(|m| UiError::new("keychain", m))?;
+    account
+        .save_connection(&options)
         .map_err(|m| UiError::new("keychain", m))?;
     account::save(&config_dir(&app)?, &account).map_err(|m| UiError::new("storage", m))?;
 
@@ -141,6 +149,68 @@ pub async fn sign_in(
         old.stop();
     }
     Ok(account)
+}
+
+/// The signed-in server's username and custom headers.
+#[tauri::command]
+pub async fn get_connection(state: State<'_, AppState>) -> CmdResult<ConnectionOptions> {
+    let guard = state.session.read().await;
+    let session = guard.as_ref().ok_or_else(UiError::signed_out)?;
+    session
+        .account
+        .load_connection()
+        .map_err(|m| UiError::new("keychain", m))
+}
+
+/// Changes the signed-in server's username and custom headers. Checks them
+/// against the server first, and only saves them if they still sign in as
+/// the same person. Then restarts syncing with them.
+#[tauri::command]
+pub async fn update_connection(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    connection: ConnectionOptions,
+) -> CmdResult<ConnectionOptions> {
+    let options = connection.normalized();
+    let account = state
+        .session
+        .read()
+        .await
+        .as_ref()
+        .map(|s| s.account.clone())
+        .ok_or_else(UiError::signed_out)?;
+    let key = account
+        .load_key()
+        .map_err(|m| UiError::new("keychain", m))?;
+    let client = Client::with_options(&account.server_url, &key, &options)?;
+    let user = client.current_user().await?;
+    if user.id != account.user_id {
+        return Err(UiError::new(
+            "unauthorized",
+            "With these headers the server signs you in as someone else. To switch accounts, sign out and sign in again.",
+        ));
+    }
+
+    let mut guard = state.session.write().await;
+    // Signed out, or into another account, while the check ran.
+    if guard.as_ref().map(|s| &s.account) != Some(&account) {
+        return Err(UiError::signed_out());
+    }
+    account
+        .save_connection(&options)
+        .map_err(|m| UiError::new("keychain", m))?;
+    let old = guard.take().expect("checked above");
+    old.stop();
+    let store = old.syncer.store().clone();
+    drop(old);
+    let session = Session::start(
+        app.clone(),
+        account,
+        Syncer::new(client, store),
+        state.focused.clone(),
+    );
+    *guard = Some(session);
+    Ok(options)
 }
 
 /// Stops syncing, removes the key from the keychain and forgets the account.

@@ -5,6 +5,7 @@
 //! wraps it in Tauri commands and events.
 
 pub mod client;
+pub mod connection;
 pub mod error;
 pub mod mentions;
 pub mod models;
@@ -12,6 +13,7 @@ pub mod store;
 pub mod sync;
 
 pub use client::{Client, IssueQuery, Page, TimeQuery};
+pub use connection::{ConnectionOptions, Header};
 pub use error::{Error, Result};
 pub use store::{Metadata, Store};
 pub use sync::{IssueDetails, NewFile, SyncProgress, SyncReport, Syncer};

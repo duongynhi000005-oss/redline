@@ -1916,6 +1916,98 @@ button.time-row-issue:hover {
 
 .signin-error {
   color: var(--danger);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.signin-advanced-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.signin-advanced-toggle:hover {
+  color: var(--text);
+}
+
+.signin-advanced-toggle .disclosure {
+  transition: transform 120ms ease;
+}
+
+.signin-advanced-toggle[aria-expanded="true"] .disclosure {
+  transform: rotate(90deg);
+}
+
+.signin-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--bg-input) 55%, transparent);
+}
+
+/* Username and custom headers, in sign-in and Settings */
+
+.connection-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.connection-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.connection-field label {
+  font-weight: 500;
+}
+
+.connection-headers {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.connection-headers-title {
+  font-weight: 500;
+}
+
+.connection-headers ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.connection-header-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.connection-fields input {
+  min-width: 0;
+}
+
+.field-help {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-tertiary);
 }
 
 .button-primary {
@@ -2179,6 +2271,45 @@ button.time-row-issue:hover {
   background: var(--bg);
   color: var(--text);
   font: inherit;
+}
+
+.settings-connection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 460px;
+}
+
+.settings-connection input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+}
+
+.settings-connection input:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+  border-color: var(--accent);
+}
+
+.settings-connection-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.settings-body p.settings-error {
+  margin: 10px 0 0;
+  color: var(--danger);
+}
+
+.settings-body section > p.muted:last-child {
+  margin: 10px 0 0;
 }
 
 .settings-fields {

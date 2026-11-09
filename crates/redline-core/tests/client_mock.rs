@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use redline_core::models::{IssueChanges, SearchKind, SearchScope};
-use redline_core::{Client, Error, IssueQuery};
+use redline_core::{Client, ConnectionOptions, Error, Header, IssueQuery};
 use serde_json::json;
 use wiremock::matchers::{body_bytes, body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -50,7 +50,10 @@ async fn sends_the_api_key_and_reads_the_current_user() {
 async fn explains_sign_in_failures() {
     let server = MockServer::start().await;
     Mock::given(path("/users/current.json"))
-        .respond_with(ResponseTemplate::new(401))
+        .respond_with(
+            ResponseTemplate::new(401)
+                .insert_header("WWW-Authenticate", r#"Basic realm="Redmine API""#),
+        )
         .mount(&server)
         .await;
     assert!(matches!(
@@ -1520,4 +1523,180 @@ async fn a_key_redmine_stopped_accepting_keeps_the_cache() {
         .await;
     assert_eq!(syncer.prune_deleted().await.unwrap(), vec![2]);
     assert_eq!(syncer.store().issue_ids().unwrap(), vec![1]);
+}
+
+fn proxied(server: &MockServer) -> Client {
+    Client::with_options(
+        &server.uri(),
+        "test-key",
+        &ConnectionOptions {
+            username: Some("dana".into()),
+            headers: vec![Header {
+                name: "X-Gateway-Token".into(),
+                value: "tok".into(),
+            }],
+        },
+    )
+    .unwrap()
+    .with_retry_unit(Duration::from_millis(1))
+}
+
+#[tokio::test]
+async fn sends_the_username_and_custom_headers_with_the_api_key() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/users/current.json"))
+        .and(header("X-Redmine-API-Key", "test-key"))
+        .and(header("X-Redmine-Username", "dana"))
+        .and(header("X-Gateway-Token", "tok"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "user": {"id": 5, "login": "dev", "firstname": "Dana", "lastname": "Developer"}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // Uploads and downloads carry them too.
+    Mock::given(method("POST"))
+        .and(path("/uploads.json"))
+        .and(header("X-Redmine-Username", "dana"))
+        .and(header("X-Gateway-Token", "tok"))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({"upload": {"token": "t1"}})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/attachments/download/7"))
+        .and(header("X-Redmine-Username", "dana"))
+        .and(header("X-Gateway-Token", "tok"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"png".to_vec()))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let client = proxied(&server);
+    assert_eq!(client.current_user().await.unwrap().id, 5);
+    assert_eq!(client.upload("a.png", b"png".to_vec()).await.unwrap(), "t1");
+    assert_eq!(client.download_attachment(7).await.unwrap(), b"png");
+}
+
+#[tokio::test]
+async fn refuses_to_build_a_client_with_bad_headers() {
+    let err = Client::with_options(
+        "https://example.com",
+        "k",
+        &ConnectionOptions {
+            username: None,
+            headers: vec![Header {
+                name: "X-Redmine-API-Key".into(),
+                value: "other".into(),
+            }],
+        },
+    )
+    .unwrap_err();
+    assert!(matches!(err, Error::InvalidHeader(_)));
+}
+
+#[tokio::test]
+async fn tells_a_proxy_refusal_from_a_wrong_key() {
+    // A gateway's 401 asks for another realm, or is a web page.
+    // Redmine's own answer to a wrong key: empty JSON, no challenge.
+    let server = MockServer::start().await;
+    Mock::given(path("/users/current.json"))
+        .respond_with(ResponseTemplate::new(401).insert_header("Content-Type", "application/json"))
+        .mount(&server)
+        .await;
+    assert!(matches!(
+        client(&server).current_user().await,
+        Err(Error::Unauthorized)
+    ));
+
+    let server = MockServer::start().await;
+    Mock::given(path("/users/current.json"))
+        .respond_with(ResponseTemplate::new(401).insert_header("WWW-Authenticate", "Bearer"))
+        .mount(&server)
+        .await;
+    let err = client(&server).current_user().await.unwrap_err();
+    assert!(matches!(err, Error::Refused(401)), "{err:?}");
+    assert_eq!(err.code(), "refused");
+    assert!(err.to_string().contains("HTTP 401"));
+
+    let server = MockServer::start().await;
+    Mock::given(path("/users/current.json"))
+        .respond_with(
+            ResponseTemplate::new(401)
+                .insert_header("Content-Type", "text/html")
+                .set_body_string("<html><body>Sign in</body></html>"),
+        )
+        .mount(&server)
+        .await;
+    assert!(matches!(
+        client(&server).current_user().await,
+        Err(Error::Refused(401))
+    ));
+
+    // A gateway's 403 is a web page; Redmine's is empty.
+    let server = MockServer::start().await;
+    Mock::given(path("/users/current.json"))
+        .respond_with(
+            ResponseTemplate::new(403)
+                .insert_header("Content-Type", "text/html")
+                .set_body_string("<html><body>Access denied</body></html>"),
+        )
+        .mount(&server)
+        .await;
+    assert!(matches!(
+        client(&server).current_user().await,
+        Err(Error::Refused(403))
+    ));
+
+    let server = MockServer::start().await;
+    Mock::given(path("/users/current.json"))
+        .respond_with(ResponseTemplate::new(407))
+        .mount(&server)
+        .await;
+    assert!(matches!(
+        client(&server).current_user().await,
+        Err(Error::Refused(407))
+    ));
+}
+
+#[tokio::test]
+async fn never_follows_a_redirect_to_another_host() {
+    let elsewhere = MockServer::start().await;
+    Mock::given(path("/login"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{}"))
+        .expect(0)
+        .mount(&elsewhere)
+        .await;
+    let server = MockServer::start().await;
+    Mock::given(path("/users/current.json"))
+        .respond_with(
+            ResponseTemplate::new(302)
+                .insert_header("Location", format!("{}/login", elsewhere.uri())),
+        )
+        .mount(&server)
+        .await;
+    // The redirect isn't followed, so nothing reaches the other host.
+    let err = client(&server).current_user().await.unwrap_err();
+    assert!(matches!(err, Error::Refused(302)), "{err:?}");
+}
+
+#[tokio::test]
+async fn follows_a_redirect_on_the_same_server() {
+    let server = MockServer::start().await;
+    Mock::given(path("/users/current.json"))
+        .respond_with(ResponseTemplate::new(301).insert_header(
+            "Location",
+            format!("{}/moved/users/current.json", server.uri()),
+        ))
+        .mount(&server)
+        .await;
+    Mock::given(path("/moved/users/current.json"))
+        .and(header("X-Redmine-Username", "dana"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "user": {"id": 5, "login": "dev", "firstname": "Dana", "lastname": "Developer"}
+        })))
+        .mount(&server)
+        .await;
+    assert_eq!(proxied(&server).current_user().await.unwrap().id, 5);
 }

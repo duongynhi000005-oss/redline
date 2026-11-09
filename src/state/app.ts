@@ -1,3 +1,4 @@
+import type { ConnectionOptions } from "../lib/connection";
 import { create } from "zustand";
 import type { Backend } from "../lib/backend";
 import type {
@@ -190,7 +191,7 @@ export interface AppState {
   timeVersion: number;
 
   start(backend: Backend): Promise<void>;
-  signIn(serverUrl: string, apiKey: string): Promise<void>;
+  signIn(serverUrl: string, apiKey: string, connection?: ConnectionOptions): Promise<void>;
   signOut(): Promise<void>;
   /** Signs out and asks for a new key for the same server, keeping its cache. */
   signInAgain(): Promise<void>;
@@ -447,11 +448,11 @@ export const useApp = create<AppState>()((set, get) => {
       return promise;
     },
 
-    async signIn(serverUrl, apiKey) {
+    async signIn(serverUrl, apiKey, connection) {
       const backend = get().backend;
       if (!backend) return;
       // Errors go to the sign-in form, which shows them.
-      const account = await backend.signIn(serverUrl, apiKey);
+      const account = await backend.signIn(serverUrl, apiKey, connection);
       set({ account, route: { view: "my-issues", tab: "assigned" }, openIssueId: null });
       await load(backend);
     },

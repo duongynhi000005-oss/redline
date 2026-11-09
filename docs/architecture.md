@@ -17,7 +17,8 @@ This page is a map of the code. The reasons behind it are in
 │  Core (crates/redline-core/, Rust)                                  │
 │    Redmine REST client · SQLite cache · sync engine · outbox        │
 └─────────────────────────────────┬───────────────────────────────────┘
-                                  │ HTTPS, X-Redmine-API-Key
+                                  │ HTTPS, X-Redmine-API-Key (+ optional
+                                  │ username and custom headers for a proxy)
                                   ▼
                             Redmine server
 ```

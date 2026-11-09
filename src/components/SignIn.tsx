@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useApp } from "../state/app";
-import { errorMessage } from "../lib/types";
+import { errorMessage, isBackendError } from "../lib/types";
+import type { ConnectionOptions } from "../lib/connection";
+import { NO_CONNECTION, connectionProblem, isEmptyConnection, mightNeedHeaders, normalizeConnection } from "../lib/connection";
+import { ConnectionFields } from "./ConnectionFields";
 
 export function SignIn() {
   const signIn = useApp((s) => s.signIn);
@@ -8,20 +11,32 @@ export function SignIn() {
   const again = useApp((s) => s.signInServer);
   const [server, setServer] = useState(again);
   const [apiKey, setApiKey] = useState("");
+  const [connection, setConnection] = useState<ConnectionOptions>(NO_CONNECTION);
+  const [advanced, setAdvanced] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    const problem = connectionProblem(connection);
+    if (problem) {
+      setError({ message: problem, code: "invalid_header" });
+      setAdvanced(true);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
-      await signIn(server, apiKey);
+      await signIn(server, apiKey, normalizeConnection(connection));
     } catch (err) {
-      setError(errorMessage(err));
+      const code = isBackendError(err) ? err.code : undefined;
+      setError({ message: errorMessage(err), code });
+      if (code === "invalid_header") setAdvanced(true);
       setBusy(false);
     }
   }
+
+  const offerHeaders = !!error && mightNeedHeaders(error.code) && !advanced;
 
   return (
     <main className="signin" data-tauri-drag-region>
@@ -63,15 +78,41 @@ export function SignIn() {
             spellCheck={false}
           />
         </label>
+        <button
+          type="button"
+          className="signin-advanced-toggle"
+          aria-expanded={advanced}
+          aria-controls="signin-advanced"
+          onClick={() => setAdvanced((a) => !a)}
+        >
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden className="disclosure">
+            <path d="M3.5 2l3 3-3 3" stroke="currentColor" strokeWidth="1.3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Advanced
+          {!advanced && !isEmptyConnection(connection) && <span className="muted"> (in use)</span>}
+        </button>
+        {advanced && (
+          <div id="signin-advanced" className="signin-advanced">
+            <p className="fine-print">Only for a server behind a proxy or gateway that needs more than the API key.</p>
+            <ConnectionFields value={connection} onChange={setConnection} disabled={busy} />
+          </div>
+        )}
         {error && (
-          <p className="signin-error" role="alert">
-            {error}
-          </p>
+          <div className="signin-error" role="alert">
+            <p>{error.message}</p>
+            {offerHeaders && (
+              <p>
+                <button type="button" className="link-button" onClick={() => setAdvanced(true)}>
+                  Add a username or headers
+                </button>
+              </p>
+            )}
+          </div>
         )}
         <button type="submit" className="button-primary" disabled={busy}>
           {busy ? "Signing in…" : "Continue"}
         </button>
-        <p className="fine-print">Your key is kept in the system keychain and sent only to this server.</p>
+        <p className="fine-print">Your key and headers are kept in the system keychain and sent only to this server.</p>
       </form>
     </main>
   );
