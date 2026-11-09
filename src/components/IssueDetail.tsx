@@ -6,6 +6,7 @@ import { blockingIssues, mentionsIn, relatedGroups, subIssues } from "../lib/rel
 import type { Attachment, Issue, IssueDetails, Journal, Relation } from "../lib/types";
 import { errorMessage } from "../lib/types";
 import { allowed, timeAccess } from "../lib/permissions";
+import { fieldEnabled, moveTargets } from "../lib/edit";
 import { formatHours } from "../lib/time";
 import { overlayOpen, useApp } from "../state/app";
 import { useDerived } from "../state/derived";
@@ -14,29 +15,7 @@ import { Avatar } from "./Avatar";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
 import { IssueTime } from "./IssueTime";
 import { Markdown } from "./Markdown";
-
-function Property({ label, children, onEdit, shortcut }: { label: string; children: React.ReactNode; onEdit?: () => void; shortcut?: string }) {
-  return (
-    <div className="property">
-      <dt>{label}</dt>
-      <dd>
-        {onEdit ? (
-          <button
-            type="button"
-            className="property-button"
-            onClick={onEdit}
-            aria-label={`${label}: change`}
-            title={shortcut ? `Change ${label.toLowerCase()} (${shortcutLabel(shortcut)})` : undefined}
-          >
-            {children}
-          </button>
-        ) : (
-          children
-        )}
-      </dd>
-    </div>
-  );
-}
+import { DateProperty, HoursProperty, Property } from "./Properties";
 
 /** Who gets Redmine's notifications for the issue, as far as the role may see and change. */
 function Subscribers({ issue }: { issue: Issue }) {
@@ -50,9 +29,7 @@ function Subscribers({ issue }: { issue: Issue }) {
   return (
     <section className="subscribers" aria-label="Subscribers">
       <header className="subscribers-header">
-        <h3>
-          Subscribers{watchers && watchers.length > 0 && <span className="count">{watchers.length}</span>}
-        </h3>
+        <h3>Subscribers{watchers && watchers.length > 0 && <span className="count">{watchers.length}</span>}</h3>
         {canAdd && (
           <button
             type="button"
@@ -153,7 +130,13 @@ function LinkedIssue({ id, issue, onRemove }: { id: number; issue: Issue | undef
         {issue?.assigned_to && <Avatar name={issue.assigned_to.name} size={16} />}
       </button>
       {onRemove ? (
-        <button type="button" className="icon-button linked-issue-remove" onClick={onRemove} aria-label={`Remove relation to #${id}`} title="Remove relation">
+        <button
+          type="button"
+          className="icon-button linked-issue-remove"
+          onClick={onRemove}
+          aria-label={`Remove relation to #${id}`}
+          title="Remove relation"
+        >
           <Icon name="close" size={12} />
         </button>
       ) : (
@@ -202,7 +185,13 @@ function Connections({ issue, journals }: { issue: Issue; journals: Journal[] | 
               {done}/{children.length}
             </span>
           )}
-          <button type="button" className="icon-button" onClick={() => openPicker("relation", issue.id, "sub-issue")} aria-label="Add sub-issue" title="Add sub-issue">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => openPicker("relation", issue.id, "sub-issue")}
+            aria-label="Add sub-issue"
+            title="Add sub-issue"
+          >
             <Icon name="plus" />
           </button>
         </header>
@@ -217,7 +206,13 @@ function Connections({ issue, journals }: { issue: Issue; journals: Journal[] | 
       <section className="connections" aria-label="Related issues">
         <header className="connections-header">
           <h2>Related</h2>
-          <button type="button" className="icon-button" onClick={() => openPicker("relation", issue.id)} aria-label="Add relation" title="Add relation">
+          <button
+            type="button"
+            className="icon-button"
+            onClick={() => openPicker("relation", issue.id)}
+            aria-label="Add relation"
+            title="Add relation"
+          >
             <Icon name="plus" />
           </button>
         </header>
@@ -338,7 +333,13 @@ function CommentBox({
         </ul>
       )}
       <div className="comment-box-actions">
-        <button type="button" className="icon-button" onClick={() => void pick()} aria-label="Attach files to the comment" title="Attach files">
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => void pick()}
+          aria-label="Attach files to the comment"
+          title="Attach files"
+        >
           <Icon name="attachment" />
         </button>
         <span className="muted">Markdown, #123 and @login work. Drop files to attach.</span>
@@ -358,6 +359,7 @@ export function IssueDetail({ id }: { id: number }) {
   const openIssue = useApp((s) => s.openIssue);
   const overlay = useApp(overlayOpen);
   const openPicker = useApp((s) => s.openPicker);
+  const updateIssue = useApp((s) => s.updateIssue);
   const watchingNow = useApp((s) => s.watching.get(id));
   const me = useApp((s) => s.account?.userId);
   const toggleSubscribe = useApp((s) => s.toggleSubscribe);
@@ -452,6 +454,13 @@ export function IssueDetail({ id }: { id: number }) {
   const labels = issueLabels(issue, d.labelFields);
   const time = timeAccess(meta, issue.project.id);
   const spent = issue.total_spent_hours ?? issue.spent_hours;
+  const on = (field: string) => !meta || fieldEnabled(meta, issue.tracker.id, field);
+  const categories = meta?.projects.find((p) => p.id === issue.project.id)?.issue_categories ?? [];
+  const trackerCount = meta?.projects.find((p) => p.id === issue.project.id)?.trackers.length ?? 0;
+  const canMove = !!meta && moveTargets(meta).some((p) => p.id !== issue.project.id);
+  const canSetPrivate =
+    allowed(meta, issue.project.id, "set_issues_private") === true ||
+    (issue.author?.id === me && allowed(meta, issue.project.id, "set_own_issues_private") === true);
   // Fields not shown as labels get a row of their own.
   const otherFields = issue.custom_fields.filter(
     (f) => f.value && f.value.length !== 0 && (d.labelFields ? !d.labelFields.has(f.id) : !f.multiple),
@@ -473,7 +482,13 @@ export function IssueDetail({ id }: { id: number }) {
           {issue.project.name} <Icon name="chevron-right" size={12} /> #{issue.id}
         </span>
         <span className="header-spacer" data-tauri-drag-region />
-        <button type="button" className="icon-button" onClick={() => void pickAndAttach()} aria-label="Attach files" title="Attach files">
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => void pickAndAttach()}
+          aria-label="Attach files"
+          title="Attach files"
+        >
           <Icon name="attachment" />
         </button>
         <button
@@ -569,26 +584,85 @@ export function IssueDetail({ id }: { id: number }) {
                 <span className="muted">None</span>
               )}
             </Property>
-            <Property label="Cycle" shortcut="shift+c" onEdit={() => openPicker("cycle", issue.id)}>
-              <Icon name="cycle" />
-              <span>{issue.fixed_version?.name ?? "None"}</span>
-            </Property>
-            <Property label="Project">
+            {on("fixed_version_id") && (
+              <Property label="Cycle" shortcut="shift+c" onEdit={() => openPicker("cycle", issue.id)}>
+                <Icon name="cycle" />
+                <span>{issue.fixed_version?.name ?? "None"}</span>
+              </Property>
+            )}
+            {on("category_id") && (categories.length > 0 || issue.category) && (
+              <Property label="Category" onEdit={categories.length ? () => openPicker("category", issue.id) : undefined}>
+                <Icon name="category" />
+                <span className={issue.category ? undefined : "muted"}>{issue.category?.name ?? "None"}</span>
+              </Property>
+            )}
+            <Property label="Project" onEdit={canMove ? () => openPicker("project", issue.id) : undefined}>
               <Icon name="project" />
               <span>{issue.project.name}</span>
             </Property>
-            <Property label="Tracker">
+            <Property label="Tracker" onEdit={trackerCount > 1 ? () => openPicker("tracker", issue.id) : undefined}>
+              <Icon name="tracker" />
               <span>{issue.tracker.name}</span>
             </Property>
-            {issue.due_date && <Property label="Due">{issue.due_date}</Property>}
-            {issue.estimated_hours != null && <Property label="Estimate">{formatHours(issue.estimated_hours)}</Property>}
+            {on("parent_issue_id") && (
+              <Property label="Parent" onEdit={() => openPicker("relation", issue.id, "parent")}>
+                <Icon name="sub-issue" />
+                {issue.parent ? (
+                  <span className="property-parent">
+                    #{issue.parent.id}
+                    {parentIssue ? ` ${parentIssue.subject}` : ""}
+                  </span>
+                ) : (
+                  <span className="muted">None</span>
+                )}
+              </Property>
+            )}
+            {on("start_date") && (
+              <DateProperty
+                label="Start"
+                value={issue.start_date}
+                max={issue.due_date}
+                onChange={(start_date) => void updateIssue(issue.id, { start_date })}
+              />
+            )}
+            {on("due_date") && (
+              <DateProperty
+                label="Due"
+                value={issue.due_date}
+                min={issue.start_date}
+                onChange={(due_date) => void updateIssue(issue.id, { due_date })}
+              />
+            )}
+            {on("estimated_hours") && (
+              <HoursProperty
+                label="Estimate"
+                value={issue.estimated_hours}
+                onChange={(estimated_hours) => void updateIssue(issue.id, { estimated_hours })}
+              />
+            )}
             {time.view && (
               <Property label="Spent" shortcut="mod+shift+t" onEdit={time.log ? () => openTimeDialog(issue.id) : undefined}>
                 <Icon name="time" />
                 <span>{spent ? formatHours(spent) : "None"}</span>
               </Property>
             )}
-            {issue.done_ratio ? <Property label="Done">{issue.done_ratio}%</Property> : null}
+            {on("done_ratio") && (
+              <Property label="Done" onEdit={() => openPicker("done", issue.id)}>
+                <span className="done-meter" aria-hidden="true">
+                  <span style={{ width: `${issue.done_ratio ?? 0}%` }} />
+                </span>
+                <span>{issue.done_ratio ?? 0}%</span>
+              </Property>
+            )}
+            {(canSetPrivate || issue.is_private) && (
+              <Property
+                label="Private"
+                onEdit={canSetPrivate ? () => void updateIssue(issue.id, { is_private: !issue.is_private }) : undefined}
+              >
+                <Icon name="lock" />
+                <span className={issue.is_private ? undefined : "muted"}>{issue.is_private ? "Private" : "No"}</span>
+              </Property>
+            )}
             {otherFields.map((f) => (
               <Property key={f.id} label={f.name}>
                 {Array.isArray(f.value) ? f.value.join(", ") : f.value}

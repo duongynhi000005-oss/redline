@@ -1,6 +1,6 @@
 import { Command } from "cmdk";
 import { useEffect, useMemo, useState } from "react";
-import { knownLabelValues, people } from "../lib/edit";
+import { knownLabelValues, moveTargets, people } from "../lib/edit";
 import type { PriorityLevel, StatusCategory } from "../lib/model";
 import { activeCycle, defaultCategory, hueFor, teamOf } from "../lib/model";
 import type { Issue, IssueChanges, IssueStatusRef, Metadata } from "../lib/types";
@@ -33,6 +33,10 @@ const PLACEHOLDER: Record<PickerKind, string> = {
   labels: "Change labels…",
   relation: "Connect an issue…",
   subscribers: "Change subscribers…",
+  tracker: "Change tracker…",
+  category: "Change category…",
+  project: "Move to project…",
+  done: "Change % done…",
 };
 
 /** The choices for one property of an issue. */
@@ -163,6 +167,62 @@ export function pickerOptions(
         watcher: p.id,
       }));
     }
+    case "tracker": {
+      const ids = new Set(meta.projects.find((p) => p.id === issue.project.id)?.trackers.map((t) => t.id) ?? []);
+      return meta.trackers
+        .filter((t) => ids.has(t.id) || t.id === issue.tracker.id)
+        .map((t) => ({
+          key: `tracker-${t.id}`,
+          label: t.name,
+          icon: <Icon name="tracker" />,
+          selected: issue.tracker.id === t.id,
+          changes: { tracker_id: t.id },
+        }));
+    }
+    case "category": {
+      const categories = meta.projects.find((p) => p.id === issue.project.id)?.issue_categories ?? [];
+      return [
+        {
+          key: "category-none",
+          label: "No category",
+          icon: <Icon name="category" />,
+          selected: !issue.category,
+          changes: { category_id: null },
+        },
+        ...[...categories]
+          .sort((a, b) => a.name.localeCompare(b.name))
+          .map((c) => ({
+            key: `category-${c.id}`,
+            label: c.name,
+            icon: <Icon name="category" />,
+            selected: issue.category?.id === c.id,
+            changes: { category_id: c.id },
+          })),
+      ];
+    }
+    case "project": {
+      const targets = moveTargets(meta);
+      if (!targets.some((p) => p.id === issue.project.id)) {
+        const own = meta.projects.find((p) => p.id === issue.project.id);
+        if (own) targets.unshift(own);
+      }
+      return targets.map((p) => ({
+        key: `project-${p.id}`,
+        label: p.name,
+        group: p.parent ? p.parent.name : undefined,
+        icon: <Icon name="project" />,
+        selected: issue.project.id === p.id,
+        changes: { project_id: p.id },
+      }));
+    }
+    case "done":
+      return Array.from({ length: 11 }, (_, i) => i * 10).map((n) => ({
+        key: `done-${n}`,
+        label: `${n}%`,
+        icon: <Icon name="done" />,
+        selected: (issue.done_ratio ?? 0) === n,
+        changes: { done_ratio: n },
+      }));
     case "relation":
       // Issues, not values: see RelationPickerContent.
       return [];
@@ -248,7 +308,11 @@ function PickerContent({ kind, issueId }: { kind: PickerKind; issueId: number })
                 <Command.Item key={o.key} value={o.key} onSelect={() => choose(o)}>
                   {o.icon}
                   <span className="palette-label">{o.label}</span>
-                  {o.selected && <span className="picker-check" aria-label="Selected">✓</span>}
+                  {o.selected && (
+                    <span className="picker-check" aria-label="Selected">
+                      ✓
+                    </span>
+                  )}
                 </Command.Item>
               ))}
           </Command.Group>
@@ -359,7 +423,12 @@ function RelationPickerContent({ issueId, choice }: { issueId: number; choice: R
         {candidates.map(({ id, issue: other }) => (
           <Command.Item key={id} value={`issue-${id}`} onSelect={() => choose(id)}>
             {other && meta ? (
-              <StatusIcon category={d.categories.get(other.status.id) ?? defaultCategory({ ...other.status, is_closed: !!other.status.is_closed }, meta.trackers)} />
+              <StatusIcon
+                category={
+                  d.categories.get(other.status.id) ??
+                  defaultCategory({ ...other.status, is_closed: !!other.status.is_closed }, meta.trackers)
+                }
+              />
             ) : (
               <Icon name="issues" />
             )}

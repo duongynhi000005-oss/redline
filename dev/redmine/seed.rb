@@ -95,6 +95,9 @@ def version_for(project, name, due, status = "open")
     project.versions.create!(name: name, effective_date: due, status: status, sharing: "none")
 end
 
+# Categories, which Redline shows as a property, a filter and a grouping.
+["Frontend", "Sync engine", "Docs"].each { |name| web.issue_categories.find_or_create_by!(name: name) }
+
 today = Date.today
 past = version_for(web, "Sprint 1", today - 14)
 current = version_for(web, "Sprint 2", today + 7)
@@ -203,6 +206,17 @@ if TimeEntry.where(comments: "Palette shortcuts").none?
     end
     say "logged time"
   end
+end
+
+# Put most Web issues in a category, once.
+web = Project.find_by(identifier: "web")
+if web && web.issues.where.not(category_id: nil).none?
+  categories = web.issue_categories.order(:id).to_a
+  web.issues.order(:id).each_with_index do |issue, i|
+    next if categories.empty? || i % 4 == 1
+    issue.update_columns(category_id: categories[i % categories.size].id)
+  end
+  say "filed issues in categories"
 end
 
 token = Token.find_by(user: user, action: "api") || Token.create!(user: user, action: "api")

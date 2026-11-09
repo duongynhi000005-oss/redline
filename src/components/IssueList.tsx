@@ -33,6 +33,8 @@ export function GroupIcon({ icon }: { icon: Group["icon"] }) {
       return <Avatar name={icon.name} size={16} />;
     case "cycle":
       return <Icon name="cycle" />;
+    case "category":
+      return <Icon name="category" />;
     case "none":
       return null;
   }

@@ -40,6 +40,8 @@ export interface Tracker {
   id: number;
   name: string;
   default_status?: Named | null;
+  /** The standard fields the tracker uses, like "category_id"; missing means all. */
+  enabled_standard_fields?: string[] | null;
 }
 
 export interface IssuePriority {
@@ -263,6 +265,10 @@ export interface IssueChanges {
   parent_issue_id?: number | null;
   due_date?: string | null;
   start_date?: string | null;
+  category_id?: number | null;
+  estimated_hours?: number | null;
+  done_ratio?: number;
+  is_private?: boolean;
   custom_fields?: { id: number; value: string | string[] }[];
   notes?: string;
   private_notes?: boolean;

@@ -90,6 +90,10 @@ pub struct Tracker {
     pub name: String,
     #[serde(default)]
     pub default_status: Option<Named>,
+    /// The standard fields the tracker uses, like `category_id` or
+    /// `estimated_hours`. Missing from older servers, where every field is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enabled_standard_fields: Option<Vec<String>>,
 }
 
 /// An issue priority, from `/enumerations/issue_priorities.json`, in the
@@ -516,6 +520,26 @@ pub struct IssueChanges {
         deserialize_with = "deserialize_clearable"
     )]
     pub start_date: Option<Option<String>>,
+    /// `Some(None)` clears the category.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_clearable",
+        deserialize_with = "deserialize_clearable"
+    )]
+    pub category_id: Option<Option<u64>>,
+    /// `Some(None)` clears the estimate.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_clearable",
+        deserialize_with = "deserialize_clearable"
+    )]
+    pub estimated_hours: Option<Option<f64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub done_ratio: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_private: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_fields: Option<Vec<CustomFieldChange>>,
     /// A comment to add with the change.

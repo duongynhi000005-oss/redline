@@ -1,3 +1,4 @@
+import { allowed } from "./permissions";
 import type { Issue, IssueChanges, Metadata, Named } from "./types";
 
 // Applying an edit to a local copy of an issue, so the UI can show it at once
@@ -12,6 +13,20 @@ export function people(meta: Metadata, projectId?: number): Named[] {
     if (who && !seen.has(who.id)) seen.set(who.id, who);
   }
   return [...seen.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Whether an issue's tracker uses a standard field, like "category_id" or
+ * "estimated_hours". Servers that don't say use them all.
+ */
+export function fieldEnabled(meta: Metadata, trackerId: number, field: string): boolean {
+  const fields = meta.trackers.find((t) => t.id === trackerId)?.enabled_standard_fields;
+  return !fields || fields.includes(field);
+}
+
+/** Projects an issue could move to: ones with trackers, where the role may add issues, as far as Redline knows. */
+export function moveTargets(meta: Metadata): Metadata["projects"] {
+  return meta.projects.filter((p) => p.trackers.length > 0 && allowed(meta, p.id, "add_issues") !== false);
 }
 
 function stamp(): string {
@@ -48,6 +63,16 @@ export function applyChanges(issue: Issue, c: IssueChanges, meta: Metadata): Iss
   if (c.parent_issue_id !== undefined) next.parent = c.parent_issue_id === null ? null : { id: c.parent_issue_id };
   if (c.due_date !== undefined) next.due_date = c.due_date;
   if (c.start_date !== undefined) next.start_date = c.start_date;
+  if (c.category_id !== undefined) {
+    const categories = meta.projects.find((p) => p.id === next.project.id)?.issue_categories ?? [];
+    next.category = c.category_id === null ? null : (categories.find((x) => x.id === c.category_id) ?? null);
+  } else if (c.project_id !== undefined && c.project_id !== issue.project.id) {
+    // Categories belong to a project, so a move drops it, as Redmine does.
+    next.category = null;
+  }
+  if (c.estimated_hours !== undefined) next.estimated_hours = c.estimated_hours;
+  if (c.done_ratio !== undefined) next.done_ratio = c.done_ratio;
+  if (c.is_private !== undefined) next.is_private = c.is_private;
   if (c.custom_fields) {
     next.custom_fields = next.custom_fields.map((f) => {
       const change = c.custom_fields!.find((x) => x.id === f.id);

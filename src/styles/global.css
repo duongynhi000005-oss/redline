@@ -570,6 +570,81 @@ h2 {
   background: var(--bg-hover);
 }
 
+.property-parent {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.property-date input,
+.property-input {
+  height: 26px;
+  margin-left: -6px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  min-width: 0;
+}
+
+.property-date input:hover {
+  background: var(--bg-hover);
+}
+
+.property-date input:focus,
+.property-input {
+  border-color: var(--border-strong);
+  background: var(--bg-input);
+  outline: none;
+}
+
+.property-date input.empty {
+  color: var(--text-tertiary);
+}
+
+.property-input {
+  width: 110px;
+}
+
+.property-input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.property-clear {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0;
+}
+
+.property:hover .property-clear,
+.property-clear:focus-visible {
+  opacity: 1;
+}
+
+.property-clear:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.done-meter {
+  display: inline-flex;
+  width: 40px;
+  height: 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--bg-active);
+}
+
+.done-meter span {
+  background: var(--status-completed);
+}
+
 /* Attachments */
 .attachments {
   margin-top: 24px;
