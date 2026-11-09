@@ -23,6 +23,8 @@ struct Run {
     done: Duration,
     /// Passes that failed because the server stayed busy.
     busy_passes: u32,
+    /// Times the first sync's "X of Y" count went down.
+    count_went_down: u32,
 }
 
 /// Runs the app's sync loop until everything is cached: core metadata, then
@@ -42,6 +44,10 @@ async fn sync_like_the_app(syncer: &Syncer, newest: u64, retry_wait: Duration) -
         }
     });
     let mut busy_passes = 0;
+    let mut last_count = 0;
+    let mut count_went_down = 0;
+    // Whether the last pass left older issues to read.
+    let mut backfilling = false;
     let mut pending: Option<Vec<u64>> = None;
     loop {
         let pass = async {
@@ -49,7 +55,19 @@ async fn sync_like_the_app(syncer: &Syncer, newest: u64, retry_wait: Duration) -
                 let meta = syncer.sync_core_metadata().await?;
                 pending = Some(projects_needing_details(&meta));
             }
-            let report = syncer.sync_issues_paced(PAGES_PER_PASS, |_| {}).await?;
+            let report = syncer
+                .sync_issues_paced(PAGES_PER_PASS, |p| {
+                    // Every count while the first sync runs, the changes
+                    // read alongside it included.
+                    if backfilling || p.initial {
+                        if p.fetched < last_count {
+                            count_went_down += 1;
+                        }
+                        last_count = p.fetched;
+                    }
+                })
+                .await?;
+            backfilling = report.remaining;
             let projects = pending.as_mut().expect("read above");
             let batch: Vec<u64> = projects
                 .drain(..projects.len().min(PROJECTS_PER_PASS))
@@ -77,6 +95,7 @@ async fn sync_like_the_app(syncer: &Syncer, newest: u64, retry_wait: Duration) -
             .unwrap(),
         done,
         busy_passes,
+        count_went_down,
     }
 }
 
@@ -122,6 +141,8 @@ async fn syncs_a_large_server_that_rate_limits_without_failing() {
     let issue_requests = tally.by_kind["issues"] - tally.limited.min(tally.by_kind["issues"]);
     assert!(issue_requests <= 35, "{tally:?}");
     assert_eq!(result.busy_passes, 0, "{result:?}");
+    // The sidebar's "X of Y" only goes up while the first sync runs.
+    assert_eq!(result.count_went_down, 0, "{result:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -139,7 +160,10 @@ async fn honours_retry_after_for_every_request() {
         .with_limits(RequestLimits {
             at_once: 4,
             per_minute: 1200,
-        });
+        })
+        // Retry-After sets the waits; this only shortens how long the
+        // pacer keeps saying it is slowed after the last refusal (1s).
+        .with_retry_unit(Duration::from_millis(50));
     let syncer = Syncer::new(client.clone(), Store::in_memory().unwrap());
     let slowed = client.pacer().slowed();
     let result = sync_like_the_app(&syncer, run.standin.newest(), Duration::from_secs(1)).await;
@@ -149,6 +173,8 @@ async fn honours_retry_after_for_every_request() {
     // It was told to slow down, said so, and recovered.
     assert!(tally.limited > 0);
     assert!(slowed.has_changed().unwrap());
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    client.check_key().await.unwrap();
     assert!(!client.pacer().is_slowed());
     // After a refusal everyone waits for Retry-After, so refusals don't
     // pile up: far fewer than one per request.

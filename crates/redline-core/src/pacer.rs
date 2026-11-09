@@ -41,6 +41,10 @@ const MAX_BACKOFF: Duration = Duration::from_secs(60);
 /// The longest Redline honours a `Retry-After` for. Past this a request fails
 /// with [`crate::Error::Busy`] and the next sync tries again.
 pub const MAX_RETRY_AFTER: Duration = Duration::from_secs(120);
+/// After a slow-down, how many backoff units the pacer keeps reporting
+/// "slowed" (10 seconds with the app's 500 ms unit), so a server that
+/// refuses now and then shows one steady notice.
+const SLOWED_HOLD: u32 = 20;
 
 /// How hard Redline may use one server. Saved per server, under Advanced.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,6 +116,9 @@ struct State {
     interval: Duration,
     /// Slow-down answers in a row, for the backoff.
     strikes: u32,
+    /// The pacer stays "slowed" until this, so the app's notice doesn't
+    /// flicker on and off between refusals.
+    slowed_until: Instant,
 }
 
 /// The gate every request to one server passes through. Cheap to clone;
@@ -194,6 +201,7 @@ impl Pacer {
                     paused_until: now,
                     interval: limits.interval(),
                     strikes: 0,
+                    slowed_until: now,
                 }),
                 turn: Notify::new(),
                 slowed,
@@ -279,7 +287,7 @@ impl Pacer {
         if state.interval > base {
             state.interval = (state.interval * 9 / 10).max(base);
         }
-        let caught_up = Instant::now() >= state.paused_until;
+        let caught_up = Instant::now() >= state.paused_until.max(state.slowed_until);
         drop(state);
         if caught_up {
             inner
@@ -307,8 +315,11 @@ impl Pacer {
                 backoff + jitter(backoff / 4)
             }
         };
-        let until = Instant::now() + wait;
-        state.paused_until = state.paused_until.max(until);
+        let now = Instant::now();
+        state.paused_until = state.paused_until.max(now + wait);
+        state.slowed_until = state
+            .slowed_until
+            .max(now + inner.backoff_unit * SLOWED_HOLD);
         let floor = inner.backoff_unit.max(Duration::from_millis(1));
         state.interval = (state.interval * 2).max(floor).min(MAX_INTERVAL);
         drop(state);
@@ -396,6 +407,10 @@ mod tests {
         let start = Instant::now();
         drop(pacer.turn(Priority::Foreground).await);
         assert!(start.elapsed() >= Duration::from_secs(3));
+        // Still reported as slowed for a while, so the notice doesn't flicker.
+        pacer.succeeded();
+        assert!(*slowed.borrow());
+        tokio::time::sleep(Duration::from_secs(10)).await;
         pacer.succeeded();
         assert!(!*slowed.borrow_and_update());
     }

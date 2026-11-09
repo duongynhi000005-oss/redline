@@ -189,9 +189,11 @@ async fn lists_issues_newest_first_and_by_open_or_closed() {
     let mut sorted = times.clone();
     sorted.sort_unstable_by(|a, b| b.cmp(a));
     assert_eq!(times, sorted, "newest first");
-    assert_eq!(
-        times[0],
-        all.items.iter().map(|i| i.updated_on.as_str()).max().unwrap()
+    // Nothing in the default order is newer than the newest-first page's
+    // first issue (the default page may not reach the newest on a big server).
+    assert!(
+        all.items.iter().all(|i| i.updated_on.as_str() <= times[0]),
+        "newest first starts with the newest"
     );
 
     let open = client
@@ -213,7 +215,12 @@ async fn lists_issues_newest_first_and_by_open_or_closed() {
         .await
         .unwrap();
     assert!(open.items.iter().all(|i| i.status.is_closed == Some(false)));
-    assert!(closed.items.iter().all(|i| i.status.is_closed == Some(true)));
+    assert!(
+        closed
+            .items
+            .iter()
+            .all(|i| i.status.is_closed == Some(true))
+    );
     assert!(!closed.items.is_empty(), "the seed closes some issues");
     assert_eq!(open.total_count + closed.total_count, all.total_count);
 }

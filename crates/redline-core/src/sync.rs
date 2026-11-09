@@ -281,6 +281,22 @@ impl Syncer {
         let mut report = SyncReport::default();
 
         match cursor {
+            // While the first sync is still reading older issues, report
+            // how far it has got overall, so the count only goes up.
+            Some(cursor) if backfill.is_some() => {
+                let total = backfill.map_or(0, |b| b.total);
+                let store = &self.store;
+                let mut overall = |p: &SyncProgress| {
+                    let cached = store.count_issues().unwrap_or(p.fetched);
+                    on_page(&SyncProgress {
+                        changed: p.changed.clone(),
+                        fetched: cached.min(total),
+                        total,
+                        initial: true,
+                    });
+                };
+                self.sync_delta(cursor, &mut report, &mut overall).await?;
+            }
             Some(cursor) => self.sync_delta(cursor, &mut report, &mut on_page).await?,
             None => {
                 // The most recently changed issues, whatever their status:
