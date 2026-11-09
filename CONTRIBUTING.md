@@ -13,6 +13,7 @@ By taking part you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 ## Contents
 
 - [Ways to contribute](#ways-to-contribute)
+- [Project board](#project-board)
 - [How Redline is built](#how-redline-is-built)
 - [Set up your machine](#set-up-your-machine)
 - [Run Redline](#run-redline)
@@ -39,6 +40,32 @@ By taking part you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 For anything bigger than a small fix (a new view, a change to sync, a new
 dependency), open an issue or discussion first so we can agree on the approach
 before you write the code.
+
+## Project board
+
+Work on Redline is tracked on the **Redline** project board, which you can
+open from the repository's **Projects** tab. Every issue and pull request
+sits in one column, and cards move left to right:
+
+| Column | What it means |
+| --- | --- |
+| **Ideas** | Suggestions and rough thoughts that nobody has agreed to build yet. |
+| **Backlog** | Agreed work that isn't planned for a milestone yet. New issues and PRs land here. |
+| **Ready** | Planned for a milestone and clear enough to start. Pick from here. |
+| **In progress** | Someone is working on it. Assign yourself before you move a card here. |
+| **In review** | A pull request is open and waiting for review or CI. |
+| **Done** | Merged or closed. |
+
+- **Priority** (P0 to P2) and **Size** (XS to XL) help us choose what to pick
+  up next. Leave them empty if you're not sure; a maintainer will set them.
+- Cards that belong to a release carry its milestone, such as `v0.2`, and the
+  roadmap view groups them by milestone.
+- The board updates itself in a few places: new issues and PRs are added to
+  **Backlog**, opening a PR moves it to **In review**, and closing or merging
+  moves it to **Done**. Moving a card to **Ready** or **In progress** is done
+  by hand.
+- When you open a PR for an issue, link it with `Closes #123` so the issue
+  moves to **Done** when the PR merges.
 
 ## How Redline is built
 
