@@ -27,7 +27,12 @@ export function useIssueShortcuts() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const state = useApp.getState();
-      if (state.paletteOpen || state.picker || isTyping(e.target) || e.repeat) return;
+      if (state.paletteOpen || state.picker || state.composerOpen || isTyping(e.target) || e.repeat) return;
+      if (matchesShortcut(e, "c")) {
+        e.preventDefault();
+        state.setComposerOpen(true);
+        return;
+      }
       const id = targetIssueId(state);
       if (id === null) return;
       const hit = ISSUE_SHORTCUTS.find((s) => matchesShortcut(e, s.shortcut));

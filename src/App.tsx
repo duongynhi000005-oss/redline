@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { CommandPalette } from "./components/CommandPalette";
 import { IssueDetail } from "./components/IssueDetail";
 import { IssueList } from "./components/IssueList";
+import { NewIssue } from "./components/NewIssue";
 import { Picker } from "./components/Picker";
 import { useIssueShortcuts } from "./components/useIssueShortcuts";
 import { Sidebar } from "./components/Sidebar";
@@ -48,6 +49,7 @@ export function App({ backend }: { backend?: Backend }) {
       {openIssueId !== null ? <IssueDetail id={openIssueId} /> : <IssueList />}
       <CommandPalette />
       <Picker />
+      <NewIssue />
       <Toast />
     </div>
   );

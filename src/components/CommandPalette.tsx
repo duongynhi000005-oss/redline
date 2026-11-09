@@ -66,6 +66,7 @@ function PaletteContent() {
   const openIssue = useApp((s) => s.openIssue);
   const syncNow = useApp((s) => s.syncNow);
   const signOut = useApp((s) => s.signOut);
+  const setComposerOpen = useApp((s) => s.setComposerOpen);
   const issues = useApp((s) => s.issues);
   const target = useApp((s) => targetIssueId(s));
   const d = useDerived();
@@ -73,7 +74,9 @@ function PaletteContent() {
 
   const actions = useMemo<Action[]>(() => {
     const go = (route: Route) => () => navigate(route);
-    const list: Action[] = [];
+    const list: Action[] = [
+      { id: "new-issue", label: "Create new issue", group: "Issues", shortcut: "c", run: () => setComposerOpen(true) },
+    ];
     if (target !== null) {
       for (const s of ISSUE_SHORTCUTS) {
         list.push({
@@ -113,7 +116,7 @@ function PaletteContent() {
       { id: "sign-out", label: "Sign out", group: "Redline", run: () => void signOut() },
     );
     return list;
-  }, [d, navigate, syncNow, signOut, target]);
+  }, [d, navigate, syncNow, signOut, target, setComposerOpen]);
 
   const q = query.trim();
   const visibleActions = q ? actions.filter((a) => matchesQuery(`${a.label} ${a.keywords ?? ""}`, q)) : actions;

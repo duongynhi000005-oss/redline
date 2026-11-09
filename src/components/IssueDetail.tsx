@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { describeDetail } from "../lib/journal";
 import { CATEGORY_LABEL, PRIORITY_LABEL, issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
-import { isTyping, shortcutLabel } from "../lib/platform";
+import { isTyping, matchesShortcut, shortcutLabel } from "../lib/platform";
 import type { IssueDetails, Journal } from "../lib/types";
 import { errorMessage } from "../lib/types";
 import { useApp } from "../state/app";
@@ -73,6 +73,52 @@ function Activity({ journals }: { journals: Journal[] }) {
         );
       })}
     </ol>
+  );
+}
+
+function CommentBox({ issueId }: { issueId: number }) {
+  const updateIssue = useApp((s) => s.updateIssue);
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    const done = await updateIssue(issueId, { notes: text });
+    setBusy(false);
+    // On failure the toast explains, and the text stays to try again.
+    if (done) setText("");
+  }
+
+  return (
+    <form
+      className="comment-box"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit();
+      }}
+    >
+      <textarea
+        aria-label="Comment"
+        placeholder="Leave a comment…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (matchesShortcut(e, "mod+enter")) {
+            e.preventDefault();
+            void submit();
+          } else if (e.key === "Escape") {
+            e.currentTarget.blur();
+          }
+        }}
+      />
+      <div className="comment-box-actions">
+        <span className="muted">Markdown, #123 and @login work.</span>
+        <button type="submit" className="button-secondary" disabled={!text.trim() || busy}>
+          {busy ? "Sending…" : "Comment"} <kbd>{shortcutLabel("mod+enter")}</kbd>
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -156,6 +202,7 @@ export function IssueDetail({ id }: { id: number }) {
           ) : (
             <p className="muted">{error ? `Couldn't load the activity: ${error}` : "Loading activity…"}</p>
           )}
+          <CommentBox key={issue.id} issueId={issue.id} />
         </div>
         <aside className="detail-properties" aria-label="Properties">
           <dl>

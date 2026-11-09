@@ -37,6 +37,8 @@ export interface AppState {
   paletteOpen: boolean;
   /** The property picker open for an issue, like Linear's S, P and A menus. */
   picker: PickerState | null;
+  /** The new-issue form. */
+  composerOpen: boolean;
   /** A short message shown at the bottom of the window, like a failed edit. */
   toast: string | null;
 
@@ -52,6 +54,8 @@ export interface AppState {
   syncNow(): Promise<void>;
   updateIssue(id: number, changes: IssueChanges): Promise<IssueDetails | null>;
   showToast(message: string | null): void;
+  setComposerOpen(open: boolean): void;
+  createIssue(fields: IssueChanges): Promise<Issue | null>;
 }
 
 const IDLE: SyncState = { state: "idle", lastSyncedAt: null, message: null };
@@ -74,7 +78,8 @@ function initial() {
     focusedIssueId: null as number | null,
     paletteOpen: false,
     picker: null as PickerState | null,
-    toast: null,
+    composerOpen: false,
+    toast: null as string | null,
   };
 }
 
@@ -205,6 +210,21 @@ export const useApp = create<AppState>()((set, get) => {
 
     showToast(toast) {
       set({ toast });
+    },
+
+    setComposerOpen(open) {
+      set({ composerOpen: open, paletteOpen: false });
+    },
+
+    async createIssue(fields) {
+      const backend = get().backend;
+      if (!backend) return null;
+      // Errors go to the form, which shows them.
+      const issue = await backend.createIssue(fields);
+      const issues = new Map(get().issues);
+      issues.set(issue.id, issue);
+      set({ issues, focusedIssueId: issue.id, toast: `Created #${issue.id} ${issue.subject}` });
+      return issue;
     },
   };
 });

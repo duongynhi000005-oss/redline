@@ -915,3 +915,153 @@ h2 {
   box-shadow: var(--shadow);
   z-index: 20;
 }
+
+/* Comment box */
+
+.comment-box {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+}
+
+.comment-box:focus-within {
+  border-color: var(--border-strong);
+}
+
+.comment-box textarea {
+  display: block;
+  width: 100%;
+  min-height: 64px;
+  padding: 12px 14px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+  outline: none;
+}
+
+.comment-box-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 8px 14px;
+  font-size: 12px;
+}
+
+.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  font-weight: 500;
+}
+
+.button-secondary:disabled {
+  opacity: 0.55;
+}
+
+.button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+}
+
+.kbd-on-accent {
+  color: inherit;
+  border-color: color-mix(in srgb, var(--accent-text) 35%, transparent);
+  opacity: 0.85;
+}
+
+.form-error {
+  margin: 0;
+  color: var(--danger);
+}
+
+/* New issue */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  justify-items: center;
+  align-items: start;
+  padding-top: 12vh;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.modal {
+  width: min(720px, calc(100vw - 48px));
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+}
+
+.new-issue {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+}
+
+.new-issue-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.new-issue-header select {
+  height: 24px;
+  max-width: 220px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.new-issue-title {
+  margin-left: 4px;
+  color: var(--text-tertiary);
+}
+
+.new-issue-subject {
+  margin-top: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 600;
+  outline: none;
+}
+
+.new-issue-description {
+  min-height: 110px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+  outline: none;
+}
+
+.new-issue-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
