@@ -43,4 +43,17 @@ describe("filtering a list", () => {
     await user.keyboard("{Enter}");
     expect(await screen.findByRole("dialog", { name: "Filter" })).toBeInTheDocument();
   });
+
+  it("works from the keyboard alone, with Backspace back to the fields", async () => {
+    const user = userEvent.setup();
+    render(<App backend={createDemoBackend({ signedIn: true })} />);
+    await screen.findByRole("heading", { name: "My issues" });
+    await user.keyboard("f");
+    await user.keyboard("status{Enter}");
+    expect(await screen.findByPlaceholderText("Status is…")).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(within(screen.getByLabelText("Filters")).getByRole("button", { name: /^Status is/, hidden: true })).toBeInTheDocument();
+    await user.keyboard("{Backspace}");
+    expect(await screen.findByPlaceholderText("Filter by…")).toHaveFocus();
+  });
 });

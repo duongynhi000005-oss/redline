@@ -111,7 +111,13 @@ function FilterMenuContent({ field }: { field: FilterField | null }) {
     const visible = q ? fields.filter((f) => matchesQuery(f.label, q)) : fields;
     return (
       <>
-        <Command.Input value={query} onValueChange={setQuery} placeholder="Filter by…" onKeyDown={onKeyDown} />
+        <Command.Input
+          autoFocus
+          value={query}
+          onValueChange={setQuery}
+          placeholder="Filter by…"
+          onKeyDown={onKeyDown}
+        />
         <Command.List>
           <Command.Empty>No matches.</Command.Empty>
           {visible.map((f) => (
@@ -141,7 +147,14 @@ function FilterMenuContent({ field }: { field: FilterField | null }) {
   return (
     <>
       <div className="picker-context">Filter: {label}</div>
-      <Command.Input value={query} onValueChange={setQuery} placeholder={`${label} is…`} onKeyDown={onKeyDown} />
+      {/* Moving from fields to values swaps the input, so it takes focus itself. */}
+      <Command.Input
+        autoFocus
+        value={query}
+        onValueChange={setQuery}
+        placeholder={`${label} is…`}
+        onKeyDown={onKeyDown}
+      />
       <Command.List>
         <Command.Empty>{options.length ? "No matches." : "No values in this view."}</Command.Empty>
         {visible.map((o) => (
