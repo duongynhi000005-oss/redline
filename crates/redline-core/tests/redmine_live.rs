@@ -12,12 +12,16 @@
 //! work with.
 
 use redline_core::models::{IssueChanges, SearchKind, SearchScope};
-use redline_core::{Client, Error, IssueQuery};
+use redline_core::{Client, Error, IssueQuery, RequestLimits};
 
 fn live_client() -> Option<Client> {
     let url = std::env::var("REDLINE_TEST_REDMINE_URL").ok()?;
     let key = std::env::var("REDLINE_TEST_API_KEY").ok()?;
-    Some(Client::new(&url, &key).expect("valid test server URL"))
+    Some(
+        Client::new(&url, &key)
+            .expect("valid test server URL")
+            .with_limits(RequestLimits::unlimited()),
+    )
 }
 
 macro_rules! live {
@@ -160,6 +164,84 @@ async fn edits_an_issue_and_reports_workflow_errors() {
         matches!(err, Error::Rejected(ref m) if !m.is_empty()),
         "{err:?}"
     );
+}
+
+#[tokio::test]
+async fn lists_issues_newest_first_and_by_open_or_closed() {
+    let client = live!();
+    let all = client
+        .issues(&IssueQuery {
+            limit: Some(100),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let newest = client
+        .issues(&IssueQuery {
+            newest_first: true,
+            limit: Some(5),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(newest.total_count, all.total_count);
+    let times: Vec<&str> = newest.items.iter().map(|i| i.updated_on.as_str()).collect();
+    let mut sorted = times.clone();
+    sorted.sort_unstable_by(|a, b| b.cmp(a));
+    assert_eq!(times, sorted, "newest first");
+    // Nothing in the default order is newer than the newest-first page's
+    // first issue (the default page may not reach the newest on a big server).
+    assert!(
+        all.items.iter().all(|i| i.updated_on.as_str() <= times[0]),
+        "newest first starts with the newest"
+    );
+
+    let open = client
+        .issues(&IssueQuery {
+            open: Some(true),
+            newest_first: true,
+            limit: Some(100),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let closed = client
+        .issues(&IssueQuery {
+            open: Some(false),
+            newest_first: true,
+            limit: Some(100),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(open.items.iter().all(|i| i.status.is_closed == Some(false)));
+    assert!(
+        closed
+            .items
+            .iter()
+            .all(|i| i.status.is_closed == Some(true))
+    );
+    assert!(!closed.items.is_empty(), "the seed closes some issues");
+    assert_eq!(open.total_count + closed.total_count, all.total_count);
+}
+
+#[tokio::test]
+async fn reads_metadata_in_parts_like_all_at_once() {
+    use redline_core::{Store, Syncer, projects_needing_details};
+
+    let client = live!();
+    let whole = Syncer::new(client.clone(), Store::in_memory().unwrap())
+        .sync_metadata()
+        .await
+        .unwrap();
+    let parts = Syncer::new(client, Store::in_memory().unwrap());
+    let core = parts.sync_core_metadata().await.unwrap();
+    assert!(core.versions.is_empty() && core.memberships.is_empty());
+    let ids = projects_needing_details(&core);
+    let (first, rest) = ids.split_at(1);
+    parts.sync_project_details(first).await.unwrap();
+    let meta = parts.sync_project_details(rest).await.unwrap();
+    assert_eq!(meta, whole);
 }
 
 #[tokio::test]

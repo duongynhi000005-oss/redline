@@ -353,7 +353,8 @@ export interface Account {
   name: string;
 }
 
-export type SyncPhase = "syncing" | "idle" | "offline" | "error";
+/** "busy": the server kept asking Redline to slow down; it tries again soon. */
+export type SyncPhase = "syncing" | "idle" | "busy" | "offline" | "error";
 
 export interface SyncState {
   state: SyncPhase;
@@ -363,6 +364,8 @@ export interface SyncState {
   code?: string | null;
   /** How far a long sync has got, while it runs. */
   progress?: SyncCount | null;
+  /** True while the server has asked Redline to slow down. */
+  slowed?: boolean;
 }
 
 export interface SyncCount {

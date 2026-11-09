@@ -107,6 +107,13 @@ impl Store {
         Ok(())
     }
 
+    pub fn remove_value(&self, key: &str) -> Result<()> {
+        self.conn()
+            .execute("DELETE FROM kv WHERE key = ?1", [key])
+            .map_err(storage)?;
+        Ok(())
+    }
+
     // ----- Metadata ------------------------------------------------------
 
     /// Replaces all metadata in one transaction.

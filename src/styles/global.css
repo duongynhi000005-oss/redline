@@ -2004,6 +2004,24 @@ button.time-row-issue:hover {
   min-width: 0;
 }
 
+.connection-rate {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.connection-rate-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 6px;
+}
+
+.connection-rate-row input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .field-help {
   font-size: 12px;
   font-weight: 400;

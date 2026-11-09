@@ -2,22 +2,34 @@
 //!
 //! Redmine has no push API, so Redline polls:
 //!
-//! 1. **Metadata** (projects, statuses, trackers, priorities, versions and
-//!    memberships) on sign-in and now and then after.
+//! 1. **Metadata** on sign-in and now and then after, in two parts: the
+//!    core (projects, statuses, trackers, priorities and the like, a handful
+//!    of requests), then each project's versions and members, a few projects
+//!    at a time, the user's own projects first.
 //! 2. **Issue delta**: issues updated since a cursor, oldest first, in pages
-//!    of 100, with their relations. The first run pulls everything the user
-//!    can see.
-//! 3. **Details** (journals and allowed statuses) for one issue when it's
-//!    opened, cached until the issue changes.
-//! 4. **Pruning**: issues deleted or hidden on the server never show up in a
-//!    delta, so cached ids are re-checked in batches now and then. Relation
-//!    changes don't touch `updated_on` either, so the same pass refreshes
-//!    relations; opening an issue refreshes its own.
+//!    of 100, with their relations.
+//! 3. **Backfill**: the first sync reads the most recently changed issues
+//!    first, so what people are working on shows straight away, then the
+//!    rest a page at a time, open issues before closed ones. Its place is
+//!    saved, so it carries on after a restart.
+//!
+//! All of it goes through the client's background lane, so what someone is
+//! waiting on (opening an issue, saving a change) goes first, and the
+//! client's pacer keeps it to the server's limits.
+//!
+//! Besides those:
+//!
+//! - **Details** (journals and allowed statuses) for one issue when it's
+//!   opened, cached until the issue changes.
+//! - **Pruning**: issues deleted or hidden on the server never show up in a
+//!   delta, so cached ids are re-checked in batches now and then. Relation
+//!   changes don't touch `updated_on` either, so the same pass refreshes
+//!   relations; opening an issue refreshes its own.
 
 use std::collections::{BTreeMap, HashSet};
 
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::task::JoinSet;
 
 use crate::client::{Client, IssueQuery, PAGE_SIZE, Page};
@@ -31,6 +43,7 @@ use crate::models::{
 use crate::store::{Metadata, Store};
 
 const CURSOR_KEY: &str = "issues_cursor";
+const BACKFILL_KEY: &str = "issues_backfill";
 
 /// The most issues a saved query shows; past this, the list says how many
 /// more Redmine has.
@@ -39,8 +52,8 @@ const QUERY_LIMIT: usize = 500;
 /// Search results per page.
 const SEARCH_PAGE: u32 = 25;
 
-/// Pages of issues read at once after the first. The client's own limit
-/// keeps the whole app at four requests at a time.
+/// Pages of a delta read at once after the first. The client's pacer
+/// decides how many really go out together.
 const PARALLEL_PAGES: usize = 4;
 
 /// How many issues consecutive sync pages share; see
@@ -72,8 +85,20 @@ pub struct SyncReport {
     pub changed: Vec<u64>,
     /// Issues Redmine sent, changed or not.
     pub fetched: u64,
-    /// True when this was the first, full pull.
+    /// True when this was part of the first sync, which reads every issue.
     pub initial: bool,
+    /// True when older issues are left to read; the next sync goes on.
+    pub remaining: bool,
+}
+
+/// Where the first sync has got to reading older issues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+struct Backfill {
+    /// Open issues first, then closed ones.
+    open: bool,
+    offset: u64,
+    /// Every issue the user could see when it started, for progress.
+    total: u64,
 }
 
 /// One page of a sync, as it lands in the cache.
@@ -86,7 +111,7 @@ pub struct SyncProgress {
     pub fetched: u64,
     /// Issues this sync expects to read.
     pub total: u64,
-    /// True during the first, full pull.
+    /// True while the first sync is still reading older issues.
     pub initial: bool,
 }
 
@@ -108,12 +133,18 @@ pub struct IssueDetails {
 #[derive(Debug, Clone)]
 pub struct Syncer {
     client: Client,
+    /// The same client in the background lane, for sync.
+    background: Client,
     store: Store,
 }
 
 impl Syncer {
     pub fn new(client: Client, store: Store) -> Self {
-        Self { client, store }
+        Self {
+            background: client.background(),
+            client,
+            store,
+        }
     }
 
     pub fn client(&self) -> &Client {
@@ -124,22 +155,65 @@ impl Syncer {
         &self.store
     }
 
-    /// Refreshes all metadata and replaces the cached copy.
+    /// Refreshes all metadata and replaces the cached copy: the core, then
+    /// every project's versions and members.
     pub async fn sync_metadata(&self) -> Result<Metadata> {
-        let (user, projects, statuses, trackers, priorities) = tokio::try_join!(
-            self.client.current_user(),
-            self.client.projects(),
-            self.client.issue_statuses(),
-            self.client.trackers(),
-            self.client.issue_priorities(),
-        )?;
+        let meta = self.sync_core_metadata().await?;
+        let projects = projects_needing_details(&meta);
+        self.sync_project_details(&projects).await
+    }
 
-        // Versions and members per project that tracks issues. The client's
-        // concurrency limit keeps this polite.
+    /// Refreshes what every screen needs, in a handful of requests: the
+    /// user, projects, statuses, trackers, priorities, roles, time
+    /// activities and saved queries. Versions and members already cached
+    /// are kept (those of projects that are gone are dropped); refresh them
+    /// with [`Syncer::sync_project_details`].
+    pub async fn sync_core_metadata(&self) -> Result<Metadata> {
+        let client = &self.background;
+        let (user, projects, statuses, trackers, priorities) = tokio::try_join!(
+            client.current_user(),
+            client.projects(),
+            client.issue_statuses(),
+            client.trackers(),
+            client.issue_priorities(),
+        )?;
+        // Any user may read roles; a locked-down server may still refuse.
+        let roles = ok_unless_forbidden(client.roles().await)?;
+        let time_entry_activities = ok_unless_forbidden(client.time_entry_activities().await)?
+            .into_iter()
+            .filter(|a| a.active)
+            .collect();
+        let queries = ok_unless_forbidden(client.queries().await)?;
+
+        let cached = self.store.metadata()?;
+        let present: HashSet<u64> = projects.iter().map(|p| p.id).collect();
+        let meta = Metadata {
+            user: Some(user),
+            priorities: priorities.into_iter().filter(|p| p.active).collect(),
+            statuses,
+            trackers,
+            versions: cached.versions,
+            memberships: cached
+                .memberships
+                .into_iter()
+                .filter(|m| present.contains(&m.project.id))
+                .collect(),
+            projects,
+            roles,
+            time_entry_activities,
+            queries,
+        };
+        self.store.replace_metadata(&meta)?;
+        Ok(meta)
+    }
+
+    /// Reads the versions and members of `project_ids` and merges them into
+    /// the cached metadata. Projects that hide them from this user are
+    /// skipped.
+    pub async fn sync_project_details(&self, project_ids: &[u64]) -> Result<Metadata> {
         let mut tasks = JoinSet::new();
-        for project in projects.iter().filter(|p| tracks_issues(p)) {
-            let client = self.client.clone();
-            let id = project.id;
+        for &id in project_ids {
+            let client = self.background.clone();
             tasks.spawn(async move {
                 let versions = client.versions(id).await;
                 let members = client.memberships(id).await;
@@ -160,35 +234,23 @@ impl Syncer {
             }
             memberships.extend(ok_unless_forbidden(m)?);
         }
-        versions.sort_by_key(|v| v.id);
-        memberships.sort_by_key(|m| m.id);
 
-        // Any user may read roles; a locked-down server may still refuse.
-        let roles = ok_unless_forbidden(self.client.roles().await)?;
-        let time_entry_activities = ok_unless_forbidden(self.client.time_entry_activities().await)?
-            .into_iter()
-            .filter(|a| a.active)
-            .collect();
-        let queries = ok_unless_forbidden(self.client.queries().await)?;
-
-        let meta = Metadata {
-            user: Some(user),
-            projects,
-            statuses,
-            trackers,
-            priorities: priorities.into_iter().filter(|p| p.active).collect(),
-            versions,
-            memberships,
-            roles,
-            time_entry_activities,
-            queries,
-        };
+        // Read again: other work may have changed the metadata meanwhile.
+        let mut meta = self.store.metadata()?;
+        let read: HashSet<u64> = project_ids.iter().copied().collect();
+        meta.versions
+            .retain(|v| !read.contains(&v.project.id) && !seen_versions.contains(&v.id));
+        meta.versions.extend(versions);
+        meta.versions.sort_by_key(|v| v.id);
+        meta.memberships.retain(|m| !read.contains(&m.project.id));
+        meta.memberships.extend(memberships);
+        meta.memberships.sort_by_key(|m| m.id);
         self.store.replace_metadata(&meta)?;
         Ok(meta)
     }
 
-    /// Pulls issues changed since the last sync (or everything, the first
-    /// time) into the cache.
+    /// Pulls issues changed since the last sync into the cache. The first
+    /// time, reads every issue, most recently changed first.
     pub async fn sync_issues(&self) -> Result<SyncReport> {
         self.sync_issues_with(|_| {}).await
     }
@@ -196,6 +258,168 @@ impl Syncer {
     /// Like [`Syncer::sync_issues`], calling `on_page` as each page lands in
     /// the cache, in order, so a long first sync can show issues as they
     /// arrive.
+    pub async fn sync_issues_with(&self, on_page: impl FnMut(&SyncProgress)) -> Result<SyncReport> {
+        self.sync_issues_paced(usize::MAX, on_page).await
+    }
+
+    /// One step of a sync: the changes since the last one, then at most
+    /// `older_pages` pages of older issues while the first sync is still
+    /// reading them. [`SyncReport::remaining`] says whether there's more.
+    ///
+    /// The first sync reads the most recently changed issues, then open
+    /// issues, then closed ones, newest first. Pages overlap by
+    /// [`PAGE_OVERLAP`] issues, so issues created, edited or deleted while
+    /// it reads don't make it skip any; edits made meanwhile also arrive
+    /// with the next delta. Its place is saved after each page.
+    pub async fn sync_issues_paced(
+        &self,
+        older_pages: usize,
+        mut on_page: impl FnMut(&SyncProgress),
+    ) -> Result<SyncReport> {
+        let cursor: Option<String> = self.store.get_value(CURSOR_KEY)?;
+        let mut backfill: Option<Backfill> = self.store.get_value(BACKFILL_KEY)?;
+        let mut report = SyncReport::default();
+
+        match cursor {
+            // While the first sync is still reading older issues, report
+            // how far it has got overall, so the count only goes up.
+            Some(cursor) if backfill.is_some() => {
+                let total = backfill.map_or(0, |b| b.total);
+                let store = &self.store;
+                let mut overall = |p: &SyncProgress| {
+                    let cached = store.count_issues().unwrap_or(p.fetched);
+                    on_page(&SyncProgress {
+                        changed: p.changed.clone(),
+                        fetched: cached.min(total),
+                        total,
+                        initial: true,
+                    });
+                };
+                self.sync_delta(cursor, &mut report, &mut overall).await?;
+            }
+            Some(cursor) => self.sync_delta(cursor, &mut report, &mut on_page).await?,
+            None => {
+                // The most recently changed issues, whatever their status:
+                // what someone opening Redline for the first time wants to see.
+                let page = self
+                    .background
+                    .issues(&IssueQuery {
+                        include: vec!["relations"],
+                        newest_first: true,
+                        limit: Some(PAGE_SIZE),
+                        ..Default::default()
+                    })
+                    .await?;
+                let more = (page.items.len() as u64) < page.total_count;
+                let total = page.total_count;
+                let mut newest = None;
+                report.initial = true;
+                self.take_page(0, page, &mut newest, &mut report, total, &mut on_page)?;
+                if more {
+                    let start = Backfill {
+                        open: true,
+                        offset: 0,
+                        total,
+                    };
+                    self.store.set_value(BACKFILL_KEY, &start)?;
+                    backfill = Some(start);
+                } else {
+                    self.store.remove_value(BACKFILL_KEY)?;
+                    backfill = None;
+                }
+            }
+        }
+
+        self.read_older(backfill, older_pages, &mut report, &mut on_page)
+            .await?;
+        Ok(report)
+    }
+
+    /// Reads up to `pages` pages of older issues while the first sync is
+    /// still filling the cache, without asking for changes first.
+    pub async fn sync_older_issues(
+        &self,
+        pages: usize,
+        mut on_page: impl FnMut(&SyncProgress),
+    ) -> Result<SyncReport> {
+        let backfill: Option<Backfill> = self.store.get_value(BACKFILL_KEY)?;
+        let mut report = SyncReport::default();
+        self.read_older(backfill, pages, &mut report, &mut on_page)
+            .await?;
+        Ok(report)
+    }
+
+    async fn read_older(
+        &self,
+        mut backfill: Option<Backfill>,
+        older_pages: usize,
+        report: &mut SyncReport,
+        on_page: &mut impl FnMut(&SyncProgress),
+    ) -> Result<()> {
+        let mut pages = 0;
+        while let Some(mut place) = backfill {
+            if pages >= older_pages {
+                break;
+            }
+            pages += 1;
+            report.initial = true;
+            let page = self
+                .background
+                .issues(&IssueQuery {
+                    include: vec!["relations"],
+                    open: Some(place.open),
+                    newest_first: true,
+                    offset: place.offset,
+                    limit: Some(PAGE_SIZE),
+                    ..Default::default()
+                })
+                .await?;
+            let got = page.items.len() as u64;
+            let done = got == 0 || place.offset + got >= page.total_count;
+            report.fetched += got;
+            let changed = self.store.upsert_issues(&page.items)?;
+            report.changed.extend(&changed);
+            if done && !place.open {
+                backfill = None;
+                self.store.remove_value(BACKFILL_KEY)?;
+            } else {
+                if done {
+                    place = Backfill {
+                        open: false,
+                        offset: 0,
+                        ..place
+                    };
+                } else {
+                    // Step by what the server really sends per page, which
+                    // can be less than asked for.
+                    place.offset += if got > 2 * PAGE_OVERLAP {
+                        got - PAGE_OVERLAP
+                    } else {
+                        got
+                    };
+                }
+                self.store.set_value(BACKFILL_KEY, &place)?;
+                backfill = Some(place);
+            }
+            let total = backfill.map_or(0, |b| b.total);
+            let cached = self.store.count_issues()?;
+            on_page(&SyncProgress {
+                changed,
+                fetched: if backfill.is_some() {
+                    cached.min(total)
+                } else {
+                    cached
+                },
+                total: if backfill.is_some() { total } else { cached },
+                initial: backfill.is_some(),
+            });
+        }
+        report.remaining = backfill.is_some();
+        Ok(())
+    }
+
+    /// Reads issues changed since `cursor`, oldest first, so the cursor can
+    /// move after each page.
     ///
     /// After the first page, up to [`PARALLEL_PAGES`] pages are read at
     /// once. Pages overlap by [`PAGE_OVERLAP`] issues: the list is sorted by
@@ -203,28 +427,23 @@ impl Syncer {
     /// later issue shifts back one place, and without the overlap the issue
     /// at a page boundary would be skipped for good. The cursor is saved
     /// after each page, so a sync that fails part-way picks up from there.
-    pub async fn sync_issues_with(
+    async fn sync_delta(
         &self,
-        mut on_page: impl FnMut(&SyncProgress),
-    ) -> Result<SyncReport> {
-        let cursor: Option<String> = self.store.get_value(CURSOR_KEY)?;
-        let since = cursor.as_deref().map(|c| rewind(c, CURSOR_OVERLAP));
-        let mut report = SyncReport {
-            initial: cursor.is_none(),
-            ..Default::default()
-        };
-        let mut newest = cursor;
+        cursor: String,
+        report: &mut SyncReport,
+        on_page: &mut impl FnMut(&SyncProgress),
+    ) -> Result<()> {
+        let since = Some(rewind(&cursor, CURSOR_OVERLAP));
+        let mut newest = Some(cursor);
 
-        let first = fetch_issue_page(self.client.clone(), since.clone(), 0).await?;
+        let first = fetch_issue_page(self.background.clone(), since.clone(), 0).await?;
         let got = first.items.len() as u64;
         let mut total = first.total_count;
-        self.take_page(0, first, &mut newest, &mut report, total, &mut on_page)?;
+        self.take_page(0, first, &mut newest, report, total, on_page)?;
         if got == 0 || got >= total {
-            return Ok(report);
+            return Ok(());
         }
 
-        // Step by what the server really sends per page, which can be less
-        // than asked for.
         let step = if got > 2 * PAGE_OVERLAP {
             got - PAGE_OVERLAP
         } else {
@@ -236,7 +455,7 @@ impl Syncer {
         let mut landed = BTreeMap::new();
         loop {
             while tasks.len() < PARALLEL_PAGES && next < total {
-                let client = self.client.clone();
+                let client = self.background.clone();
                 let since = since.clone();
                 let offset = next;
                 tasks.spawn(async move { (offset, fetch_issue_page(client, since, offset).await) });
@@ -252,7 +471,7 @@ impl Syncer {
                 let empty = page.items.is_empty();
                 // Issues created during the sync grow the list; go on to the end.
                 total = total.max(page.total_count);
-                self.take_page(expect, page, &mut newest, &mut report, total, &mut on_page)?;
+                self.take_page(expect, page, &mut newest, report, total, on_page)?;
                 expect += step;
                 if empty {
                     // Issues deleted during the sync shrank the list.
@@ -260,7 +479,7 @@ impl Syncer {
                 }
             }
         }
-        Ok(report)
+        Ok(())
     }
 
     /// Caches one page of a sync, moves the cursor past it and reports it.
@@ -301,7 +520,7 @@ impl Syncer {
     /// API key. Redmine answers lists for an unknown key as if for an
     /// anonymous visitor, so a sync can't notice by itself.
     pub async fn check_key(&self) -> Result<()> {
-        self.client.check_key().await
+        self.background.check_key().await
     }
 
     /// Drops cached issues that the server no longer returns (deleted, moved
@@ -309,12 +528,12 @@ impl Syncer {
     pub async fn prune_deleted(&self) -> Result<Vec<u64>> {
         // With a key Redmine no longer accepts, every issue would look
         // deleted and the whole cache would go.
-        self.client.check_key().await?;
+        self.background.check_key().await?;
         let ids = self.store.issue_ids()?;
         let mut gone = Vec::new();
         for batch in ids.chunks(PAGE_SIZE as usize) {
             let page = self
-                .client
+                .background
                 .issues(&IssueQuery {
                     issue_ids: batch.to_vec(),
                     // Relation changes don't touch `updated_on`, so this pass
@@ -476,7 +695,8 @@ impl Syncer {
     /// team has its trackers, modules and members.
     pub async fn create_project(&self, fields: &ProjectChanges) -> Result<Project> {
         let project = self.client.create_project(fields).await?;
-        let meta = self.sync_metadata().await?;
+        self.sync_core_metadata().await?;
+        let meta = self.sync_project_details(&[project.id]).await?;
         Ok(meta
             .projects
             .into_iter()
@@ -487,14 +707,29 @@ impl Syncer {
     /// Changes a project and refreshes the metadata.
     pub async fn update_project(&self, id: u64, changes: &ProjectChanges) -> Result<Metadata> {
         self.client.update_project(id, changes).await?;
-        self.sync_metadata().await
+        self.sync_core_metadata().await?;
+        self.sync_project_details(&[id]).await
     }
 
     /// Closes or reopens a project (and its sub-projects) and refreshes the
     /// metadata.
     pub async fn set_project_closed(&self, id: u64, closed: bool) -> Result<Metadata> {
         self.client.set_project_closed(id, closed).await?;
-        self.sync_metadata().await
+        let meta = self.sync_core_metadata().await?;
+        // Sub-projects close and reopen with it.
+        let mut affected = vec![id];
+        let mut i = 0;
+        while i < affected.len() {
+            let parent = affected[i];
+            affected.extend(
+                meta.projects
+                    .iter()
+                    .filter(|p| p.parent.as_ref().is_some_and(|q| q.id == parent))
+                    .map(|p| p.id),
+            );
+            i += 1;
+        }
+        self.sync_project_details(&affected).await
     }
 
     /// Deletes a project, refreshes the metadata and drops its issues from
@@ -504,7 +739,7 @@ impl Syncer {
             Ok(()) | Err(Error::NotFound) => {}
             Err(e) => return Err(e),
         }
-        self.sync_metadata().await?;
+        self.sync_core_metadata().await?;
         self.prune_deleted().await
     }
 
@@ -866,6 +1101,24 @@ impl Syncer {
             _ => None,
         })
     }
+}
+
+/// Projects whose versions and members Redline reads, the user's own first:
+/// those are the teams in the sidebar and the people in the pickers.
+pub fn projects_needing_details(meta: &Metadata) -> Vec<u64> {
+    let mine: HashSet<u64> = meta
+        .user
+        .iter()
+        .flat_map(|u| u.memberships.iter().map(|m| m.project.id))
+        .collect();
+    let mut ids: Vec<(bool, u64)> = meta
+        .projects
+        .iter()
+        .filter(|p| tracks_issues(p))
+        .map(|p| (!mine.contains(&p.id), p.id))
+        .collect();
+    ids.sort_unstable();
+    ids.into_iter().map(|(_, id)| id).collect()
 }
 
 fn tracks_issues(project: &crate::models::Project) -> bool {

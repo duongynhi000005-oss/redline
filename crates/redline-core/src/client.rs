@@ -5,33 +5,32 @@
 //!   server's proxy needs (see [`ConnectionOptions`]).
 //! - Follows redirects only within the same server, so the key and headers
 //!   never go to another host.
-//! - Sends at most [`MAX_PARALLEL_REQUESTS`] requests at once, so a small
-//!   self-hosted server isn't flooded.
-//! - Retries 429 and 503 answers a few times, honouring `Retry-After`.
+//! - Paces every request through the server's [`Pacer`]: a few in flight,
+//!   evenly spaced, with what the person is waiting on going first.
+//! - On 429 or 503 pauses every request to the server, honouring
+//!   `Retry-After` (or backing off with jitter), then retries.
 //! - Pages through lists in Redmine's maximum page size of 100.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::{Method, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tokio::sync::Semaphore;
 use url::Url;
 
 use crate::connection::ConnectionOptions;
 use crate::error::{Error, Result};
 use crate::models::*;
+use crate::pacer::{MAX_RETRY_AFTER, Pacer, Priority, RequestLimits};
 
 /// Redmine's largest page size.
 pub const PAGE_SIZE: u32 = 100;
 
-/// How many requests Redline sends to one server at the same time.
-pub const MAX_PARALLEL_REQUESTS: usize = 4;
-
-const MAX_ATTEMPTS: u32 = 4;
-const MAX_RETRY_WAIT: Duration = Duration::from_secs(10);
+/// How many times one request is sent when the server keeps saying to slow
+/// down, before it fails with [`Error::Busy`]. With the backoff doubling
+/// each time, that's about half a minute without `Retry-After`.
+const MAX_ATTEMPTS: u32 = 7;
 
 /// One page of a list, with Redmine's total count.
 #[derive(Debug, Clone, PartialEq)]
@@ -54,6 +53,10 @@ pub struct IssueQuery {
     pub include: Vec<&'static str>,
     /// Only issues the signed-in user watches.
     pub watched_by_me: bool,
+    /// Only open or only closed issues; both when `None`.
+    pub open: Option<bool>,
+    /// Most recently changed first, instead of oldest first.
+    pub newest_first: bool,
     pub offset: u64,
     pub limit: Option<u32>,
 }
@@ -77,7 +80,8 @@ pub struct Client {
     base: Url,
     api_key: String,
     http: reqwest::Client,
-    gate: Arc<Semaphore>,
+    pacer: Pacer,
+    priority: Priority,
     retry_unit: Duration,
 }
 
@@ -111,13 +115,36 @@ impl Client {
             .timeout(Duration::from_secs(60))
             .build()
             .map_err(|e| Error::Network(e.to_string()))?;
+        let retry_unit = Duration::from_millis(500);
         Ok(Self {
             base,
             api_key: api_key.trim().to_owned(),
             http,
-            gate: Arc::new(Semaphore::new(MAX_PARALLEL_REQUESTS)),
-            retry_unit: Duration::from_millis(500),
+            pacer: Pacer::new(options.request_limits(), retry_unit),
+            priority: Priority::Foreground,
+            retry_unit,
         })
+    }
+
+    /// A client for background work (sync, prefetching) on the same server.
+    /// It shares this client's pace, and waits while requests someone is
+    /// waiting on go first.
+    pub fn background(&self) -> Self {
+        Self {
+            priority: Priority::Background,
+            ..self.clone()
+        }
+    }
+
+    /// The gate every request to this server goes through.
+    pub fn pacer(&self) -> &Pacer {
+        &self.pacer
+    }
+
+    /// Paces requests by `limits` instead of the connection's.
+    pub fn with_limits(mut self, limits: RequestLimits) -> Self {
+        self.pacer = Pacer::new(limits, self.retry_unit);
+        self
     }
 
     /// The server's base URL, always ending in `/`.
@@ -129,6 +156,7 @@ impl Client {
     #[doc(hidden)]
     pub fn with_retry_unit(mut self, unit: Duration) -> Self {
         self.retry_unit = unit;
+        self.pacer = Pacer::new(self.pacer.limits(), unit);
         self
     }
 
@@ -584,9 +612,19 @@ impl Client {
     /// One page of issues, sorted by last update (oldest first) so a sync can
     /// walk forward through changes.
     pub async fn issues(&self, query: &IssueQuery) -> Result<Page<Issue>> {
+        let status = match query.open {
+            None => "*",
+            Some(true) => "open",
+            Some(false) => "closed",
+        };
+        let sort = if query.newest_first {
+            "updated_on:desc,id:desc"
+        } else {
+            "updated_on,id"
+        };
         let mut params: Vec<(&str, String)> = vec![
-            ("status_id", "*".into()),
-            ("sort", "updated_on,id".into()),
+            ("status_id", status.into()),
+            ("sort", sort.into()),
             ("offset", query.offset.to_string()),
             ("limit", query.limit.unwrap_or(PAGE_SIZE).to_string()),
         ];
@@ -894,18 +932,15 @@ impl Client {
         serde_json::from_str(&text).map_err(|_| Error::NotRedmine)
     }
 
-    /// Sends a request built by `build`, with the API key, the concurrency
-    /// limit and retries for 429 and 503. Maps error statuses to [`Error`].
+    /// Sends a request built by `build`, with the API key, in its turn from
+    /// the server's [`Pacer`]. On 429 or 503 every request to the server
+    /// pauses and this one is sent again. Maps error statuses to [`Error`].
     async fn send(&self, build: impl Fn() -> RequestBuilder) -> Result<Response> {
         let mut attempt = 0;
         loop {
             attempt += 1;
             let response = {
-                let _permit = self
-                    .gate
-                    .acquire()
-                    .await
-                    .expect("semaphore is never closed");
+                let _turn = self.pacer.turn(self.priority).await;
                 build()
                     .header("X-Redmine-API-Key", &self.api_key)
                     .header("Accept", "application/json")
@@ -914,21 +949,22 @@ impl Client {
                     .map_err(network_error)?
             };
             let status = response.status();
-            if status.is_success() {
-                return Ok(response);
-            }
             if matches!(
                 status,
                 StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE
             ) {
-                if attempt >= MAX_ATTEMPTS {
+                let after = retry_after(&response);
+                // The pause applies to the next turn, this request's included.
+                self.pacer.told_to_slow_down(after);
+                if attempt >= MAX_ATTEMPTS || after.is_some_and(|a| a > MAX_RETRY_AFTER) {
                     return Err(Error::Busy);
                 }
-                let wait = retry_after(&response)
-                    .unwrap_or(self.retry_unit * 2u32.pow(attempt - 1))
-                    .min(MAX_RETRY_WAIT);
-                tokio::time::sleep(wait).await;
                 continue;
+            }
+            // Any other answer, errors included, means the server is keeping up.
+            self.pacer.succeeded();
+            if status.is_success() {
+                return Ok(response);
             }
             return Err(status_error(response).await);
         }
@@ -990,16 +1026,27 @@ fn network_error(e: reqwest::Error) -> Error {
     }
 }
 
+/// `Retry-After` as a wait: a number of seconds, or an HTTP date.
 fn retry_after(response: &Response) -> Option<Duration> {
-    response
+    let value = response
         .headers()
         .get(reqwest::header::RETRY_AFTER)?
         .to_str()
         .ok()?
-        .trim()
-        .parse::<u64>()
-        .ok()
-        .map(Duration::from_secs)
+        .trim();
+    parse_retry_after(value, chrono::Utc::now())
+}
+
+fn parse_retry_after(value: &str, now: chrono::DateTime<chrono::Utc>) -> Option<Duration> {
+    if let Ok(seconds) = value.parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+    let at = chrono::DateTime::parse_from_rfc2822(value).ok()?;
+    Some(
+        (at.with_timezone(&chrono::Utc) - now)
+            .to_std()
+            .unwrap_or(Duration::ZERO),
+    )
 }
 
 async fn status_error(response: Response) -> Error {
@@ -1100,6 +1147,23 @@ fn page<T: DeserializeOwned>(body: Value, key: &str) -> Result<Page<T>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_retry_after_in_seconds_or_as_a_date() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-11-09T20:00:00Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        assert_eq!(parse_retry_after("30", now), Some(Duration::from_secs(30)));
+        assert_eq!(
+            parse_retry_after("Mon, 09 Nov 2026 20:00:45 GMT", now),
+            Some(Duration::from_secs(45))
+        );
+        assert_eq!(
+            parse_retry_after("Mon, 09 Nov 2026 19:00:00 GMT", now),
+            Some(Duration::ZERO)
+        );
+        assert_eq!(parse_retry_after("soon", now), None);
+    }
 
     #[test]
     fn normalizes_pasted_addresses() {

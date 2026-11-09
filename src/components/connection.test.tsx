@@ -31,6 +31,7 @@ describe("server username and custom headers", () => {
     expect(signIn).toHaveBeenLastCalledWith("https://gateway.example.com", "0123456789abcdef", {
       username: "dana",
       headers: [{ name: "X-Gateway-Token", value: "s3cret" }],
+      limits: null,
     });
   });
 
@@ -72,12 +73,48 @@ describe("server username and custom headers", () => {
     await user.click(save);
 
     await waitFor(() => expect(within(section).getByRole("status")).toHaveTextContent("Saved"));
-    expect(update).toHaveBeenCalledWith({ username: "dana", headers: [{ name: "X-Gateway-Token", value: "tok" }] });
-    expect(await backend.getConnection()).toEqual({ username: "dana", headers: [{ name: "X-Gateway-Token", value: "tok" }] });
+    const saved = { username: "dana", headers: [{ name: "X-Gateway-Token", value: "tok" }], limits: null };
+    expect(update).toHaveBeenCalledWith(saved);
+    expect(await backend.getConnection()).toEqual(saved);
 
     await user.click(within(section).getByRole("button", { name: "Remove header X-Gateway-Token" }));
     await user.click(within(section).getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(update).toHaveBeenLastCalledWith({ username: "dana", headers: [] }));
+    await waitFor(() => expect(update).toHaveBeenLastCalledWith({ username: "dana", headers: [], limits: null }));
+  });
+
+  it("sets a slower request rate for a server that limits apps", async () => {
+    const user = userEvent.setup();
+    const backend = createDemoBackend({ signedIn: true });
+    const update = vi.spyOn(backend, "updateConnection");
+    render(<App backend={backend} />);
+    await screen.findByRole("heading", { name: "My issues" });
+
+    useApp.getState().setSettingsOpen(true);
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    const section = within(dialog).getByRole("region", { name: "Connection" });
+    const rate = await within(section).findByRole("group", { name: "Request rate" });
+    expect(within(rate).getByLabelText("Requests at a time")).toHaveValue(2);
+    expect(within(rate).getByLabelText("Requests per minute")).toHaveValue(120);
+    expect(within(rate).queryByRole("button", { name: "Use defaults" })).not.toBeInTheDocument();
+
+    await user.clear(within(rate).getByLabelText("Requests per minute"));
+    await user.type(within(rate).getByLabelText("Requests per minute"), "5");
+    await user.click(within(section).getByRole("button", { name: "Save" }));
+    expect(await within(section).findByRole("alert")).toHaveTextContent("from 10 to 1,200");
+    expect(update).not.toHaveBeenCalled();
+
+    await user.type(within(rate).getByLabelText("Requests per minute"), "0");
+    await user.clear(within(rate).getByLabelText("Requests at a time"));
+    await user.type(within(rate).getByLabelText("Requests at a time"), "1");
+    await user.click(within(section).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(update).toHaveBeenLastCalledWith({ username: null, headers: [], limits: { at_once: 1, per_minute: 50 } }),
+    );
+
+    await user.click(within(rate).getByRole("button", { name: "Use defaults" }));
+    expect(within(rate).getByLabelText("Requests per minute")).toHaveValue(120);
+    await user.click(within(section).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(update).toHaveBeenLastCalledWith({ username: null, headers: [], limits: null }));
   });
 
   it("keeps the username and headers when signing in again with a new key", async () => {

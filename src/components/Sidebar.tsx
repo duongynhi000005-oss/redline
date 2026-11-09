@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { teamOf } from "../lib/model";
 import { shortcutLabel } from "../lib/platform";
-import type { SyncCount } from "../lib/types";
+import type { SyncCount, SyncPhase } from "../lib/types";
 import type { Route } from "../state/app";
 import { useApp } from "../state/app";
 import { useDerived } from "../state/derived";
@@ -63,16 +63,21 @@ function NavItem({
 
 export const KEY_REFUSED_LABEL = "API key refused · Sign in again";
 
+export const SLOWED_LABEL = "Slowing down for the server";
+
 export function syncLabel(
-  state: "syncing" | "idle" | "offline" | "error",
+  state: SyncPhase,
   message: string | null,
   lastSyncedAt: number | null,
   now = Date.now(),
   progress: SyncCount | null = null,
+  slowed = false,
 ): string {
-  if (state === "syncing" && progress)
-    return `Syncing ${progress.fetched.toLocaleString()} of ${progress.total.toLocaleString()} issues`;
+  const count = progress ? `${progress.fetched.toLocaleString()} of ${progress.total.toLocaleString()}` : null;
+  if (state === "syncing" && slowed) return count ? `${SLOWED_LABEL} · ${count}` : `${SLOWED_LABEL}…`;
+  if (state === "syncing" && count) return `Syncing ${count} issues`;
   if (state === "syncing") return "Syncing…";
+  if (state === "busy") return "Server is busy · Trying again soon";
   if (state === "offline") return "Offline, showing saved issues";
   if (state === "error") return message ?? "Couldn't sync";
   if (!lastSyncedAt) return "Up to date";
@@ -246,7 +251,13 @@ export function Sidebar() {
         type="button"
         className={`sync-status sync-${sync.state}`}
         onClick={() => void (keyRefused ? signInAgain() : syncNow())}
-        title={keyRefused ? "Redmine no longer accepts your API key. Sign in again with a new one." : "Sync now"}
+        title={
+          keyRefused
+            ? "Redmine no longer accepts your API key. Sign in again with a new one."
+            : sync.slowed || sync.state === "busy"
+              ? "Your server asked Redline to slow down, so it is pacing its requests"
+              : "Sync now"
+        }
         aria-live="polite"
       >
         <Icon
@@ -258,11 +269,13 @@ export function Sidebar() {
         ) : sync.state === "syncing" && sync.progress ? (
           <>
             {/* The count changes with every page; screen readers hear it once. */}
-            <span aria-hidden="true">{syncLabel(sync.state, sync.message, sync.lastSyncedAt, undefined, sync.progress)}</span>
-            <span className="sr-only">Syncing issues…</span>
+            <span aria-hidden="true">
+              {syncLabel(sync.state, sync.message, sync.lastSyncedAt, undefined, sync.progress, sync.slowed)}
+            </span>
+            <span className="sr-only">{sync.slowed ? `${SLOWED_LABEL}…` : "Syncing issues…"}</span>
           </>
         ) : (
-          <span>{syncLabel(sync.state, sync.message, sync.lastSyncedAt)}</span>
+          <span>{syncLabel(sync.state, sync.message, sync.lastSyncedAt, undefined, null, sync.slowed)}</span>
         )}
       </button>
     </nav>
