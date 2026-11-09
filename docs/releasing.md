@@ -28,6 +28,11 @@ build; take that part out once Redline is signed. To
 rebuild an existing tag, run the workflow by hand from the Actions tab and
 give it the tag.
 
+You can also release without pushing a tag: run the Release workflow by hand
+on `main`, give it the version tag (it must match `package.json`), and tick
+**publish**. It creates the tag, builds both installers and publishes the
+release once they're attached.
+
 ## Signing
 
 Without signing, macOS Gatekeeper and Windows SmartScreen warn people when

@@ -1,6 +1,10 @@
 # Builds installers when a version tag is pushed (for example v0.1.0) and
 # attaches them to a draft GitHub release for a maintainer to publish.
 #
+# It can also be run by hand from the Actions tab: give it a version tag and
+# it creates the tag on the chosen branch if it doesn't exist yet, builds the
+# installers, and publishes the release when "publish" is ticked.
+#
 # Signing and notarization switch on by themselves once the secrets listed
 # in docs/releasing.md exist. Without them the installers are unsigned:
 # macOS Gatekeeper and Windows SmartScreen will warn when they're opened.
@@ -13,8 +17,12 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to build, for example v0.1.0
+        description: Version tag to build, for example v0.1.0. Created on the chosen branch if it doesn't exist.
         required: true
+      publish:
+        description: Publish the release once both installers are attached (otherwise it stays a draft)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -27,8 +35,37 @@ env:
   TAG: ${{ github.event.inputs.tag || github.ref_name }}
 
 jobs:
+  tag:
+    name: Tag
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # A pushed tag already exists. When run by hand, create it on the
+      # chosen branch so a release doesn't need anyone to push a tag.
+      # Tags pushed with GITHUB_TOKEN don't start this workflow again.
+      - name: Create the tag if it doesn't exist
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists; building it."
+            exit 0
+          fi
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG doesn't match package.json version $version on $GITHUB_REF_NAME."
+            exit 1
+          fi
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
+          echo "Created $TAG at $GITHUB_SHA."
+
   installers:
     name: Installers (${{ matrix.name }})
+    needs: tag
     strategy:
       fail-fast: false
       matrix:
@@ -148,3 +185,14 @@ jobs:
           # 0.x releases and tags with a hyphen (v0.2.0-beta.1) are pre-releases.
           prerelease: ${{ contains(env.TAG, '-') || startsWith(env.TAG, 'v0.') }}
           args: ${{ matrix.args }} ${{ env.TAURI_EXTRA_ARGS }}
+
+  publish:
+    name: Publish
+    needs: installers
+    if: github.event_name == 'workflow_dispatch' && inputs.publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
