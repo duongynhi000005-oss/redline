@@ -159,20 +159,35 @@ Don't develop against a real team's Redmine. Run your own with Docker:
 docker compose -f dev/redmine/compose.yaml up -d
 ```
 
-Then set it up once:
+Then fill it with test data:
 
-1. Open <http://localhost:3000> and sign in as `admin` / `admin`. Redmine asks
-   you to choose a new password.
-2. Go to **Administration**, load the default configuration when asked, then
-   open **Settings > API** and tick **Enable REST web service**.
-3. Under **Administration > Users**, create a regular (non-admin) user. Test
-   with this user, because that's what most Redline users have.
-4. Create a project or two, add the user as a member, and add some issues,
-   versions (Redline shows these as cycles) and a list-type custom field
-   (shown as labels).
-5. Sign in as the regular user, open **My account**, and copy the API key from
-   the sidebar.
-6. In Redline, point it at `http://localhost:3000` and paste that key.
+```sh
+dev/redmine/seed.sh
+```
+
+The seed script turns on the REST API, loads Redmine's default trackers and
+statuses, and creates a regular (non-admin) user `dev` and a teammate, a few
+projects (one with a subproject), sprints as versions, list custom fields used
+as labels, and a few
+issues. It's safe to run again. Its last line is the `dev` user's API key:
+
+```
+REDLINE_TEST_API_KEY=0123456789abcdef...
+```
+
+In Redline, sign in to `http://localhost:3000` with that key. To browse the
+same data in Redmine itself, sign in as `dev` with the password
+`redline-dev-password` (or as `admin` / `admin`).
+
+The core crate's live tests use the same server:
+
+```sh
+export REDLINE_TEST_REDMINE_URL=http://localhost:3000
+export REDLINE_TEST_API_KEY=<the key from seed.sh>
+cargo test -p redline-core
+```
+
+Without those variables the live tests are skipped. CI always runs them.
 
 The compose file runs Redmine 7. To check a change against the previous
 release, change the image to `redmine:6.1`, then run `docker compose down -v`

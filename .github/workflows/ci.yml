@@ -132,10 +132,60 @@ jobs:
         if: steps.scaffold.outputs.ready == 'true'
         run: npx tauri build --no-bundle
 
+  redmine:
+    name: Core against a real Redmine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check whether the core crate exists
+        id: scaffold
+        shell: bash
+        run: |
+          if [ -f crates/redline-core/Cargo.toml ] && [ -f dev/redmine/seed.sh ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Start Redmine
+        if: steps.scaffold.outputs.ready == 'true'
+        run: docker compose -f dev/redmine/compose.yaml up -d
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.scaffold.outputs.ready == 'true'
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.scaffold.outputs.ready == 'true'
+        with:
+          key: redmine
+
+      # Only the core crate: it has no Tauri dependency, so this job needs no
+      # web view libraries.
+      - name: Build core tests
+        if: steps.scaffold.outputs.ready == 'true'
+        run: cargo test -p redline-core --locked --no-run
+
+      - name: Seed Redmine
+        if: steps.scaffold.outputs.ready == 'true'
+        # seed.sh prints REDLINE_TEST_API_KEY=<key> last. It's a throwaway
+        # key for a container that only lives for this job.
+        run: dev/redmine/seed.sh 2>/dev/null | tail -n 1 >> "$GITHUB_ENV"
+
+      - name: Run core tests against Redmine
+        if: steps.scaffold.outputs.ready == 'true'
+        env:
+          REDLINE_TEST_REDMINE_URL: http://localhost:3000
+        run: cargo test -p redline-core --locked -- --test-threads=1
+
+      - name: Redmine logs
+        if: failure() && steps.scaffold.outputs.ready == 'true'
+        run: docker compose -f dev/redmine/compose.yaml logs --tail=200 redmine
+
   ci-passed:
     name: CI passed
     if: always()
-    needs: [web, desktop]
+    needs: [web, desktop, redmine]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any job failed or was cancelled

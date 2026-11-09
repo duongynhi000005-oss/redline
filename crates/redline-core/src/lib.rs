@@ -4,15 +4,16 @@
 //! against a real Redmine on any platform. The desktop shell in `src-tauri/`
 //! wraps it in Tauri commands and events.
 
+pub mod client;
+pub mod error;
+pub mod models;
+pub mod store;
+pub mod sync;
+
+pub use client::{Client, IssueQuery, Page};
+pub use error::{Error, Result};
+pub use store::{Metadata, Store};
+pub use sync::{IssueDetails, SyncReport, Syncer};
+
 /// The Redline version, shared by the core and the app.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn version_is_set() {
-        assert!(!VERSION.is_empty());
-    }
-}
