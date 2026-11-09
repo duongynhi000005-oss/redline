@@ -87,7 +87,11 @@ function buildMetadata(): Metadata {
           { id: 1, name: "Bug" },
           { id: 2, name: "Feature" },
         ],
-        issue_categories: [],
+        issue_categories: [
+          { id: 1, name: "Frontend" },
+          { id: 2, name: "Sync engine" },
+          { id: 3, name: "Docs" },
+        ],
         enabled_modules: [
           { id: 1, name: "issue_tracking" },
           { id: 2, name: "time_tracking" },
@@ -177,7 +181,9 @@ function buildMetadata(): Metadata {
         name: "Manager",
         permissions: [
           "view_issues",
+          "add_issues",
           "edit_issues",
+          "set_issues_private",
           "view_issue_watchers",
           "add_issue_watchers",
           "delete_issue_watchers",
@@ -190,7 +196,7 @@ function buildMetadata(): Metadata {
       {
         id: 4,
         name: "Developer",
-        permissions: ["view_issues", "edit_issues", "view_time_entries", "log_time", "edit_own_time_entries"],
+        permissions: ["view_issues", "add_issues", "edit_issues", "view_time_entries", "log_time", "edit_own_time_entries"],
       },
     ],
     time_entry_activities: [
@@ -230,8 +236,10 @@ function buildIssues(meta: Metadata): Issue[] {
         i % 2 === 0
           ? `## Why\n\nPeople expect this from a native app. See #${(id % subjects.length) + 1} for context.\n\n- [ ] Design\n- [x] Agree on scope\n\n@sam can you review?${id === 3 ? "\n\n![The mockup](mockup.svg)" : ""}`
           : null,
+      category: project.id === 1 && i % 4 !== 1 ? meta.projects[0]!.issue_categories[i % 3]! : null,
+      estimated_hours: i % 3 === 0 ? [2, 4, 8, 1.5][i % 4]! : null,
       is_private: false,
-      done_ratio: 0,
+      done_ratio: [0, 20, 50, 0, 100][i % 5]!,
       start_date: scheduled && i % 8 !== 7 ? day(start) : null,
       due_date: scheduled ? day(start + [4, 9, 6, 13, 3][i % 5]!) : null,
       custom_fields: [

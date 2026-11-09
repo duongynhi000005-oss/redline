@@ -21,7 +21,7 @@ browser, because Redmine has no API for it
 | Issue views (list, board, Gantt, calendar) | No API for Gantt or calendar; both are built from issue dates | ✅ | View switcher on every list: List, Board (Kanban), Timeline, Calendar. #34, #36, #37 |
 | Issue details | `GET /issues/:id.json` | ✅ | Issue view |
 | Subject, description, status, priority, assignee, cycle (version) | `PUT /issues/:id.json` | ✅ | Issue view and pickers |
-| Tracker, category, start date, due date, estimate, % done, private, parent | `PUT /issues/:id.json` | 🟡 shown, not all editable | Properties panel, editable. #42 |
+| Tracker, category, start date, due date, estimate, % done, private, parent | `PUT /issues/:id.json` | ✅ | Properties panel: tracker, category, project (move), parent, start and due dates (typed or picked, sent once finished), estimate (typed as 1.5, 1:30 or 1h 30m), % done, and private where the role may set it. Fields a tracker doesn't use are hidden (Redmine 5.1+ lists them on trackers). Also in the command menu. #42 |
 | Custom fields (every format) | Values on the issue; definitions are admin-only, so formats are learned from values | 🟡 labels only | Label groups for list fields, a property row for the rest, editable. #42 |
 | Status transitions | `include=allowed_statuses` | ✅ | Status picker and board drops |
 | Comments (notes), private notes | `PUT /issues/:id.json` with `notes` | ✅ | Activity |
@@ -47,7 +47,7 @@ browser, because Redmine has no API for it
 | Roadmap | No API; built from versions and their issues | ✅ | Team > Cycles is the roadmap: open and locked versions with progress and due dates, then past ones. #41 |
 | Gantt | No API; built from start and due dates, parents and precedes/blocks relations | ✅ | Timeline view: bars from start to due date, drag to move or resize, arrows for precedes and blocks, three zoom levels. #36 |
 | Calendar | No API; built from start and due dates | ✅ | Calendar view: a month of weeks with issues across their days, cycle ends, drag to reschedule, undated issues to drag on. #37 |
-| Issue categories | `GET/POST/PUT/DELETE /projects/:id/issue_categories.json` | 🟡 cached, not shown | Category property, filter and grouping ("Component"). #42 |
+| Issue categories | `GET/POST/PUT/DELETE /projects/:id/issue_categories.json` | ✅ shown and set | Category property, filter, list grouping and board columns. A board only takes issues into a category of their own project. Creating categories stays in Redmine's project settings. #42 |
 | Saved queries | `GET /queries.json`, run with `query_id` | ⬜ | Sidebar > Views: each Redmine query as a list Redline fetches. #44 |
 | Time tracking (spent time, reports) | `GET/POST/PUT/DELETE /time_entries.json`, activities from `/enumerations/time_entry_activities.json` | ✅ | Team > Time: this week, last week, this month or the last 30 days, a bar per day, entries grouped by day, person or issue with totals, and only your own on request. Redmine's report pivot (by custom field, CSV export) stays in Redmine for now. #40 |
 

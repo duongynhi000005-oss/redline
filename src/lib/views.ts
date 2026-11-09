@@ -6,7 +6,7 @@ import type { Issue, Metadata } from "./types";
 // How a list is shown, Linear's "Display" options: filters, grouping and
 // ordering. Each list keeps its own, saved per server and user.
 
-export type Grouping = "status" | "assignee" | "priority" | "cycle" | "none";
+export type Grouping = "status" | "assignee" | "priority" | "cycle" | "category" | "none";
 export type Ordering = "priority" | "updated" | "created";
 /** How a list is laid out: rows, a board of columns, bars on a timeline, or a month calendar. */
 export type Layout = "list" | "board" | "timeline" | "calendar";
@@ -51,6 +51,7 @@ export const GROUPINGS: { value: Grouping; label: string }[] = [
   { value: "assignee", label: "Assignee" },
   { value: "priority", label: "Priority" },
   { value: "cycle", label: "Cycle" },
+  { value: "category", label: "Category" },
   { value: "none", label: "No grouping" },
 ];
 
@@ -142,6 +143,7 @@ export interface Group {
     | { kind: "priority"; level: PriorityLevel }
     | { kind: "assignee"; name: string | null }
     | { kind: "cycle" }
+    | { kind: "category" }
     | { kind: "none" };
   issues: Issue[];
 }
@@ -201,6 +203,12 @@ export function groupIssues(
           // Soonest due first, so the current cycle leads.
           add(`cycle:${v.id}`, () => ({ label: v.name, icon: { kind: "cycle" }, rank: `${due} ${v.name}` }), issue);
         }
+        break;
+      }
+      case "category": {
+        const c = issue.category;
+        if (!c) add("category:none", () => ({ label: "No category", icon: { kind: "category" }, rank: "￿" }), issue);
+        else add(`category:${c.id}`, () => ({ label: c.name, icon: { kind: "category" }, rank: c.name.toLowerCase() }), issue);
         break;
       }
       case "none":

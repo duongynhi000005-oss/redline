@@ -16,6 +16,8 @@ export interface BoardColumn {
   drop: IssueChanges;
   /** For status columns, the Redmine status the column stands for. */
   statusId?: number;
+  /** For category columns: categories belong to one project, so only its issues can go in. */
+  projectId?: number;
 }
 
 /** Left to right, the way work flows across a board. */
@@ -60,7 +62,9 @@ export function boardColumns(
     const categoryOf = (id: number, fallback: StatusCategory) => ctx.categories.get(id) ?? fallback;
     columns = statuses
       .map((s, position) => ({ s, position, category: categoryOf(s.id, defaultCategory(s, meta.trackers)) }))
-      .sort((a, b) => BOARD_CATEGORY_ORDER.indexOf(a.category) - BOARD_CATEGORY_ORDER.indexOf(b.category) || a.position - b.position)
+      .sort(
+        (a, b) => BOARD_CATEGORY_ORDER.indexOf(a.category) - BOARD_CATEGORY_ORDER.indexOf(b.category) || a.position - b.position,
+      )
       .map(({ s, category }) => ({
         key: `status:${s.id}`,
         label: s.name,
@@ -71,10 +75,16 @@ export function boardColumns(
       }));
   } else {
     const groups = groupIssues(issues, grouping, ordering, ctx, meta, scope.me);
-    columns = groups.map((g) => ({ ...g, drop: dropFor(g.key) }));
+    columns = groups.map((g) => ({ ...g, drop: dropFor(g.key), projectId: categoryProject(g.key, meta) }));
     if (scope.showEmpty) columns = withEmptyColumns(columns, grouping, ctx, meta, scope);
   }
   return scope.showEmpty ? columns : columns.filter((c) => c.issues.length > 0);
+}
+
+function categoryProject(key: string, meta: Metadata): number | undefined {
+  if (!key.startsWith("category:") || key === "category:none") return undefined;
+  const id = Number(key.slice("category:".length));
+  return meta.projects.find((p) => p.issue_categories.some((c) => c.id === id))?.id;
 }
 
 function dropFor(key: string): IssueChanges {
@@ -87,6 +97,8 @@ function dropFor(key: string): IssueChanges {
       return { assigned_to_id: id };
     case "cycle":
       return { fixed_version_id: id };
+    case "category":
+      return { category_id: id };
     default:
       return {};
   }
@@ -166,7 +178,8 @@ function withEmptyColumns(
 }
 
 /** Whether Redmine's workflow lets an issue into a column, when that's known. */
-export function canDrop(column: BoardColumn, allowedStatusIds: Set<number> | null): boolean {
+export function canDrop(column: BoardColumn, allowedStatusIds: Set<number> | null, issue?: Issue): boolean {
+  if (column.projectId !== undefined && issue && issue.project.id !== column.projectId) return false;
   if (column.statusId === undefined || !allowedStatusIds) return true;
   return allowedStatusIds.has(column.statusId);
 }

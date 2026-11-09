@@ -286,6 +286,33 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M2 5.8h10M4.8 1.6v2.2M9.2 1.6v2.2" {...stroke} />
         </Svg>
       );
+    case "category":
+      return (
+        <Svg {...props}>
+          <path d="M2 4a1 1 0 0 1 1-1h2.5l1.2 1.3H11a1 1 0 0 1 1 1V10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1z" {...stroke} />
+        </Svg>
+      );
+    case "tracker":
+      return (
+        <Svg {...props}>
+          <rect x="2.5" y="2.5" width="9" height="9" rx="2" {...stroke} />
+          <path d="M5 7h4" {...stroke} />
+        </Svg>
+      );
+    case "done":
+      return (
+        <Svg {...props}>
+          <circle cx="7" cy="7" r="4.5" {...stroke} />
+          <path d="M7 2.5A4.5 4.5 0 0 1 11.5 7H7z" fill="currentColor" />
+        </Svg>
+      );
+    case "lock":
+      return (
+        <Svg {...props}>
+          <rect x="3" y="6.5" width="8" height="5" rx="1.2" {...stroke} />
+          <path d="M5 6.5V5a2 2 0 0 1 4 0v1.5" {...stroke} />
+        </Svg>
+      );
     case "plus":
       return (
         <Svg {...props}>
@@ -354,4 +381,8 @@ export type IconName =
   | "bell-filled"
   | "cycle"
   | "time"
-  | "edit";
+  | "edit"
+  | "category"
+  | "tracker"
+  | "done"
+  | "lock";

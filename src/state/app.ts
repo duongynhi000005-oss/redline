@@ -59,7 +59,18 @@ export function routeKey(route: Route): string {
 
 export type Phase = "starting" | "signed-out" | "ready";
 
-export type PickerKind = "status" | "priority" | "assignee" | "cycle" | "labels" | "relation" | "subscribers";
+export type PickerKind =
+  | "status"
+  | "priority"
+  | "assignee"
+  | "cycle"
+  | "labels"
+  | "relation"
+  | "subscribers"
+  | "tracker"
+  | "category"
+  | "project"
+  | "done";
 
 export interface PickerState {
   kind: PickerKind;

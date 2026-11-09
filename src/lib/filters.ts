@@ -4,7 +4,7 @@ import type { Issue, Metadata } from "./types";
 
 // Narrowing a view, Linear style: "Status is In progress or Todo", "Label is UI".
 
-export type FilterField = "status" | "priority" | "assignee" | "label" | "cycle" | "project" | "tracker";
+export type FilterField = "status" | "priority" | "assignee" | "label" | "cycle" | "category" | "project" | "tracker";
 
 export interface Filter {
   field: FilterField;
@@ -18,6 +18,7 @@ export const FILTER_FIELDS: { field: FilterField; label: string }[] = [
   { field: "assignee", label: "Assignee" },
   { field: "label", label: "Label" },
   { field: "cycle", label: "Cycle" },
+  { field: "category", label: "Category" },
   { field: "project", label: "Project" },
   { field: "tracker", label: "Tracker" },
 ];
@@ -44,6 +45,8 @@ export function valuesOf(issue: Issue, field: FilterField, ctx: FilterContext): 
     }
     case "cycle":
       return [issue.fixed_version ? String(issue.fixed_version.id) : "none"];
+    case "category":
+      return [issue.category ? String(issue.category.id) : "none"];
     case "project":
       return [String(issue.project.id)];
     case "tracker":
@@ -64,9 +67,7 @@ export function matchesFilters(issue: Issue, filters: Filter[], ctx: FilterConte
 export function toggleFilterValue(filters: Filter[], field: FilterField, value: string): Filter[] {
   const existing = filters.find((f) => f.field === field);
   if (!existing) return [...filters, { field, values: [value] }];
-  const values = existing.values.includes(value)
-    ? existing.values.filter((v) => v !== value)
-    : [...existing.values, value];
+  const values = existing.values.includes(value) ? existing.values.filter((v) => v !== value) : [...existing.values, value];
   return values.length
     ? filters.map((f) => (f.field === field ? { ...f, values } : f))
     : filters.filter((f) => f.field !== field);
@@ -109,10 +110,10 @@ export function filterOptions(
         return v.slice(v.indexOf(":") + 1);
       case "cycle":
         return (
-          meta.versions.find((x) => x.id === id)?.name ??
-          issues.find((i) => i.fixed_version?.id === id)?.fixed_version?.name ??
-          v
+          meta.versions.find((x) => x.id === id)?.name ?? issues.find((i) => i.fixed_version?.id === id)?.fixed_version?.name ?? v
         );
+      case "category":
+        return issues.find((i) => i.category?.id === id)?.category?.name ?? categoryName(meta, id) ?? v;
       case "project":
         return meta.projects.find((p) => p.id === id)?.name ?? v;
       case "tracker":
@@ -141,6 +142,7 @@ const NONE_LABEL: Record<FilterField, string> = {
   assignee: "No assignee",
   label: "No labels",
   cycle: "No cycle",
+  category: "No category",
   project: "No project",
   tracker: "No tracker",
 };
@@ -151,4 +153,12 @@ export function describeFilter(filter: Filter, options: FilterOption[]): { field
   const names = filter.values.map((v) => options.find((o) => o.value === v)?.label ?? v);
   const values = names.length > 2 ? `${names.length} values` : names.join(" or ");
   return { field, values };
+}
+
+function categoryName(meta: Metadata, id: number): string | undefined {
+  for (const p of meta.projects) {
+    const c = p.issue_categories.find((x) => x.id === id);
+    if (c) return c.name;
+  }
+  return undefined;
 }

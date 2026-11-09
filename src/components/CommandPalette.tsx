@@ -2,14 +2,16 @@ import { Command } from "cmdk";
 import { useEffect, useMemo, useState } from "react";
 import { issueCategory } from "../lib/model";
 import { matchesShortcut, shortcutLabel } from "../lib/platform";
-import type { Route } from "../state/app";
+import type { PickerKind, Route } from "../state/app";
 import { routeKey, targetIssueId, useApp } from "../state/app";
 import { LAYOUTS } from "../lib/views";
 import { RELATION_CHOICES } from "../lib/relations";
 import { canManageVersions, cycleProjects } from "./Cycle";
 import { ISSUE_SHORTCUTS, issueCommandAvailable, runIssueCommand } from "./useIssueShortcuts";
 import { useDerived } from "../state/derived";
+import type { IconName } from "./icons";
 import { Icon, StatusIcon } from "./icons";
+import { fieldEnabled, moveTargets } from "../lib/edit";
 
 interface Action {
   id: string;
@@ -162,6 +164,52 @@ function PaletteContent() {
           run: () => runIssueCommand(s.kind, target),
         });
       }
+      const issue = issues.get(target);
+      if (issue && meta) {
+        const on = (field: string) => fieldEnabled(meta, issue.tracker.id, field);
+        const project = meta.projects.find((p) => p.id === issue.project.id);
+        const more: { kind: PickerKind; label: string; icon: IconName; keywords: string; show: boolean }[] = [
+          {
+            kind: "tracker",
+            label: "Change tracker…",
+            icon: "tracker",
+            keywords: "type bug feature",
+            show: (project?.trackers.length ?? 0) > 1,
+          },
+          {
+            kind: "category",
+            label: "Change category…",
+            icon: "category",
+            keywords: "component area",
+            show: on("category_id") && (project?.issue_categories.length ?? 0) > 0,
+          },
+          {
+            kind: "project",
+            label: "Move to project…",
+            icon: "project",
+            keywords: "move transfer",
+            show: moveTargets(meta).length > 1,
+          },
+          {
+            kind: "done",
+            label: "Change % done…",
+            icon: "done",
+            keywords: "progress percent done ratio",
+            show: on("done_ratio"),
+          },
+        ];
+        for (const m of more) {
+          if (!m.show) continue;
+          list.push({
+            id: `issue-${m.kind}`,
+            label: m.label,
+            group: `Issue #${target}`,
+            icon: <Icon name={m.icon} />,
+            keywords: m.keywords,
+            run: () => useApp.getState().openPicker(m.kind, target),
+          });
+        }
+      }
       list.push({
         id: "issue-subscribers",
         label: "Change subscribers…",
@@ -246,6 +294,7 @@ function PaletteContent() {
     route,
     detailOpen,
     meta,
+    issues,
   ]);
 
   const q = query.trim();

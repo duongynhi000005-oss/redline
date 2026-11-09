@@ -485,3 +485,61 @@ async fn versions_follow_the_role() {
     assert_eq!(closed.status, "closed");
     syncer.delete_version(created.id).await.unwrap();
 }
+
+#[tokio::test]
+async fn sets_and_clears_category_estimate_and_done() {
+    let client = live!();
+    let projects = client.projects().await.unwrap();
+    let web = projects.iter().find(|p| p.identifier == "web").unwrap();
+    let frontend = web
+        .issue_categories
+        .iter()
+        .find(|c| c.name == "Frontend")
+        .expect("the seed adds categories");
+    let trackers = client.trackers().await.unwrap();
+    assert!(trackers.iter().all(|t| t.enabled_standard_fields.is_some()));
+
+    let created = client
+        .create_issue(&IssueChanges {
+            project_id: Some(web.id),
+            subject: Some("Fields from the live test".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    client
+        .update_issue(
+            created.id,
+            &IssueChanges {
+                category_id: Some(Some(frontend.id)),
+                estimated_hours: Some(Some(2.5)),
+                done_ratio: Some(40),
+                start_date: Some(Some("2026-11-02".into())),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let set = client.issue(created.id, &[]).await.unwrap();
+    assert_eq!(set.category.as_ref().map(|c| c.id), Some(frontend.id));
+    assert_eq!(set.estimated_hours, Some(2.5));
+    assert_eq!(set.done_ratio, Some(40));
+    assert_eq!(set.start_date.as_deref(), Some("2026-11-02"));
+
+    client
+        .update_issue(
+            created.id,
+            &IssueChanges {
+                category_id: Some(None),
+                estimated_hours: Some(None),
+                start_date: Some(None),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let cleared = client.issue(created.id, &[]).await.unwrap();
+    assert!(cleared.category.is_none());
+    assert_eq!(cleared.estimated_hours, None);
+    assert_eq!(cleared.start_date, None);
+}

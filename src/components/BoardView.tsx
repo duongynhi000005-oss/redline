@@ -168,7 +168,7 @@ function Column({
   }, [focusedIndex, virtualizer]);
 
   const isOver = drag !== null && drag.overKey === column.key && drag.fromKey !== column.key;
-  const blocked = drag !== null && drag.fromKey !== column.key && !canDrop(column, drag.allowed);
+  const blocked = drag !== null && drag.fromKey !== column.key && !canDrop(column, drag.allowed, drag.issue);
   return (
     <section
       ref={(el) => registerColumn(column.key, el)}
@@ -283,6 +283,10 @@ export function BoardView({ issues, view, route }: { issues: Issue[]; view: View
   const moveTo = useCallback(
     async (issue: Issue, column: BoardColumn, allowed: Set<number> | null) => {
       if (column.statusId !== undefined && column.statusId === issue.status.id) return;
+      if (column.projectId !== undefined && column.projectId !== issue.project.id) {
+        showToast(`${column.label} is a category of another project, so #${issue.id} can't go in it.`);
+        return;
+      }
       if (!canDrop(column, allowed)) {
         showToast(`Redmine's workflow doesn't allow moving #${issue.id} from ${issue.status.name} to ${column.label}.`);
         return;
