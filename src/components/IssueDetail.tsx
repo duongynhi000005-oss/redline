@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { describeDetail } from "../lib/journal";
 import { CATEGORY_LABEL, PRIORITY_LABEL, issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
 import { isTyping, matchesShortcut, shortcutLabel } from "../lib/platform";
@@ -6,7 +6,7 @@ import { blockingIssues, mentionsIn, relatedGroups, subIssues } from "../lib/rel
 import type { Attachment, Issue, IssueDetails, Journal, Relation } from "../lib/types";
 import { errorMessage } from "../lib/types";
 import { allowed, timeAccess } from "../lib/permissions";
-import { fieldEnabled, moveTargets } from "../lib/edit";
+import { fieldEnabled, fieldShape, fieldValues, knownLabelValues, moveTargets } from "../lib/edit";
 import { formatHours } from "../lib/time";
 import { overlayOpen, useApp } from "../state/app";
 import { useDerived } from "../state/derived";
@@ -370,6 +370,8 @@ export function IssueDetail({ id }: { id: number }) {
   const [commentFiles, setCommentFiles] = useState<{ id: number; files: string[] }>({ id, files: [] });
   const [dropTarget, setDropTarget] = useState<"issue" | "comment" | null>(null);
   const d = useDerived();
+  // Values seen per custom field, to tell date fields from the rest.
+  const knownValues = useMemo(() => knownLabelValues(allIssues.values()), [allIssues]);
   const [loaded, setLoaded] = useState<{ id: number; details?: IssueDetails; error?: string } | null>(null);
   const details = loaded?.id === id ? (loaded.details ?? null) : null;
   const error = loaded?.id === id ? (loaded.error ?? null) : null;
@@ -461,10 +463,9 @@ export function IssueDetail({ id }: { id: number }) {
   const canSetPrivate =
     allowed(meta, issue.project.id, "set_issues_private") === true ||
     (issue.author?.id === me && allowed(meta, issue.project.id, "set_own_issues_private") === true);
-  // Fields not shown as labels get a row of their own.
-  const otherFields = issue.custom_fields.filter(
-    (f) => f.value && f.value.length !== 0 && (d.labelFields ? !d.labelFields.has(f.id) : !f.multiple),
-  );
+  // Fields not shown as labels get a row of their own, empty ones too so
+  // they can be filled in.
+  const otherFields = issue.custom_fields.filter((f) => (d.labelFields ? !d.labelFields.has(f.id) : !f.multiple));
 
   return (
     <section className="main detail" aria-label={`Issue ${issue.id}`}>
@@ -663,11 +664,25 @@ export function IssueDetail({ id }: { id: number }) {
                 <span className={issue.is_private ? undefined : "muted"}>{issue.is_private ? "Private" : "No"}</span>
               </Property>
             )}
-            {otherFields.map((f) => (
-              <Property key={f.id} label={f.name}>
-                {Array.isArray(f.value) ? f.value.join(", ") : f.value}
-              </Property>
-            ))}
+            {otherFields.map((f) => {
+              const values = fieldValues(f.value);
+              const seen = [...(knownValues.get(f.id)?.values ?? []), ...values];
+              if (!f.multiple && fieldShape(seen) === "date") {
+                return (
+                  <DateProperty
+                    key={f.id}
+                    label={f.name}
+                    value={values[0] ?? null}
+                    onChange={(day) => void updateIssue(issue.id, { custom_fields: [{ id: f.id, value: day ?? "" }] })}
+                  />
+                );
+              }
+              return (
+                <Property key={f.id} label={f.name} onEdit={() => openPicker("field", issue.id, undefined, f.id)}>
+                  <span className={values.length ? undefined : "muted"}>{values.length ? values.join(", ") : "None"}</span>
+                </Property>
+              );
+            })}
           </dl>
           <Subscribers issue={issue} />
           {time.view && <IssueTime issue={issue} canLog={time.log} />}

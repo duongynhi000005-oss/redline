@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 import { boardColumns, canDrop } from "../lib/board";
 import { createDemoBackend } from "../lib/demoBackend";
-import { fieldEnabled } from "../lib/edit";
+import { fieldEnabled, fieldShape, nextFieldValue } from "../lib/edit";
 import { filterOptions, matchesFilters } from "../lib/filters";
 import { groupIssues } from "../lib/views";
 import { derive } from "../state/derived";
@@ -96,6 +96,54 @@ describe("editing every field", () => {
     expect(fieldEnabled(trimmed, 1, "category_id")).toBe(false);
     expect(fieldEnabled(trimmed, 1, "due_date")).toBe(true);
     expect(fieldEnabled(trimmed, 2, "category_id")).toBe(true);
+  });
+});
+
+describe("custom fields", () => {
+  const field = async (backend: Awaited<ReturnType<typeof start>>["backend"], id: number, name: string) =>
+    (await backend.getIssues([id]))[0]?.custom_fields.find((f) => f.name === name)?.value;
+
+  it("picks a known value, types a new one, and clears it", async () => {
+    const { user, backend } = await start();
+    await openIssue(1);
+    await user.click(within(properties()).getByRole("button", { name: "Size: change" }));
+    let picker = await screen.findByRole("dialog", { name: "Set Size…" });
+    expect(within(picker).getByRole("option", { name: /^S/ })).toHaveTextContent("✓");
+    await user.click(within(picker).getByRole("option", { name: /^M/ }));
+    await waitFor(async () => expect(await field(backend, 1, "Size")).toBe("M"));
+
+    await user.click(within(properties()).getByRole("button", { name: "Size: change" }));
+    picker = await screen.findByRole("dialog", { name: "Set Size…" });
+    await user.keyboard("XL");
+    await user.click(within(picker).getByRole("option", { name: "Set to “XL”" }));
+    await waitFor(async () => expect(await field(backend, 1, "Size")).toBe("XL"));
+
+    await user.click(within(properties()).getByRole("button", { name: "Size: change" }));
+    picker = await screen.findByRole("dialog", { name: "Set Size…" });
+    await user.click(within(picker).getByRole("option", { name: "Clear Size" }));
+    await waitFor(async () => expect(await field(backend, 1, "Size")).toBe(""));
+    expect(within(properties()).getByRole("button", { name: "Size: change" })).toHaveTextContent("None");
+  });
+
+  it("guess a field's shape and the value to send", () => {
+    expect(fieldShape(["2026-11-09", "2026-12-01"])).toBe("date");
+    expect(fieldShape(["2026-11-09", "soon"])).toBe("value");
+    expect(fieldShape([])).toBe("value");
+    expect(nextFieldValue(["S"], false, "M")).toBe("M");
+    expect(nextFieldValue(["S"], false, "S")).toBe("");
+    expect(nextFieldValue(["a"], true, "b")).toEqual(["a", "b"]);
+    expect(nextFieldValue(["a"], true, "a")).toEqual([""]);
+  });
+
+  it("edits a field that holds days as a date", async () => {
+    const { user, backend } = await start();
+    await openIssue(1);
+    const review = within(properties()).getByLabelText("Review by");
+    await user.type(review, "2026-12-24");
+    await user.keyboard("{Enter}");
+    await waitFor(async () => expect(await field(backend, 1, "Review by")).toBe("2026-12-24"));
+    await user.click(within(properties()).getByRole("button", { name: "Clear review by" }));
+    await waitFor(async () => expect(await field(backend, 1, "Review by")).toBe(""));
   });
 });
 

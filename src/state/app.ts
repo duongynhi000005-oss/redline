@@ -70,13 +70,16 @@ export type PickerKind =
   | "tracker"
   | "category"
   | "project"
-  | "done";
+  | "done"
+  | "field";
 
 export interface PickerState {
   kind: PickerKind;
   issueId: number;
   /** For the relation picker: how to connect, once chosen. */
   relation?: RelationChoice;
+  /** For the custom field picker: which field. */
+  fieldId?: number;
 }
 
 export interface AppState {
@@ -121,7 +124,7 @@ export interface AppState {
   openIssue(id: number | null): void;
   focusIssue(id: number | null): void;
   setPaletteOpen(open: boolean): void;
-  openPicker(kind: PickerKind, issueId: number, relation?: RelationChoice): void;
+  openPicker(kind: PickerKind, issueId: number, relation?: RelationChoice, fieldId?: number): void;
   closePicker(): void;
   syncNow(): Promise<void>;
   updateIssue(id: number, changes: IssueChanges): Promise<IssueDetails | null>;
@@ -353,8 +356,8 @@ export const useApp = create<AppState>()((set, get) => {
       set({ paletteOpen: open });
     },
 
-    openPicker(kind, issueId, relation) {
-      set({ picker: { kind, issueId, relation }, paletteOpen: false });
+    openPicker(kind, issueId, relation, fieldId) {
+      set({ picker: { kind, issueId, relation, fieldId }, paletteOpen: false });
     },
 
     closePicker() {

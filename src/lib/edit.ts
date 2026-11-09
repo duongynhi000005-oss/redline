@@ -99,3 +99,27 @@ export function knownLabelValues(issues: Iterable<Issue>): Map<number, { name: s
     [...fields].map(([id, { name, values }]) => [id, { name, values: [...values].sort((a, b) => a.localeCompare(b)) }]),
   );
 }
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * How a custom field is edited, guessed from the values Redline has seen:
+ * Redmine shows field definitions only to admins. Date fields hold only
+ * days; everything else is edited as a value picked or typed.
+ */
+export function fieldShape(values: string[]): "date" | "value" {
+  return values.length > 0 && values.every((v) => DAY.test(v)) ? "date" : "value";
+}
+
+/** The value to send for a custom field after picking or typing one. */
+export function nextFieldValue(current: string[], multiple: boolean, value: string): string | string[] {
+  if (!multiple) return current.includes(value) ? "" : value;
+  const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+  // Redmine clears a multi-value field when sent a single blank.
+  return next.length ? next : [""];
+}
+
+/** A custom field's value as a list, without blanks. */
+export function fieldValues(value: string | string[] | null | undefined): string[] {
+  return (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
+}

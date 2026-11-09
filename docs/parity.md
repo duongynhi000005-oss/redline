@@ -22,7 +22,7 @@ browser, because Redmine has no API for it
 | Issue details | `GET /issues/:id.json` | ✅ | Issue view |
 | Subject, description, status, priority, assignee, cycle (version) | `PUT /issues/:id.json` | ✅ | Issue view and pickers |
 | Tracker, category, start date, due date, estimate, % done, private, parent | `PUT /issues/:id.json` | ✅ | Properties panel: tracker, category, project (move), parent, start and due dates (typed or picked, sent once finished), estimate (typed as 1.5, 1:30 or 1h 30m), % done, and private where the role may set it. Fields a tracker doesn't use are hidden (Redmine 5.1+ lists them on trackers). Also in the command menu. #42 |
-| Custom fields (every format) | Values on the issue; definitions are admin-only, so formats are learned from values | 🟡 labels only | Label groups for list fields, a property row for the rest, editable. #42 |
+| Custom fields (every format) | Values on the issue; definitions are admin-only, so formats are learned from values | ✅ | Multi-value fields are labels. Every other field has a row in the properties panel, empty ones too: fields holding only days are edited as dates, the rest pick a value Redline has seen or take a typed one. User and version fields show raw values, since their formats can't be read without admin rights. #42 |
 | Status transitions | `include=allowed_statuses` | ✅ | Status picker and board drops |
 | Comments (notes), private notes | `PUT /issues/:id.json` with `notes` | ✅ | Activity |
 | Edit a comment | `PUT /journals/:id.json` | ⬜ | Comment menu. #42 |
