@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { CategoryMap, PriorityLevel, StatusCategory } from "../lib/model";
-import { CATEGORY_ORDER, categoryMap, issueCategory, priorityLevels, teamOf } from "../lib/model";
+import { categoryMap, issueCategory, priorityLevels, teamOf } from "../lib/model";
 import type { Issue, Metadata, Project, Version } from "../lib/types";
 import type { ServerSettings } from "../lib/settings";
 import { DEFAULT_SETTINGS } from "../lib/settings";
@@ -88,16 +88,6 @@ export function useDerived(): Derived {
   return useMemo(() => (meta ? derive(meta, settings) : EMPTY), [meta, settings]);
 }
 
-/** Priority order for sorting: Urgent, High, Medium, Low, then no priority. */
-const PRIORITY_RANK: Record<PriorityLevel, number> = { 4: 0, 3: 1, 2: 2, 1: 3, 0: 4 };
-
-export function compareIssues(a: Issue, b: Issue, d: Derived): number {
-  const pa = PRIORITY_RANK[d.priorities.get(a.priority.id) ?? 0];
-  const pb = PRIORITY_RANK[d.priorities.get(b.priority.id) ?? 0];
-  if (pa !== pb) return pa - pb;
-  return b.updated_on.localeCompare(a.updated_on);
-}
-
 const ACTIVE: StatusCategory[] = ["triage", "started", "unstarted"];
 
 /** The issues a route shows, before grouping. */
@@ -149,25 +139,6 @@ export function issuesForRoute(
     }
   }
   return out;
-}
-
-export interface IssueGroup {
-  category: StatusCategory;
-  issues: Issue[];
-}
-
-export function groupByCategory(issues: Issue[], d: Derived): IssueGroup[] {
-  const groups = new Map<StatusCategory, Issue[]>();
-  for (const issue of issues) {
-    const cat = issueCategory(issue, d.categories);
-    let list = groups.get(cat);
-    if (!list) groups.set(cat, (list = []));
-    list.push(issue);
-  }
-  return CATEGORY_ORDER.filter((c) => groups.has(c)).map((category) => ({
-    category,
-    issues: groups.get(category)!.sort((a, b) => compareIssues(a, b, d)),
-  }));
 }
 
 export function routeTitle(route: Route, d: Derived): string {

@@ -6,7 +6,7 @@ import type { PriorityLevel, StatusCategory } from "../lib/model";
 import { hueFor } from "../lib/model";
 import type { Issue } from "../lib/types";
 import type { Route } from "../state/app";
-import { routeKey, useApp } from "../state/app";
+import { routeKey, useApp, viewFor } from "../state/app";
 import { issuesForRoute, useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
 import { matchesQuery } from "./CommandPalette";
@@ -87,7 +87,7 @@ export function FilterMenu() {
 
 function FilterMenuContent({ field }: { field: FilterField | null }) {
   const route = useApp((s) => s.route);
-  const filters = useApp((s) => s.filters[routeKey(s.route)]);
+  const filters = useApp((s) => viewFor(s, routeKey(s.route)).filters);
   const setFilters = useApp((s) => s.setFilters);
   const openFilterMenu = useApp((s) => s.openFilterMenu);
   const d = useDerived();
@@ -182,7 +182,7 @@ function FilterChip({ filter, route }: { filter: Filter; route: Route }) {
   const options = useFilterOptions(filter.field, route);
   const openFilterMenu = useApp((s) => s.openFilterMenu);
   const setFilters = useApp((s) => s.setFilters);
-  const filters = useApp((s) => s.filters[routeKey(s.route)] ?? []);
+  const filters = useApp((s) => viewFor(s, routeKey(s.route)).filters);
   const text = describeFilter(filter, options);
   return (
     <span className="filter-chip">
@@ -209,7 +209,7 @@ function FilterChip({ filter, route }: { filter: Filter; route: Route }) {
 
 /** The row of active filters under a list's header. */
 export function FilterBar({ route, shown, total }: { route: Route; shown: number; total: number }) {
-  const filters = useApp((s) => s.filters[routeKey(route)]);
+  const filters = useApp((s) => viewFor(s, routeKey(route)).filters);
   const setFilters = useApp((s) => s.setFilters);
   const openFilterMenu = useApp((s) => s.openFilterMenu);
   if (!filters?.length) return null;

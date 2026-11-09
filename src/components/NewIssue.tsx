@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { matchesShortcut, shortcutLabel } from "../lib/platform";
 import { errorMessage } from "../lib/types";
 import type { Route } from "../state/app";
 import { useApp } from "../state/app";
 import { useDerived } from "../state/derived";
+import { useDialogFocus } from "./useDialogFocus";
 
 /** The project a new issue goes to by default: the one on screen. */
 export function defaultProjectId(route: Route, openProjectId: number | undefined, firstTeam: number | undefined) {
@@ -32,6 +33,8 @@ function NewIssueForm({ onClose }: { onClose: () => void }) {
   const createIssue = useApp((s) => s.createIssue);
   const meta = useApp((s) => s.meta);
   const d = useDerived();
+  const ref = useRef<HTMLFormElement>(null);
+  useDialogFocus(ref);
   const projects = useMemo(
     () =>
       (meta?.projects ?? [])
@@ -80,6 +83,7 @@ function NewIssueForm({ onClose }: { onClose: () => void }) {
 
   return (
     <form
+      ref={ref}
       className="modal new-issue"
       role="dialog"
       aria-modal="true"
