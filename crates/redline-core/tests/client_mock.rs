@@ -1468,3 +1468,56 @@ async fn a_sync_that_fails_part_way_resumes_from_what_it_read() {
     let report = syncer.sync_issues().await.unwrap();
     assert!(!report.initial);
 }
+
+#[tokio::test]
+async fn a_key_redmine_stopped_accepting_keeps_the_cache() {
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    Mock::given(path("/issues.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [issue(1), issue(2)], "total_count": 2, "offset": 0, "limit": 100
+        })))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
+    syncer.sync_issues().await.unwrap();
+
+    // Redmine treats a revoked key as anonymous: lists come back empty with
+    // a 200, and only the current user says the key is refused.
+    server.reset().await;
+    Mock::given(path("/issues.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [], "total_count": 0, "offset": 0, "limit": 100
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(path("/users/current.json"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+    assert!(matches!(syncer.check_key().await, Err(Error::Unauthorized)));
+    assert!(matches!(
+        syncer.prune_deleted().await,
+        Err(Error::Unauthorized)
+    ));
+    assert_eq!(syncer.store().issue_ids().unwrap(), vec![1, 2]);
+
+    // With a key Redmine accepts, an empty answer really means deleted.
+    server.reset().await;
+    Mock::given(path("/issues.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [issue(1)], "total_count": 1, "offset": 0, "limit": 100
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(path("/users/current.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "user": {"id": 5, "login": "dev", "firstname": "Dana", "lastname": "Developer"}
+        })))
+        .mount(&server)
+        .await;
+    assert_eq!(syncer.prune_deleted().await.unwrap(), vec![2]);
+    assert_eq!(syncer.store().issue_ids().unwrap(), vec![1]);
+}

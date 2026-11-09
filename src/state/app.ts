@@ -192,6 +192,10 @@ export interface AppState {
   start(backend: Backend): Promise<void>;
   signIn(serverUrl: string, apiKey: string): Promise<void>;
   signOut(): Promise<void>;
+  /** Signs out and asks for a new key for the same server, keeping its cache. */
+  signInAgain(): Promise<void>;
+  /** The server the sign-in form starts with, after "Sign in again". */
+  signInServer: string;
   navigate(route: Route): void;
   openIssue(id: number | null): void;
   focusIssue(id: number | null): void;
@@ -280,6 +284,7 @@ let starting: { backend: Backend; promise: Promise<void> } | null = null;
 function initial() {
   return {
     phase: "starting" as Phase,
+    signInServer: "",
     backend: null,
     account: null,
     meta: null,
@@ -311,6 +316,15 @@ function initial() {
 }
 
 export const useApp = create<AppState>()((set, get) => {
+  async function leave(signInServer: string) {
+    const backend = get().backend;
+    generation++;
+    unlisten.forEach((u) => u());
+    unlisten = [];
+    await backend?.signOut();
+    set({ ...initial(), backend, phase: "signed-out", signInServer });
+  }
+
   /** Reads issues again from the backend's cache, after a change that touched them. */
   async function refreshIssues(backend: Backend, ids: number[]) {
     const fresh = await backend.getIssues(ids);
@@ -443,12 +457,12 @@ export const useApp = create<AppState>()((set, get) => {
     },
 
     async signOut() {
-      const backend = get().backend;
-      generation++;
-      unlisten.forEach((u) => u());
-      unlisten = [];
-      await backend?.signOut();
-      set({ ...initial(), backend, phase: "signed-out" });
+      await leave("");
+    },
+
+    async signInAgain() {
+      // One update, so the sign-in form starts with the server filled in.
+      await leave(get().account?.serverUrl ?? "");
     },
 
     navigate(route) {

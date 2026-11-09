@@ -359,6 +359,8 @@ export interface SyncState {
   state: SyncPhase;
   lastSyncedAt: number | null;
   message: string | null;
+  /** The error's code when the sync failed, e.g. "unauthorized". */
+  code?: string | null;
   /** How far a long sync has got, while it runs. */
   progress?: SyncCount | null;
 }
