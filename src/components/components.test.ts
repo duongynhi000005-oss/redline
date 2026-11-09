@@ -1,4 +1,5 @@
-import { matchesQuery } from "./CommandPalette";
+import { matchesQuery, rankIssues } from "./CommandPalette";
+import type { Issue } from "../lib/types";
 import { linkIssueRefs } from "./Markdown";
 import { syncLabel } from "./Sidebar";
 
@@ -21,6 +22,32 @@ describe("matchesQuery", () => {
   it("needs every word, in any order", () => {
     expect(matchesQuery("Go to Mobile", "mob go")).toBe(true);
     expect(matchesQuery("Go to Mobile", "web")).toBe(false);
+  });
+});
+
+describe("rankIssues", () => {
+  const issue = (id: number, subject: string, updated = "2026-11-01T00:00:00Z", closed = false) =>
+    ({ id, subject, updated_on: updated, status: { id: 1, name: "S", is_closed: closed } }) as Issue;
+  const ids = (list: Issue[]) => list.map((i) => i.id);
+
+  it("puts the issue with that number first, then numbers that start with it", () => {
+    const all = [issue(1999, "a"), issue(127, "b"), issue(12, "c"), issue(1, "d"), issue(31, "e"), issue(41, "#1 regression")];
+    expect(ids(rankIssues(all, "#1", 10))).toEqual([1, 12, 127, 1999, 41]);
+    expect(ids(rankIssues(all, "12", 10))).toEqual([12, 127]);
+  });
+
+  it("prefers subjects that start with the words, then open and recent issues", () => {
+    const all = [
+      issue(1, "Fix the sign-in form", "2026-11-05T00:00:00Z"),
+      issue(2, "Sign-in form crashes", "2026-11-01T00:00:00Z"),
+      issue(3, "Redesign sign-in", "2026-11-09T00:00:00Z"),
+      issue(4, "Sign-in form, old", "2026-11-09T00:00:00Z", true),
+      issue(5, "Unrelated"),
+    ];
+    expect(ids(rankIssues(all, "sign-in form", 10))).toEqual([2, 4, 1]);
+    expect(ids(rankIssues(all, "sign", 10))).toEqual([2, 4, 3, 1]);
+    expect(ids(rankIssues(all, "sign", 2))).toEqual([2, 4]);
+    expect(rankIssues(all, "  ", 10)).toEqual([]);
   });
 });
 
