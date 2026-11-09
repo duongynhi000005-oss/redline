@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { knownLabelValues } from "../lib/edit";
 import type { StatusCategory } from "../lib/model";
 import { CATEGORY_LABEL, CATEGORY_ORDER, defaultCategory } from "../lib/model";
 import { useApp } from "../state/app";
 import { useDerived } from "../state/derived";
 import { StatusIcon } from "./icons";
+import { useDialogFocus } from "./useDialogFocus";
 
 export function Settings() {
   const open = useApp((s) => s.settingsOpen);
@@ -27,6 +28,8 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
   const updateSettings = useApp((s) => s.updateSettings);
   const signOut = useApp((s) => s.signOut);
   const d = useDerived();
+  const ref = useRef<HTMLDivElement>(null);
+  useDialogFocus(ref);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -70,7 +73,7 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="modal settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div ref={ref} tabIndex={-1} className="modal settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
       <header className="settings-header">
         <h1 id="settings-title">Settings</h1>
         <span className="muted">{account ? new URL(account.serverUrl).host : ""}</span>

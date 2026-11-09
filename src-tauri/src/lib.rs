@@ -2,12 +2,14 @@
 
 mod account;
 mod commands;
+mod material;
 mod menu;
 mod session;
 
 use std::sync::atomic::Ordering;
 
 use tauri::{Emitter, Manager, WindowEvent};
+use tauri_plugin_window_state::StateFlags;
 
 use commands::AppState;
 
@@ -18,6 +20,8 @@ use commands::AppState;
 pub struct AppInfo {
     pub version: &'static str,
     pub platform: &'static str,
+    /// The window backdrop in use, so the UI can let it show through.
+    pub material: material::Material,
 }
 
 #[tauri::command]
@@ -25,6 +29,7 @@ fn app_info() -> AppInfo {
     AppInfo {
         version: redline_core::VERSION,
         platform: std::env::consts::OS,
+        material: material::current(),
     }
 }
 
@@ -36,11 +41,25 @@ pub fn run() {
     let builder = builder.menu(menu::build);
 
     builder
+        // Reopen where the window was left, like other desktop apps.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    StateFlags::SIZE
+                        | StateFlags::POSITION
+                        | StateFlags::MAXIMIZED
+                        | StateFlags::FULLSCREEN,
+                )
+                .build(),
+        )
         .manage(AppState::default())
         .on_menu_event(|app, event| {
             let _ = app.emit(menu::EVENT_MENU, event.id().as_ref());
         })
         .setup(|app| {
+            if let Some(window) = app.get_webview_window("main") {
+                material::apply(&window);
+            }
             let handle = app.handle().clone();
             tauri::async_runtime::block_on(async {
                 let state = handle.state::<AppState>();

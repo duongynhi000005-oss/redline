@@ -201,6 +201,14 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="m4 4 6 6M10 4l-6 6" {...stroke} />
         </Svg>
       );
+    case "display":
+      return (
+        <Svg {...props}>
+          <path d="M2 4h4M9 4h3M2 10h2M7 10h5" {...stroke} />
+          <circle cx="7.5" cy="4" r="1.5" {...stroke} />
+          <circle cx="5.5" cy="10" r="1.5" {...stroke} />
+        </Svg>
+      );
     case "plus":
       return (
         <Svg {...props}>
@@ -214,6 +222,7 @@ export type IconName =
   | "filter"
   | "close"
   | "plus"
+  | "display"
   | "inbox"
   | "my-issues"
   | "search"

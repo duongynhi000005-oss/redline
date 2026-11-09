@@ -215,7 +215,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   const applyChanges = (issue: Issue, c: IssueChanges): Issue => applyEdit(issue, c, meta);
 
   return {
-    appInfo: () => wait({ version: "0.1.0-demo", platform: /Mac/.test(navigator.platform) ? "macos" : "windows" }),
+    appInfo: () => wait({ version: "0.1.0-demo", platform: /Mac/.test(navigator.platform) ? "macos" : "windows", material: "none" }),
     getAccount: () => wait(account),
     async signIn(serverUrl, apiKey) {
       await wait(null);

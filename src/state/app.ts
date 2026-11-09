@@ -8,6 +8,8 @@ import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "../lib/settings";
 import type { Inbox } from "../lib/inbox";
 import { isMine, itemsFrom, loadInbox, mergeItems, saveInbox } from "../lib/inbox";
 import type { Filter, FilterField } from "../lib/filters";
+import type { ViewOptions } from "../lib/views";
+import { DEFAULT_VIEW, isDefaultView, loadViews, saveViews } from "../lib/views";
 
 /** Where the main pane is. Teams are top-level Redmine projects. */
 export type Route =
@@ -66,8 +68,8 @@ export interface AppState {
   settingsOpen: boolean;
   settings: ServerSettings;
   inbox: Inbox;
-  /** Each list's filters, by routeKey. Kept for the session. */
-  filters: Record<string, Filter[]>;
+  /** Each list's filters, grouping and ordering, by routeKey. Saved per server. */
+  views: Record<string, ViewOptions>;
   /** The filter menu, open on a field's values or on the list of fields. */
   filterMenu: { field: FilterField | null } | null;
   /** A short message shown at the bottom of the window, like a failed edit. */
@@ -91,6 +93,7 @@ export interface AppState {
   markInboxRead(keys: string[] | "all"): void;
   createIssue(fields: IssueChanges): Promise<Issue | null>;
   setFilters(key: string, filters: Filter[]): void;
+  updateView(key: string, change: Partial<ViewOptions>): void;
   openFilterMenu(field: FilterField | null): void;
   closeFilterMenu(): void;
 }
@@ -119,7 +122,7 @@ function initial() {
     settingsOpen: false,
     settings: DEFAULT_SETTINGS,
     inbox: { since: new Date().toISOString(), items: [] } as Inbox,
-    filters: {} as Record<string, Filter[]>,
+    views: {} as Record<string, ViewOptions>,
     filterMenu: null as { field: FilterField | null } | null,
     toast: null as string | null,
   };
@@ -136,7 +139,9 @@ export const useApp = create<AppState>()((set, get) => {
       meta,
       issues: new Map(list.map((i) => [i.id, i])),
       settings: account ? loadSettings(account.serverUrl, account.userId) : DEFAULT_SETTINGS,
-      ...(account ? { inbox: loadInbox(account.serverUrl, account.userId) } : {}),
+      ...(account
+        ? { inbox: loadInbox(account.serverUrl, account.userId), views: loadViews(account.serverUrl, account.userId) }
+        : {}),
       phase: "ready",
     });
     unlisten.forEach((u) => u());
@@ -335,10 +340,17 @@ export const useApp = create<AppState>()((set, get) => {
     },
 
     setFilters(key, filters) {
-      const all = { ...get().filters };
-      if (filters.length) all[key] = filters;
-      else delete all[key];
-      set({ filters: all });
+      get().updateView(key, { filters });
+    },
+
+    updateView(key, change) {
+      const views = { ...get().views };
+      const next = { ...DEFAULT_VIEW, ...views[key], ...change };
+      if (isDefaultView(next)) delete views[key];
+      else views[key] = next;
+      set({ views });
+      const account = get().account;
+      if (account) saveViews(account.serverUrl, account.userId, views);
     },
 
     openFilterMenu(field) {
@@ -365,6 +377,11 @@ export const useApp = create<AppState>()((set, get) => {
 /** The issue that commands and shortcuts act on: the open one, else the highlighted row. */
 export function targetIssueId(s: Pick<AppState, "openIssueId" | "focusedIssueId">): number | null {
   return s.openIssueId ?? s.focusedIssueId;
+}
+
+/** A list's display options, or the defaults. */
+export function viewFor(s: Pick<AppState, "views">, key: string): ViewOptions {
+  return s.views[key] ?? DEFAULT_VIEW;
 }
 
 /** Whether a menu or dialog is up, so the views underneath ignore their shortcuts. */

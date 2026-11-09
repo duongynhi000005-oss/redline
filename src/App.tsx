@@ -24,10 +24,10 @@ function Toast() {
     const timer = setTimeout(() => showToast(null), 6000);
     return () => clearTimeout(timer);
   }, [toast, showToast]);
-  if (!toast) return null;
+  // The live region stays in the page so screen readers announce each message.
   return (
-    <div className="toast" role="status">
-      {toast}
+    <div className="toast-region" role="status">
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
@@ -42,14 +42,21 @@ export function App({ backend }: { backend?: Backend }) {
   useEffect(() => {
     document.documentElement.dataset.platform = platform;
     if (isTauri()) document.documentElement.dataset.shell = "tauri";
-    void (async () => start(backend ?? (await getBackend())))();
+    void (async () => {
+      const b = backend ?? (await getBackend());
+      // The window's native material shows through the sidebar when there is one.
+      b.appInfo()
+        .then((info) => (document.documentElement.dataset.material = info.material ?? "none"))
+        .catch(() => {});
+      await start(b);
+    })();
   }, [backend, start]);
 
   if (phase === "starting") return <div className="app app-starting" data-tauri-drag-region />;
   if (phase === "signed-out") return <SignIn />;
 
   return (
-    <div className="app">
+    <div className="app" data-tauri-drag-region>
       <Sidebar />
       {openIssueId !== null ? (
         <IssueDetail id={openIssueId} />
