@@ -23,7 +23,7 @@ use tokio::task::JoinSet;
 use crate::client::{Client, IssueQuery, PAGE_SIZE};
 use crate::error::{Error, Result};
 use crate::mentions;
-use crate::models::{Issue, IssueStatusRef, Journal, NewRelation, Relation};
+use crate::models::{Issue, IssueChanges, IssueStatusRef, Journal, NewRelation, Relation, Upload};
 use crate::store::{Metadata, Store};
 
 const CURSOR_KEY: &str = "issues_cursor";
@@ -36,6 +36,14 @@ const CURSOR_OVERLAP: Duration = Duration::seconds(60);
 /// At most this many search hits get their comments read to confirm a
 /// mention, so one lookup can't turn into hundreds of requests.
 const MAX_MENTION_CHECKS: usize = 10;
+
+/// A file to attach, read by the caller.
+#[derive(Debug, Clone)]
+pub struct NewFile {
+    pub filename: String,
+    pub content_type: Option<String>,
+    pub bytes: Vec<u8>,
+}
 
 /// What one issue sync did.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -284,6 +292,45 @@ impl Syncer {
                 Ok(()) | Err(Error::NotFound) => {}
                 Err(e) => return Err(e),
             }
+        }
+        self.issue_details(issue_id).await
+    }
+
+    /// Uploads files and attaches them to an issue, with an optional
+    /// comment, then re-reads the issue.
+    pub async fn attach_files(
+        &self,
+        issue_id: u64,
+        files: Vec<NewFile>,
+        notes: Option<String>,
+    ) -> Result<IssueDetails> {
+        let mut uploads = Vec::with_capacity(files.len());
+        for file in files {
+            let token = self.client.upload(&file.filename, file.bytes).await?;
+            uploads.push(Upload {
+                token,
+                filename: file.filename,
+                content_type: file.content_type,
+            });
+        }
+        let changes = IssueChanges {
+            uploads: Some(uploads),
+            notes: notes.filter(|n| !n.trim().is_empty()),
+            ..Default::default()
+        };
+        self.client.update_issue(issue_id, &changes).await?;
+        self.issue_details(issue_id).await
+    }
+
+    /// Deletes an attachment, then re-reads the issue it was on.
+    pub async fn delete_attachment(
+        &self,
+        issue_id: u64,
+        attachment_id: u64,
+    ) -> Result<IssueDetails> {
+        match self.client.delete_attachment(attachment_id).await {
+            Ok(()) | Err(Error::NotFound) => {}
+            Err(e) => return Err(e),
         }
         self.issue_details(issue_id).await
     }

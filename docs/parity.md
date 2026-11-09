@@ -31,7 +31,7 @@ browser, because Redmine has no API for it
 | Mentions of other issues (`#123`) | Text in descriptions and notes; `GET /search.json` finds notes that mention an issue | ✅ | Related section: "Mentions" and "Mentioned in". #35 |
 | Sub-issues and parent | `include=children`, `parent_issue_id` | ✅ | Sub-issues list with progress, parent link, set parent and add sub-issue. #35 |
 | Watchers | `include=watchers`, `POST/DELETE /issues/:id/watchers.json` | ✅ | Subscribe button (Shift+S) and a Subscribers list on every issue. The API needs the role's add/delete watcher permissions even for yourself, so Redline reads the roles' permissions and, where the role lacks them, opens the issue in Redmine to watch it there. Whether you watch is read with `watcher_id=me` even when the list is hidden. #38 |
-| Attachments | `include=attachments`, `POST /uploads.json`, `GET /attachments/download/:id`, `DELETE /attachments/:id.json` | ⬜ | Attachments on the issue: preview, save, drop to upload. #39 |
+| Attachments | `include=attachments`, `POST /uploads.json`, `GET /attachments/download/:id`, `DELETE /attachments/:id.json` | ✅ | Tiles on the issue with image previews, save, delete, drop or pick files to upload (with a comment when dropped on the comment box). Inline images in descriptions and comments show the attachment. Files are cached on disk once read. #39 |
 | Associated revisions | `include=changesets` | ⬜ | Commits on the issue. #48 |
 | Spent time on an issue | `GET/POST/PUT/DELETE /time_entries.json` | ⬜ | Time on the issue, Log time (Cmd/Ctrl+Shift+T). #40 |
 | Copy issue | No API | ⬜ | "Duplicate issue" creates a copy with the same fields and a "copied to" relation. #42 |

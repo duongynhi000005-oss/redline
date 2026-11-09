@@ -6,7 +6,7 @@ use std::time::Duration;
 use redline_core::models::IssueChanges;
 use redline_core::{Client, Error, IssueQuery};
 use serde_json::json;
-use wiremock::matchers::{body_json, header, method, path, query_param};
+use wiremock::matchers::{body_bytes, body_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn client(server: &MockServer) -> Client {
@@ -466,4 +466,85 @@ async fn reads_roles_and_their_permissions() {
         roles[0].permissions,
         vec!["view_issues", "add_issue_watchers"]
     );
+}
+
+#[tokio::test]
+async fn uploads_attaches_downloads_and_deletes_files() {
+    use redline_core::{NewFile, Store, Syncer};
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/uploads.json"))
+        .and(query_param("filename", "shot.png"))
+        .and(header("Content-Type", "application/octet-stream"))
+        .and(body_bytes(b"png bytes".to_vec()))
+        .respond_with(
+            ResponseTemplate::new(201)
+                .set_body_json(json!({"upload": {"id": 7, "token": "7.abc"}})),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/issues/3.json"))
+        .and(body_json(json!({"issue": {
+            "notes": "Here it is",
+            "uploads": [{"token": "7.abc", "filename": "shot.png", "content_type": "image/png"}]
+        }})))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut with_attachment = issue(3);
+    with_attachment["attachments"] = json!([{
+        "id": 7, "filename": "shot.png", "filesize": 9, "content_type": "image/png",
+        "content_url": "https://elsewhere.example/attachments/download/7/shot.png"
+    }]);
+    Mock::given(method("GET"))
+        .and(path("/issues/3.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"issue": with_attachment})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/issues.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [], "total_count": 0, "offset": 0, "limit": 1
+        })))
+        .mount(&server)
+        .await;
+    // Downloads go to the signed-in server, not the host content_url names.
+    Mock::given(method("GET"))
+        .and(path("/attachments/download/7"))
+        .and(header("X-Redmine-API-Key", "test-key"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"png bytes".to_vec()))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/attachments/7.json"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
+    let details = syncer
+        .attach_files(
+            3,
+            vec![NewFile {
+                filename: "shot.png".into(),
+                content_type: Some("image/png".into()),
+                bytes: b"png bytes".to_vec(),
+            }],
+            Some("Here it is".into()),
+        )
+        .await
+        .unwrap();
+    let attachments = details.issue.attachments.unwrap();
+    assert_eq!(attachments[0].filename, "shot.png");
+    assert_eq!(
+        syncer.client().download_attachment(7).await.unwrap(),
+        b"png bytes"
+    );
+    syncer.delete_attachment(3, 7).await.unwrap();
 }

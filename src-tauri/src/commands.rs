@@ -368,3 +368,209 @@ pub async fn find_mentions(state: State<'_, AppState>, id: u64) -> CmdResult<Vec
     let syncer = syncer(&state).await?;
     Ok(syncer.mentions_of(id).await?)
 }
+
+// ----- Attachments --------------------------------------------------------
+
+/// Redmine's attachments never change, so each is cached on disk by id, per
+/// account, and read from there next time.
+async fn attachment_cache(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+) -> CmdResult<std::path::PathBuf> {
+    let name = {
+        let guard = state.session.read().await;
+        let session = guard.as_ref().ok_or_else(UiError::signed_out)?;
+        format!("{}.files", session.account.cache_file_name())
+    };
+    Ok(app
+        .path()
+        .app_cache_dir()
+        .map_err(|e| UiError::new("storage", e.to_string()))?
+        .join("attachments")
+        .join(name))
+}
+
+async fn attachment_bytes(
+    app: &AppHandle,
+    state: &State<'_, AppState>,
+    id: u64,
+) -> CmdResult<Vec<u8>> {
+    let path = attachment_cache(app, state).await?.join(id.to_string());
+    if let Ok(bytes) = tokio::fs::read(&path).await {
+        return Ok(bytes);
+    }
+    let bytes = syncer(state)
+        .await?
+        .client()
+        .download_attachment(id)
+        .await?;
+    // A failed write only means downloading again next time.
+    if let Some(dir) = path.parent() {
+        if tokio::fs::create_dir_all(dir).await.is_ok() {
+            let partial = path.with_extension("part");
+            if tokio::fs::write(&partial, &bytes).await.is_ok() {
+                let _ = tokio::fs::rename(&partial, &path).await;
+            }
+        }
+    }
+    Ok(bytes)
+}
+
+/// An attachment's content, as raw bytes for a preview.
+#[tauri::command]
+pub async fn attachment_data(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: u64,
+) -> CmdResult<tauri::ipc::Response> {
+    Ok(tauri::ipc::Response::new(
+        attachment_bytes(&app, &state, id).await?,
+    ))
+}
+
+/// Asks where to save an attachment and saves it there. False when the
+/// person cancels.
+#[tauri::command]
+pub async fn save_attachment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: u64,
+    filename: String,
+) -> CmdResult<bool> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let name = safe_file_name(&filename);
+    let dialog = app.dialog().file().set_file_name(&name);
+    let Some(target) = tauri::async_runtime::spawn_blocking(move || dialog.blocking_save_file())
+        .await
+        .map_err(|e| UiError::new("dialog", e.to_string()))?
+    else {
+        return Ok(false);
+    };
+    let path = target
+        .into_path()
+        .map_err(|e| UiError::new("dialog", e.to_string()))?;
+    let bytes = attachment_bytes(&app, &state, id).await?;
+    tokio::fs::write(&path, bytes)
+        .await
+        .map_err(|e| UiError::new("storage", format!("Couldn't save {name}: {e}")))?;
+    Ok(true)
+}
+
+/// Asks for files to attach. Returns their paths, or none when cancelled.
+#[tauri::command]
+pub async fn pick_files(app: AppHandle) -> CmdResult<Vec<String>> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let dialog = app.dialog().file();
+    let picked = tauri::async_runtime::spawn_blocking(move || dialog.blocking_pick_files())
+        .await
+        .map_err(|e| UiError::new("dialog", e.to_string()))?
+        .unwrap_or_default();
+    Ok(picked
+        .into_iter()
+        .filter_map(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect())
+}
+
+/// Larger files than this aren't read into memory; Redmine's own limit is
+/// usually far lower and it says so when a file is over it.
+const MAX_ATTACHMENT_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Uploads files (dropped on the window or picked) and attaches them to an
+/// issue, with an optional comment.
+#[tauri::command]
+pub async fn attach_files(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    issue_id: u64,
+    paths: Vec<String>,
+    notes: Option<String>,
+) -> CmdResult<IssueDetails> {
+    let mut files = Vec::with_capacity(paths.len());
+    for path in paths {
+        let path = std::path::PathBuf::from(path);
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let meta = tokio::fs::metadata(&path).await.ok();
+        if name.is_empty() || !path.is_absolute() || !meta.as_ref().is_some_and(|m| m.is_file()) {
+            return Err(UiError::new(
+                "invalid",
+                format!("{name} isn't a file Redline can attach."),
+            ));
+        }
+        if meta.is_some_and(|m| m.len() > MAX_ATTACHMENT_BYTES) {
+            return Err(UiError::new(
+                "too_large",
+                format!("{name} is too large to attach."),
+            ));
+        }
+        let bytes = tokio::fs::read(&path)
+            .await
+            .map_err(|e| UiError::new("storage", format!("Couldn't read {name}: {e}")))?;
+        files.push(redline_core::NewFile {
+            filename: name,
+            // Redmine works out the type from the name.
+            content_type: None,
+            bytes,
+        });
+    }
+    let details = syncer(&state)
+        .await?
+        .attach_files(issue_id, files, notes)
+        .await?;
+    emit_changed(&app, vec![issue_id]);
+    Ok(details)
+}
+
+#[tauri::command]
+pub async fn delete_attachment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    issue_id: u64,
+    attachment_id: u64,
+) -> CmdResult<IssueDetails> {
+    let details = syncer(&state)
+        .await?
+        .delete_attachment(issue_id, attachment_id)
+        .await?;
+    emit_changed(&app, vec![issue_id]);
+    Ok(details)
+}
+
+/// A name that's safe to suggest in a save dialog: no folders, no
+/// characters Windows or macOS reject.
+fn safe_file_name(name: &str) -> String {
+    let cleaned: String = name
+        .chars()
+        .map(|c| {
+            if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() {
+                '_'
+            } else {
+                c
+            }
+        })
+        .collect();
+    let cleaned = cleaned.trim().trim_start_matches('.').to_string();
+    if cleaned.is_empty() {
+        "attachment".into()
+    } else {
+        cleaned
+    }
+}
+
+#[cfg(test)]
+mod attachment_tests {
+    use super::safe_file_name;
+
+    #[test]
+    fn suggested_names_have_no_folders_or_reserved_characters() {
+        assert_eq!(safe_file_name("../../etc/passwd"), "_.._etc_passwd");
+        assert_eq!(safe_file_name("a:b?.png"), "a_b_.png");
+        assert_eq!(safe_file_name("  "), "attachment");
+        assert_eq!(safe_file_name("report.pdf"), "report.pdf");
+    }
+}

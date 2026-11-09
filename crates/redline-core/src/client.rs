@@ -300,6 +300,46 @@ impl Client {
         Ok(())
     }
 
+    /// Uploads a file and returns the token to attach it with
+    /// [`IssueChanges::uploads`](crate::models::IssueChanges).
+    pub async fn upload(&self, filename: &str, bytes: Vec<u8>) -> Result<String> {
+        let url = self.url("uploads.json")?;
+        let response = self
+            .send(|| {
+                self.http
+                    .post(url.clone())
+                    .query(&[("filename", filename)])
+                    .header("Content-Type", "application/octet-stream")
+                    .body(bytes.clone())
+            })
+            .await?;
+        let body: Value = decode(response).await?;
+        body.get("upload")
+            .and_then(|u| u.get("token"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .ok_or(Error::NotRedmine)
+    }
+
+    /// Downloads an attachment's content. Always asks the signed-in server,
+    /// whatever host its `content_url` names, so the key goes nowhere else.
+    pub async fn download_attachment(&self, attachment_id: u64) -> Result<Vec<u8>> {
+        let url = self.url(&format!("attachments/download/{attachment_id}"))?;
+        let response = self.send(|| self.http.get(url.clone())).await?;
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|e| Error::Network(e.to_string()))?;
+        Ok(bytes.to_vec())
+    }
+
+    /// Deletes an attachment. Needs the right to edit the issue.
+    pub async fn delete_attachment(&self, attachment_id: u64) -> Result<()> {
+        let url = self.url(&format!("attachments/{attachment_id}.json"))?;
+        self.send(|| self.http.delete(url.clone())).await?;
+        Ok(())
+    }
+
     /// Searches issue subjects, descriptions and comments, newest first.
     /// Returns at most one page (100 hits).
     pub async fn search_issues(&self, query: &str) -> Result<Vec<SearchResult>> {

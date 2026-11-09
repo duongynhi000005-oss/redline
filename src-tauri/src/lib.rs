@@ -53,6 +53,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .on_menu_event(|app, event| {
             let _ = app.emit(menu::EVENT_MENU, event.id().as_ref());
@@ -100,6 +101,11 @@ pub fn run() {
             commands::open_in_redmine,
             commands::remove_relation,
             commands::find_mentions,
+            commands::attachment_data,
+            commands::save_attachment,
+            commands::pick_files,
+            commands::attach_files,
+            commands::delete_attachment,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Redline");

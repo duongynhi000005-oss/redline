@@ -3,11 +3,12 @@ import { describeDetail } from "../lib/journal";
 import { CATEGORY_LABEL, PRIORITY_LABEL, issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
 import { isTyping, matchesShortcut, shortcutLabel } from "../lib/platform";
 import { blockingIssues, mentionsIn, relatedGroups, subIssues } from "../lib/relations";
-import type { Issue, IssueDetails, Journal, Relation } from "../lib/types";
+import type { Attachment, Issue, IssueDetails, Journal, Relation } from "../lib/types";
 import { errorMessage } from "../lib/types";
 import { allowed } from "../lib/permissions";
 import { overlayOpen, useApp } from "../state/app";
 import { useDerived } from "../state/derived";
+import { Attachments } from "./Attachments";
 import { Avatar } from "./Avatar";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
 import { Markdown } from "./Markdown";
@@ -98,7 +99,7 @@ function longDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-function Activity({ journals }: { journals: Journal[] }) {
+function Activity({ journals, attachments }: { journals: Journal[]; attachments?: Attachment[] | null }) {
   const meta = useApp((s) => s.meta)!;
   return (
     <ol className="activity">
@@ -127,7 +128,7 @@ function Activity({ journals }: { journals: Journal[] }) {
                   </time>
                   {j.private_notes && <span className="chip chip-plain">Private</span>}
                 </header>
-                <Markdown text={j.notes} />
+                <Markdown text={j.notes} attachments={attachments} />
               </article>
             )}
           </li>
@@ -254,23 +255,49 @@ function Connections({ issue, journals }: { issue: Issue; journals: Journal[] | 
   );
 }
 
-function CommentBox({ issueId }: { issueId: number }) {
+function fileName(path: string) {
+  return path.split(/[\\/]/).pop() ?? path;
+}
+
+function CommentBox({
+  issueId,
+  files,
+  onFilesChange,
+  dropping,
+}: {
+  issueId: number;
+  files: string[];
+  onFilesChange: (files: string[]) => void;
+  dropping: boolean;
+}) {
   const updateIssue = useApp((s) => s.updateIssue);
+  const attachFiles = useApp((s) => s.attachFiles);
+  const backend = useApp((s) => s.backend);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const ready = (text.trim() || files.length > 0) && !busy;
 
   async function submit() {
-    if (!text.trim() || busy) return;
+    if (!ready) return;
     setBusy(true);
-    const done = await updateIssue(issueId, { notes: text });
+    const done = files.length ? await attachFiles(issueId, files, text) : await updateIssue(issueId, { notes: text });
     setBusy(false);
     // On failure the toast explains, and the text stays to try again.
-    if (done) setText("");
+    if (done) {
+      setText("");
+      onFilesChange([]);
+    }
+  }
+
+  async function pick() {
+    const picked = await backend?.pickFiles().catch(() => []);
+    if (picked?.length) onFilesChange([...files, ...picked.filter((p) => !files.includes(p))]);
   }
 
   return (
     <form
-      className="comment-box"
+      className={dropping ? "comment-box is-dropping" : "comment-box"}
+      data-drop="comment"
       onSubmit={(e) => {
         e.preventDefault();
         void submit();
@@ -290,9 +317,30 @@ function CommentBox({ issueId }: { issueId: number }) {
           }
         }}
       />
+      {files.length > 0 && (
+        <ul className="comment-files" aria-label="Files to attach">
+          {files.map((f) => (
+            <li key={f} className="chip">
+              <Icon name="attachment" size={12} />
+              {fileName(f)}
+              <button
+                type="button"
+                className="chip-remove"
+                onClick={() => onFilesChange(files.filter((x) => x !== f))}
+                aria-label={`Don't attach ${fileName(f)}`}
+              >
+                <Icon name="close" size={10} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <div className="comment-box-actions">
-        <span className="muted">Markdown, #123 and @login work.</span>
-        <button type="submit" className="button-secondary" disabled={!text.trim() || busy}>
+        <button type="button" className="icon-button" onClick={() => void pick()} aria-label="Attach files to the comment" title="Attach files">
+          <Icon name="attachment" />
+        </button>
+        <span className="muted">Markdown, #123 and @login work. Drop files here to attach them.</span>
+        <button type="submit" className="button-secondary" disabled={!ready}>
           {busy ? "Sending…" : "Comment"} <kbd>{shortcutLabel("mod+enter")}</kbd>
         </button>
       </div>
@@ -312,6 +360,9 @@ export function IssueDetail({ id }: { id: number }) {
   const me = useApp((s) => s.account?.userId);
   const toggleSubscribe = useApp((s) => s.toggleSubscribe);
   const openInRedmine = useApp((s) => s.openInRedmine);
+  const attachFiles = useApp((s) => s.attachFiles);
+  const [commentFiles, setCommentFiles] = useState<{ id: number; files: string[] }>({ id, files: [] });
+  const [dropTarget, setDropTarget] = useState<"issue" | "comment" | null>(null);
   const d = useDerived();
   const [loaded, setLoaded] = useState<{ id: number; details?: IssueDetails; error?: string } | null>(null);
   const details = loaded?.id === id ? (loaded.details ?? null) : null;
@@ -334,6 +385,41 @@ export function IssueDetail({ id }: { id: number }) {
     };
     // Relation changes add a comment-less journal entry without touching updated_on.
   }, [backend, id, cached?.updated_on, relationIds]);
+
+  // Files dropped on the comment box go with the comment; anywhere else on
+  // the issue, they're attached at once.
+  useEffect(() => {
+    if (!backend) return;
+    const targetAt = (x: number, y: number) =>
+      document.elementFromPoint(x, y)?.closest("[data-drop]")?.getAttribute("data-drop") === "comment" ? "comment" : "issue";
+    let unlisten: (() => void) | null = null;
+    let live = true;
+    void backend
+      .onFileDrop((event) => {
+        if (event.type === "leave") setDropTarget(null);
+        else if (event.type === "over") setDropTarget(targetAt(event.x, event.y));
+        else {
+          setDropTarget(null);
+          if (!event.paths.length) return;
+          if (targetAt(event.x, event.y) === "comment") {
+            setCommentFiles((c) => {
+              const files = c.id === id ? c.files : [];
+              return { id, files: [...files, ...event.paths.filter((p) => !files.includes(p))] };
+            });
+          } else void attachFiles(id, event.paths);
+        }
+      })
+      .then((u) => (live ? (unlisten = u) : u()));
+    return () => {
+      live = false;
+      unlisten?.();
+    };
+  }, [backend, id, attachFiles]);
+
+  async function pickAndAttach() {
+    const picked = await backend?.pickFiles().catch(() => []);
+    if (picked?.length) await attachFiles(id, picked);
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -367,6 +453,12 @@ export function IssueDetail({ id }: { id: number }) {
 
   return (
     <section className="main detail" aria-label={`Issue ${issue.id}`}>
+      {dropTarget === "issue" && (
+        <div className="drop-overlay" aria-hidden="true">
+          <Icon name="attachment" size={20} />
+          Drop to attach to #{issue.id}
+        </div>
+      )}
       <header className="main-header" data-tauri-drag-region>
         <button type="button" className="icon-button" onClick={() => openIssue(null)} aria-label="Back to list">
           <Icon name="back" />
@@ -375,6 +467,9 @@ export function IssueDetail({ id }: { id: number }) {
           {issue.project.name} <Icon name="chevron-right" size={12} /> #{issue.id}
         </span>
         <span className="header-spacer" data-tauri-drag-region />
+        <button type="button" className="icon-button" onClick={() => void pickAndAttach()} aria-label="Attach files" title="Attach files">
+          <Icon name="attachment" />
+        </button>
         <button
           type="button"
           className={subscribed ? "icon-button is-on" : "icon-button"}
@@ -411,10 +506,11 @@ export function IssueDetail({ id }: { id: number }) {
             </p>
           )}
           {issue.description ? (
-            <Markdown text={issue.description} />
+            <Markdown text={issue.description} attachments={issue.attachments} />
           ) : (
             <p className="muted">No description.</p>
           )}
+          <Attachments issue={issue} onAttach={() => void pickAndAttach()} />
           <Connections issue={issue} journals={details?.journals ?? null} />
           <h2 className="activity-title">Activity</h2>
           <div className="activity-change">
@@ -427,11 +523,17 @@ export function IssueDetail({ id }: { id: number }) {
             </time>
           </div>
           {details ? (
-            <Activity journals={details.journals} />
+            <Activity journals={details.journals} attachments={issue.attachments} />
           ) : (
             <p className="muted">{error ? `Couldn't load the activity: ${error}` : "Loading activity…"}</p>
           )}
-          <CommentBox key={issue.id} issueId={issue.id} />
+          <CommentBox
+            key={issue.id}
+            issueId={issue.id}
+            files={commentFiles.id === issue.id ? commentFiles.files : []}
+            onFilesChange={(files) => setCommentFiles({ id: issue.id, files })}
+            dropping={dropTarget === "comment"}
+          />
         </div>
         <aside className="detail-properties" aria-label="Properties">
           <dl>
