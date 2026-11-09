@@ -841,3 +841,31 @@ async fn reads_news_and_adds_and_deletes_a_file() {
             .any(|f| f.filename == name)
     );
 }
+
+#[tokio::test]
+async fn reads_an_issues_commits_and_journals_for_the_feed() {
+    use redline_core::{Store, Syncer};
+
+    let client = live!();
+    let id = issue_id(&client, "Drag cards between columns").await;
+    let syncer = Syncer::new(client.clone(), Store::in_memory().unwrap());
+    let details = syncer.issue_details(id).await.unwrap();
+    let commits = details.issue.changesets.clone().unwrap_or_default();
+    let commit = commits
+        .iter()
+        .find(|c| {
+            c.comments
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("Snap cards")
+        })
+        .expect("the seeded commit");
+    assert!(commit.revision.starts_with("4f1c2a9"));
+    assert!(commit.user.is_some());
+
+    // The cache now has this issue's journals, so the feed reads them
+    // without asking Redmine again; an issue it doesn't have is skipped.
+    let found = syncer.issue_journals(&[id, 999_999]).await.unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].journals, details.journals);
+}

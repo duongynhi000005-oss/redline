@@ -45,6 +45,7 @@ export const tauriBackend: Backend = {
   createNews: (projectId, changes) => invoke("create_news", { projectId, changes }),
   updateNews: (id, changes) => invoke("update_news", { id, changes }),
   deleteNews: (id) => invoke("delete_news", { id }),
+  issueJournals: (ids) => invoke("issue_journals", { ids }),
   projectFiles: (projectId) => invoke("project_files", { projectId }),
   addProjectFiles: (projectId, paths, versionId, description) =>
     invoke("add_project_files", { projectId, paths, versionId, description: description || null }),

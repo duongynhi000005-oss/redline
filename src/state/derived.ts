@@ -149,6 +149,7 @@ export function issuesForRoute(
       case "wiki":
       case "news":
       case "files":
+      case "activity":
       case "cycles":
       case "time":
       case "inbox":
@@ -191,6 +192,8 @@ export function routeTitle(route: Route, d: Derived): string {
       return route.projectId === null ? "Updates" : `${d.projects.get(route.projectId)?.name ?? "Team"} news`;
     case "files":
       return `${d.projects.get(route.projectId)?.name ?? "Team"} files`;
+    case "activity":
+      return `${d.projects.get(route.projectId)?.name ?? "Team"} activity`;
     case "cycles":
       return `${d.projects.get(route.teamId)?.name ?? "Team"} cycles`;
     case "time":

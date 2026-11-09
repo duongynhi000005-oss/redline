@@ -4,6 +4,7 @@ import { INVERSE, mentionedIds } from "./relations";
 import type {
   Account,
   Attachment,
+  Changeset,
   Issue,
   IssueChanges,
   IssueDetails,
@@ -117,6 +118,7 @@ function buildMetadata(): Metadata {
           { id: 4, name: "news" },
           { id: 5, name: "files" },
           { id: 6, name: "boards" },
+          { id: 7, name: "repository" },
         ],
         issue_custom_fields: [
           { id: 1, name: "Area" },
@@ -240,6 +242,7 @@ function buildMetadata(): Metadata {
           "comment_news",
           "view_files",
           "manage_files",
+          "view_changesets",
         ],
       },
       {
@@ -259,6 +262,7 @@ function buildMetadata(): Metadata {
           "view_news",
           "comment_news",
           "view_files",
+          "view_changesets",
         ],
       },
     ],
@@ -649,6 +653,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       issue: {
         ...(may(issue.project.id, "view_issue_watchers") ? { ...issue, watchers: list } : issue),
         attachments: (files.get(id) ?? []).map((f) => f.attachment),
+        ...(may(issue.project.id, "view_changesets") ? { changesets: commits.get(id) ?? [] } : {}),
       },
       journals: buildJournals(issue).flatMap((j) => {
         const edit = commentEdits.get(j.id);
@@ -663,6 +668,16 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   };
 
   const applyChanges = (issue: Issue, c: IssueChanges): Issue => applyEdit(issue, c, meta);
+  // Commits that mention issues, as if Web had a Git repository.
+  const commits = new Map<number, Changeset[]>([
+    [
+      2,
+      [
+        { revision: "4f1c2a9e7d3b8a6c5f0e1d2c3b4a59687f6e5d4c", user: people[0]!, comments: "Resume syncing after sleep, refs #2", committed_on: iso(0, 2) },
+        { revision: "9b0d7e1f2a3c4b5d6e7f8091a2b3c4d5e6f70812", user: people[1]!, comments: "Log the wake-up event\n\nHelps with #2.", committed_on: iso(1, 4) },
+      ],
+    ],
+  ]);
 
   return {
     appInfo: () =>
@@ -682,6 +697,8 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     listIssues: () => wait([...issues.values()].sort((a, b) => b.updated_on.localeCompare(a.updated_on))),
     getIssues: (ids) => wait(ids.flatMap((id) => (issues.has(id) ? [issues.get(id)!] : []))),
     getIssueDetails: (id) => wait(details(id)),
+    issueJournals: (ids) =>
+      wait(ids.slice(0, 200).flatMap((id) => (issues.has(id) ? [{ issue_id: id, journals: details(id).journals }] : []))),
     getSyncState: () => wait(account ? { state: "idle" as const, lastSyncedAt, message: null } : null),
     async syncNow() {
       lastSyncedAt = Date.now();

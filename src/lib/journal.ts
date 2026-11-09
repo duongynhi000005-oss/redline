@@ -35,6 +35,8 @@ function lookup(meta: Metadata, attribute: string, value: string | null | undefi
       return find(meta.projects);
     case "fixed_version_id":
       return find(meta.versions);
+    case "category_id":
+      return find(meta.projects.flatMap((p) => p.issue_categories ?? []));
     case "assigned_to_id": {
       const people = meta.memberships.flatMap((m) => (m.user ? [m.user] : m.group ? [m.group] : []));
       if (meta.user?.id === id) return `${meta.user.firstname} ${meta.user.lastname}`.trim();

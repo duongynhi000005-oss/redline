@@ -1223,3 +1223,69 @@ async fn lists_and_adds_project_files() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn reads_journals_for_the_feed_only_where_the_cache_is_behind() {
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    // #2 changed since its journals were cached; #3 is gone.
+    let mut fresh = issue(2);
+    fresh["journals"] = json!([{"id": 20, "notes": "New comment", "created_on": "2026-11-02T00:00:00Z", "details": []}]);
+    Mock::given(path("/issues/2.json"))
+        .and(query_param("include", "journals"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"issue": fresh})))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(path("/issues/3.json"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(path("/issues/1.json"))
+        .respond_with(ResponseTemplate::new(500))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let store = Store::in_memory().unwrap();
+    let issues: Vec<redline_core::models::Issue> = (1..=3)
+        .map(|id| serde_json::from_value(issue(id)).unwrap())
+        .collect();
+    store.upsert_issues(&issues).unwrap();
+    let old: Vec<redline_core::models::Journal> = serde_json::from_value(
+        json!([{"id": 10, "notes": "Cached", "created_on": "2026-11-01T00:00:00Z", "details": []}]),
+    )
+    .unwrap();
+    store.set_journals(1, "2026-11-02T00:00:00Z", &old).unwrap();
+    store.set_journals(2, "2026-11-01T00:00:00Z", &old).unwrap();
+
+    let syncer = Syncer::new(client(&server), store.clone());
+    let mut found = syncer.issue_journals(&[1, 2, 3, 99]).await.unwrap();
+    found.sort_by_key(|j| j.issue_id);
+    assert_eq!(found.len(), 2);
+    assert_eq!(found[0].journals[0].notes.as_deref(), Some("Cached"));
+    assert_eq!(found[1].journals[0].notes.as_deref(), Some("New comment"));
+    // Now cached, so the next feed doesn't ask again.
+    assert_eq!(store.journals(2).unwrap().unwrap().1[0].id, 20);
+}
+
+#[tokio::test]
+async fn reads_the_commits_linked_to_an_issue() {
+    let server = MockServer::start().await;
+    let mut detailed = issue(5);
+    detailed["changesets"] = json!([{
+        "revision": "4f1c2a9",
+        "user": {"id": 3, "name": "Dana Lee"},
+        "comments": "Fix the board drag, refs #5",
+        "committed_on": "2026-11-03T10:00:00Z"
+    }]);
+    Mock::given(path("/issues/5.json"))
+        .and(query_param("include", "changesets"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"issue": detailed})))
+        .mount(&server)
+        .await;
+    let found = client(&server).issue(5, &["changesets"]).await.unwrap();
+    let commits = found.changesets.unwrap();
+    assert_eq!(commits[0].revision, "4f1c2a9");
+    assert_eq!(commits[0].user.as_ref().unwrap().name, "Dana Lee");
+}

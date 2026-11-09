@@ -324,6 +324,21 @@ if web
   FileUtils.chown_R(owner.uid, owner.gid, root)
 end
 
+# A commit that mentions an issue, for the commits an issue shows. Redmine
+# reads commits from a real repository; this records one as if it had, so no
+# repository needs to exist on disk.
+if web && (drag = web.issues.find_by(subject: "Drag cards between columns"))
+  web.enabled_module_names = (web.enabled_module_names | %w[repository])
+  repo = web.repository || Repository::Git.new(project: web, url: "/srv/git/web.git", identifier: "web", is_default: true).tap { |r| r.save!(validate: false) }
+  unless repo.changesets.exists?(revision: "4f1c2a9e7d3b8a6c5f0e1d2c3b4a59687f6e5d4c")
+    commit = Changeset.create!(repository: repo, revision: "4f1c2a9e7d3b8a6c5f0e1d2c3b4a59687f6e5d4c",
+                               scmid: "4f1c2a9e7d3b8a6c5f0e1d2c3b4a59687f6e5d4c", committer: "dev",
+                               committed_on: Time.now - 3600, comments: "Snap cards to the column they're dropped on, refs ##{drag.id}")
+    commit.issues << drag unless commit.issues.include?(drag)
+    say "recorded a commit for ##{drag.id}"
+  end
+end
+
 # What the team overview shows: a description and a homepage for Web.
 web = Project.find_by(identifier: "web")
 if web && web.homepage.blank?

@@ -199,6 +199,22 @@ export interface Issue {
   watchers?: Named[] | null;
   /** Read with the issue's details, not with every sync. */
   attachments?: Attachment[] | null;
+  /** Commits that mention the issue, read with its details; only for roles that may see the repository. */
+  changesets?: Changeset[] | null;
+}
+
+/** A repository commit linked to an issue. */
+export interface Changeset {
+  revision: string;
+  user?: Named | null;
+  comments?: string | null;
+  committed_on?: string | null;
+}
+
+/** An issue's journals, for the activity feed. */
+export interface IssueJournals {
+  issue_id: number;
+  journals: Journal[];
 }
 
 export interface Attachment {

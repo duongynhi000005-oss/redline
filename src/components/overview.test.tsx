@@ -164,10 +164,10 @@ describe("areas and roles", () => {
       { id: 4, name: "contacts" },
     ] };
     const areas = areasOf(web, meta);
-    expect(areas.map((a) => a.label)).toEqual(["Issues", "Cycles", "Calendar", "Repository", "Contacts"]);
-    expect(areas[2]!).toMatchObject({ layout: "calendar", route: { view: "team", teamId: 1, tab: "all" } });
-    expect(areas[3]!.path).toBe("projects/web/repository");
-    expect(areas[4]!.path).toBe("projects/web");
+    expect(areas.map((a) => a.label)).toEqual(["Activity", "Issues", "Cycles", "Calendar", "Repository", "Contacts"]);
+    expect(areas[3]!).toMatchObject({ layout: "calendar", route: { view: "team", teamId: 1, tab: "all" } });
+    expect(areas[4]!.path).toBe("projects/web/repository");
+    expect(areas[5]!.path).toBe("projects/web");
   });
 
   it("lists someone with two roles under both", async () => {

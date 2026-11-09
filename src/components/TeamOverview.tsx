@@ -44,7 +44,8 @@ export function issuesRoute(project: Project): Route {
 /** The project's enabled modules, each with where it opens. Unknown modules open the project in Redmine. */
 export function areasOf(project: Project, meta: Metadata): Area[] {
   const team = teamOf(project.id, meta);
-  const out: Area[] = [];
+  // Redmine's Activity isn't a module; every project has it.
+  const out: Area[] = [{ module: "activity", label: "Activity", icon: "activity", route: { view: "activity", projectId: project.id } }];
   for (const { name } of project.enabled_modules) {
     const known = AREAS[name];
     const label = known?.label ?? name.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());

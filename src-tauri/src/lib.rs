@@ -125,6 +125,7 @@ pub fn run() {
             commands::create_news,
             commands::update_news,
             commands::delete_news,
+            commands::issue_journals,
             commands::project_files,
             commands::add_project_files,
             commands::delete_project_file,

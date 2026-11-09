@@ -25,6 +25,7 @@ import type {
   News,
   NewsChanges,
   ProjectFile,
+  IssueJournals,
 } from "./types";
 
 type Unlisten = () => void;
@@ -48,6 +49,8 @@ export interface Backend {
   listIssues(): Promise<Issue[]>;
   getIssues(ids: number[]): Promise<Issue[]>;
   getIssueDetails(id: number, refresh?: boolean): Promise<IssueDetails>;
+  /** Journals of cached issues (up to 200), read from Redmine only where the cache is behind. */
+  issueJournals(ids: number[]): Promise<IssueJournals[]>;
   /** The latest sync state, or null when signed out. */
   getSyncState(): Promise<SyncState | null>;
   syncNow(): Promise<void>;

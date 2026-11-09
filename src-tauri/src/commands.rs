@@ -690,6 +690,17 @@ pub async fn delete_news(state: State<'_, AppState>, id: u64) -> CmdResult<()> {
 
 // ----- Files --------------------------------------------------------------
 
+/// Journals of cached issues for the activity feed, read from Redmine only
+/// where the cache is behind. At most 200 issues per call.
+#[tauri::command]
+pub async fn issue_journals(
+    state: State<'_, AppState>,
+    ids: Vec<u64>,
+) -> CmdResult<Vec<redline_core::models::IssueJournals>> {
+    let ids: Vec<u64> = ids.into_iter().take(200).collect();
+    Ok(syncer(&state).await?.issue_journals(&ids).await?)
+}
+
 /// A team's files, under its versions or the whole team.
 #[tauri::command]
 pub async fn project_files(

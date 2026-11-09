@@ -618,6 +618,29 @@ pub struct Issue {
     pub relations: Option<Vec<Relation>>,
     #[serde(default)]
     pub allowed_statuses: Option<Vec<IssueStatusRef>>,
+    /// Commits that mention the issue; only for roles that may see the
+    /// repository.
+    #[serde(default)]
+    pub changesets: Option<Vec<Changeset>>,
+}
+
+/// A repository commit linked to an issue, from `include=changesets`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Changeset {
+    pub revision: String,
+    #[serde(default)]
+    pub user: Option<Named>,
+    #[serde(default)]
+    pub comments: Option<String>,
+    #[serde(default)]
+    pub committed_on: Option<String>,
+}
+
+/// An issue's journals, for the activity feed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IssueJournals {
+    pub issue_id: u64,
+    pub journals: Vec<Journal>,
 }
 
 /// A saved issue query, from `/queries.json`. Redmine only exposes its id and
