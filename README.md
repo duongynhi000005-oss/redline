@@ -15,6 +15,10 @@ Redline is in early development, working towards its first release.
 - Keeps a local copy of what you can see, so lists are instant and work while
   the server is slow, and pulls changes in the background.
 
+The goal is for everything in Redmine to have a place in Redline.
+[docs/parity.md](docs/parity.md) tracks each Redmine area, what its API
+allows, and where it lives in Redline.
+
 ## Supported Redmine versions
 
 Redmine 6.1 and later, with the REST API turned on (Administration > Settings
