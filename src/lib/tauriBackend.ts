@@ -22,7 +22,8 @@ export const tauriBackend: Backend = {
   updateComment: (issueId, journalId, notes) => invoke("update_comment", { issueId, journalId, notes }),
   findMentions: (id) => invoke("find_mentions", { id }),
   runQuery: (queryId, projectId) => invoke("run_query", { queryId, projectId: projectId ?? null }),
-  search: (text, offset) => invoke("search", { text, offset }),
+  search: (text, offset, scope) =>
+    invoke("search", { text, offset, scope: scope ? { project_id: scope.projectId ?? null, kinds: scope.kinds ?? [] } : null }),
   setWatcher: (issueId, userId, watching) => invoke("set_watcher", { issueId, userId, watching }),
   openInRedmine: (path) => invoke("open_in_redmine", { path }),
   openHomepage: (projectId) => invoke("open_homepage", { projectId }),
@@ -45,6 +46,7 @@ export const tauriBackend: Backend = {
   createNews: (projectId, changes) => invoke("create_news", { projectId, changes }),
   updateNews: (id, changes) => invoke("update_news", { id, changes }),
   deleteNews: (id) => invoke("delete_news", { id }),
+  issueJournals: (ids) => invoke("issue_journals", { ids }),
   projectFiles: (projectId) => invoke("project_files", { projectId }),
   addProjectFiles: (projectId, paths, versionId, description) =>
     invoke("add_project_files", { projectId, paths, versionId, description: description || null }),

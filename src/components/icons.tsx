@@ -356,6 +356,19 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M4.5 5h5M4.5 7h5M4.5 9h3" {...stroke} />
         </Svg>
       );
+    case "activity":
+      return (
+        <Svg {...props}>
+          <path d="M1.5 7h2.5l1.5-3.5 3 7 1.5-3.5h2.5" {...stroke} />
+        </Svg>
+      );
+    case "commit":
+      return (
+        <Svg {...props}>
+          <circle cx="7" cy="7" r="2.2" {...stroke} />
+          <path d="M1.5 7h3.3M9.2 7h3.3" {...stroke} />
+        </Svg>
+      );
     case "forum":
       return (
         <Svg {...props}>
@@ -439,6 +452,8 @@ export type IconName =
   | "wiki"
   | "history"
   | "news"
+  | "activity"
+  | "commit"
   | "forum"
   | "repository"
   | "link"

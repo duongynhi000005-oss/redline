@@ -74,8 +74,8 @@ describe("team overview", () => {
     backend.openInRedmine = async (path) => void opened.push(path);
     const page = await openOverview(1);
     const areas = within(page).getByRole("region", { name: "Areas" });
-    await user.click(within(areas).getByRole("button", { name: "Forums" }));
-    expect(opened).toEqual(["projects/web/boards"]);
+    await user.click(within(areas).getByRole("button", { name: "Repository" }));
+    expect(opened).toEqual(["projects/web/repository"]);
     await user.click(within(areas).getByRole("button", { name: "Wiki" }));
     expect(useApp.getState().route).toEqual({ view: "wiki", projectId: 1, title: null });
     const again = within(await openOverview(1)).getByRole("region", { name: "Areas" });
@@ -164,10 +164,10 @@ describe("areas and roles", () => {
       { id: 4, name: "contacts" },
     ] };
     const areas = areasOf(web, meta);
-    expect(areas.map((a) => a.label)).toEqual(["Issues", "Cycles", "Calendar", "Repository", "Contacts"]);
-    expect(areas[2]!).toMatchObject({ layout: "calendar", route: { view: "team", teamId: 1, tab: "all" } });
-    expect(areas[3]!.path).toBe("projects/web/repository");
-    expect(areas[4]!.path).toBe("projects/web");
+    expect(areas.map((a) => a.label)).toEqual(["Activity", "Issues", "Cycles", "Calendar", "Repository", "Contacts"]);
+    expect(areas[3]!).toMatchObject({ layout: "calendar", route: { view: "team", teamId: 1, tab: "all" } });
+    expect(areas[4]!.path).toBe("projects/web/repository");
+    expect(areas[5]!.path).toBe("projects/web");
   });
 
   it("lists someone with two roles under both", async () => {

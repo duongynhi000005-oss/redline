@@ -207,7 +207,7 @@ export function WikiView({ projectId, title }: { projectId: number; title: strin
           className="icon-button"
           onClick={() => openInRedmine(`projects/${project.identifier}/wiki${latest ? `/${encodeURIComponent(latest.title)}` : ""}`)}
           aria-label="Open in Redmine"
-          title="Open in Redmine"
+          title={`Open in Redmine (${shortcutLabel("mod+shift+o")})`}
         >
           <Icon name="external" />
         </button>

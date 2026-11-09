@@ -324,6 +324,43 @@ if web
   FileUtils.chown_R(owner.uid, owner.gid, root)
 end
 
+# A commit that mentions an issue, for the commits an issue shows. Redmine
+# reads commits from a real repository; this records one as if it had, so no
+# repository needs to exist on disk.
+if web && (drag = web.issues.find_by(subject: "Drag cards between columns"))
+  web.enabled_module_names = (web.enabled_module_names | %w[repository])
+  repo = web.repository || Repository::Git.new(project: web, url: "/srv/git/web.git", identifier: "web", is_default: true).tap { |r| r.save!(validate: false) }
+  unless repo.changesets.exists?(revision: "4f1c2a9e7d3b8a6c5f0e1d2c3b4a59687f6e5d4c")
+    commit = Changeset.create!(repository: repo, revision: "4f1c2a9e7d3b8a6c5f0e1d2c3b4a59687f6e5d4c",
+                               scmid: "4f1c2a9e7d3b8a6c5f0e1d2c3b4a59687f6e5d4c", committer: "dev",
+                               committed_on: Time.now - 3600, comments: "Snap cards to the column they're dropped on, refs ##{drag.id}")
+    commit.issues << drag unless commit.issues.include?(drag)
+    say "recorded a commit for ##{drag.id}"
+  end
+end
+
+# A document and a forum thread in Web, which Redline finds through search.
+if web
+  web.enabled_module_names = (web.enabled_module_names | %w[documents boards])
+  category = DocumentCategory.first || DocumentCategory.create!(name: "Technical documentation")
+  {
+    "Board view spec" => "How the board groups issues, and what dragging a card changes.",
+    "Keyboard shortcuts" => "Every shortcut on the board and in lists, for macOS and Windows."
+  }.each do |title, description|
+    next if Document.exists?(project: web, title: title)
+    Document.create!(project: web, category: category, title: title, description: description)
+    say "added the document #{title}"
+  end
+  board = web.boards.first || Board.create!(project: web, name: "General", description: "Questions and ideas")
+  unless Message.exists?(board: board, subject: "Syncing on a slow connection")
+    topic = Message.create!(board: board, author: user, subject: "Syncing on a slow connection",
+                            content: "Sync takes a minute on hotel Wi-Fi. Is there a way to sync only my issues?")
+    Message.create!(board: board, parent: topic, author: admin, subject: "RE: Syncing on a slow connection",
+                    content: "Not yet. A board view of just your issues is planned.")
+    say "started a forum thread"
+  end
+end
+
 # What the team overview shows: a description and a homepage for Web.
 web = Project.find_by(identifier: "web")
 if web && web.homepage.blank?

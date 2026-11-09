@@ -752,19 +752,42 @@ impl Client {
 
     /// One page of what Redmine search finds for the text, newest first:
     /// issues, wiki pages, news, documents, forum messages, changesets and
-    /// projects, as far as the user may see them.
-    pub async fn search(&self, text: &str, offset: u64, limit: u32) -> Result<Page<SearchResult>> {
-        let body: Value = self
-            .get(
-                "search.json",
-                &[
-                    ("q", text.to_string()),
-                    ("offset", offset.to_string()),
-                    ("limit", limit.to_string()),
-                ],
-            )
-            .await?;
-        page(body, "results")
+    /// projects, as far as the user may see them. A scope narrows it to one
+    /// project and to some kinds.
+    ///
+    /// Redmine searches every kind when none of the asked kinds is open to
+    /// the user, so hits of other kinds are dropped here, and the total then
+    /// counts only what was kept.
+    pub async fn search(
+        &self,
+        text: &str,
+        offset: u64,
+        limit: u32,
+        scope: &SearchScope,
+    ) -> Result<Page<SearchResult>> {
+        let mut query = vec![
+            ("q", text.to_string()),
+            ("offset", offset.to_string()),
+            ("limit", limit.to_string()),
+        ];
+        for kind in &scope.kinds {
+            query.push((kind.param(), "1".into()));
+        }
+        let path = match scope.project_id {
+            Some(id) => format!("projects/{id}/search.json"),
+            None => "search.json".into(),
+        };
+        let body: Value = self.get(&path, &query).await?;
+        let mut page: Page<SearchResult> = page(body, "results")?;
+        if !scope.kinds.is_empty() {
+            let before = page.items.len();
+            page.items
+                .retain(|r| scope.kinds.iter().any(|k| k.matches(&r.kind)));
+            if page.items.len() != before {
+                page.total_count = offset + page.items.len() as u64;
+            }
+        }
+        Ok(page)
     }
 
     /// Searches issue subjects, descriptions and comments, newest first.

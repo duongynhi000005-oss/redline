@@ -9,6 +9,7 @@ import { AttachmentGrid } from "./Attachments";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Avatar } from "./Avatar";
 import { Icon } from "./icons";
+import { OpenInRedmineButton } from "./OpenInRedmine";
 import { Markdown } from "./Markdown";
 import { MenuButton, type MenuItem } from "./Menu";
 import { PersonButton } from "./PersonCard";
@@ -24,7 +25,6 @@ export function NewsView({ projectId, newsId }: { projectId: number | null; news
   const backend = useApp((s) => s.backend);
   const meta = useApp((s) => s.meta);
   const navigate = useApp((s) => s.navigate);
-  const openInRedmine = useApp((s) => s.openInRedmine);
   const showToast = useApp((s) => s.showToast);
   const overlay = useApp(overlayOpen);
   const d = useDerived();
@@ -163,15 +163,7 @@ export function NewsView({ projectId, newsId }: { projectId: number | null; news
             Edit
           </button>
         )}
-        <button
-          type="button"
-          className="icon-button"
-          onClick={() => openInRedmine(reading ? `news/${reading.id}` : project ? `projects/${project.identifier}/news` : "news")}
-          aria-label="Open in Redmine"
-          title="Open in Redmine"
-        >
-          <Icon name="external" />
-        </button>
+        <OpenInRedmineButton />
         <MenuButton label="Post actions" menuLabel="Post actions" items={items} />
       </header>
       <div className="detail-body">

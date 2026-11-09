@@ -13,6 +13,9 @@ describe("describeDetail", () => {
     expect(describeDetail({ property: "attr", name: "fixed_version_id", old_value: "2", new_value: "" }, meta)).toBe(
       "removed cycle Sprint 2",
     );
+    expect(describeDetail({ property: "attr", name: "category_id", old_value: null, new_value: "2" }, meta)).toBe(
+      "set category to Sync engine",
+    );
     expect(describeDetail({ property: "cf", name: "2", old_value: "S", new_value: "M" }, meta)).toBe(
       "changed Size from S to M",
     );

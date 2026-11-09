@@ -211,7 +211,7 @@ impl Store {
     /// An issue counts as changed when anything Redline keeps differs, not
     /// only `updated_on`: Redmine doesn't touch `updated_on` when a relation
     /// is added or removed. Extras a list doesn't carry (watchers, children,
-    /// attachments) are kept from the cached copy until a fresh copy has them.
+    /// attachments, changesets) are kept from the cached copy until a fresh copy has them.
     pub fn upsert_issues(&self, issues: &[Issue]) -> Result<Vec<u64>> {
         let mut changed = Vec::new();
         let mut conn = self.conn();
@@ -237,6 +237,7 @@ impl Store {
                 stored.children = stored.children.or_else(|| previous.children.clone());
                 stored.attachments = stored.attachments.or_else(|| previous.attachments.clone());
                 stored.relations = stored.relations.or_else(|| previous.relations.clone());
+                stored.changesets = stored.changesets.or_else(|| previous.changesets.clone());
                 if stored == previous {
                     continue;
                 }

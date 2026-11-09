@@ -3,6 +3,7 @@ import { isMac, isTyping, matchesShortcut } from "../lib/platform";
 import { timeAccess } from "../lib/permissions";
 import type { PickerKind } from "../state/app";
 import { overlayOpen, targetIssueIds, useApp } from "../state/app";
+import { openViewInRedmine } from "./OpenInRedmine";
 
 /** Linear's single-key shortcuts for the open or highlighted issue. */
 export type IssueCommand = PickerKind | "assign-me" | "subscribe" | "open-in-redmine" | "log-time";
@@ -96,7 +97,16 @@ export function useIssueShortcuts() {
           return;
         }
       }
-      if (overlayOpen(state) || isTyping(e.target) || e.repeat) return;
+      if (overlayOpen(state) || e.repeat) return;
+      // Works while typing too: the open issue, or else the view, opens in Redmine.
+      if (matchesShortcut(e, "mod+shift+o")) {
+        e.preventDefault();
+        const ids = targetIssueIds(state);
+        if (ids.length) runIssueCommandOn("open-in-redmine", ids);
+        else openViewInRedmine();
+        return;
+      }
+      if (isTyping(e.target)) return;
       if (matchesShortcut(e, "c")) {
         e.preventDefault();
         state.setComposerOpen(true);

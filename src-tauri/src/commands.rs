@@ -4,7 +4,9 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use redline_core::models::{Found, Issue, IssueChanges, NewRelation, Relation, SearchResult};
+use redline_core::models::{
+    Found, Issue, IssueChanges, NewRelation, Relation, SearchResult, SearchScope,
+};
 use redline_core::{Client, Error, IssueDetails, Metadata, Store, Syncer};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -515,9 +517,12 @@ pub async fn search(
     state: State<'_, AppState>,
     text: String,
     offset: u64,
+    scope: Option<SearchScope>,
 ) -> CmdResult<Found<SearchResult>> {
     let syncer = syncer(&state).await?;
-    Ok(syncer.search(&text, offset).await?)
+    Ok(syncer
+        .search(&text, offset, &scope.unwrap_or_default())
+        .await?)
 }
 
 /// Ids of issues whose description or comments mention this one.
@@ -689,6 +694,17 @@ pub async fn delete_news(state: State<'_, AppState>, id: u64) -> CmdResult<()> {
 }
 
 // ----- Files --------------------------------------------------------------
+
+/// Journals of cached issues for the activity feed, read from Redmine only
+/// where the cache is behind. At most 200 issues per call.
+#[tauri::command]
+pub async fn issue_journals(
+    state: State<'_, AppState>,
+    ids: Vec<u64>,
+) -> CmdResult<Vec<redline_core::models::IssueJournals>> {
+    let ids: Vec<u64> = ids.into_iter().take(200).collect();
+    Ok(syncer(&state).await?.issue_journals(&ids).await?)
+}
 
 /// A team's files, under its versions or the whole team.
 #[tauri::command]

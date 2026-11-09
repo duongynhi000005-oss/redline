@@ -11,6 +11,7 @@ import type {
   NewRelation,
   Relation,
   SearchResult,
+  SearchScope,
   SyncState,
   TimeEntry,
   TimeEntryChanges,
@@ -25,6 +26,7 @@ import type {
   News,
   NewsChanges,
   ProjectFile,
+  IssueJournals,
 } from "./types";
 
 type Unlisten = () => void;
@@ -48,6 +50,8 @@ export interface Backend {
   listIssues(): Promise<Issue[]>;
   getIssues(ids: number[]): Promise<Issue[]>;
   getIssueDetails(id: number, refresh?: boolean): Promise<IssueDetails>;
+  /** Journals of cached issues (up to 200), read from Redmine only where the cache is behind. */
+  issueJournals(ids: number[]): Promise<IssueJournals[]>;
   /** The latest sync state, or null when signed out. */
   getSyncState(): Promise<SyncState | null>;
   syncNow(): Promise<void>;
@@ -64,8 +68,8 @@ export interface Backend {
   findMentions(id: number): Promise<number[]>;
   /** Runs a saved query: its issues' ids in its order (up to 500), and how many it finds in all. */
   runQuery(queryId: number, projectId?: number | null): Promise<Found<number>>;
-  /** One page (25) of what Redmine search finds, newest first. */
-  search(text: string, offset: number): Promise<Found<SearchResult>>;
+  /** One page (25) of what Redmine search finds, newest first, everywhere or within a scope. */
+  search(text: string, offset: number, scope?: SearchScope): Promise<Found<SearchResult>>;
   /** Adds or removes a watcher, then returns the issue as Redmine has it. */
   setWatcher(issueId: number, userId: number, watching: boolean): Promise<IssueDetails>;
   /** Opens a page of the Redmine server in the browser, such as "issues/12". */

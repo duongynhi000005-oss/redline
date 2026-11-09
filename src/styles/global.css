@@ -4576,3 +4576,210 @@ textarea.team-description {
 .upload-fields .upload-description {
   flex: 1.4;
 }
+
+/* Activity: a team's feed, by day. */
+.activity-content {
+  padding: 28px 40px 64px;
+}
+
+.activity-day,
+.activity-footer {
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.activity-day + .activity-day {
+  margin-top: 24px;
+}
+
+.activity-day-title {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text);
+  text-align: start;
+}
+
+.activity-item:hover {
+  background: var(--bg-hover);
+}
+
+.activity-avatar {
+  position: relative;
+  flex: none;
+  margin-top: 1px;
+}
+
+.activity-kind {
+  position: absolute;
+  right: -4px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--border);
+  color: var(--text-secondary);
+}
+
+.activity-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.activity-line strong {
+  font-weight: 600;
+}
+
+.activity-subject {
+  font-weight: 500;
+}
+
+.activity-changes {
+  font-size: 12px;
+}
+
+.activity-text {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-secondary);
+}
+
+.activity-time {
+  flex: none;
+  margin-top: 2px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.activity-kinds {
+  display: flex;
+  gap: 4px;
+  margin-left: 12px;
+}
+
+.activity-kind-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.activity-kind-toggle[aria-pressed="true"] {
+  border-color: var(--border-strong);
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+.activity-kind-toggle:hover {
+  background: var(--bg-hover);
+}
+
+/* An issue's commits. */
+.commit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.commit-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  text-align: start;
+}
+
+.commit-row:hover {
+  background: var(--bg-hover);
+}
+
+.commit-revision {
+  flex: none;
+  color: var(--text-secondary);
+  font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.commit-message {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-meta {
+  flex: none;
+  font-size: 12px;
+}
+
+/* Documents and forums: found through search, opened in Redmine. */
+.found-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 440px;
+  margin-inline: auto;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.found-empty p {
+  margin: 0;
+}
+
+.found-empty p:first-of-type {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.found-empty .button-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}

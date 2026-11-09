@@ -24,8 +24,9 @@ use crate::client::{Client, IssueQuery, PAGE_SIZE};
 use crate::error::{Error, Result};
 use crate::mentions;
 use crate::models::{
-    Found, Issue, IssueChanges, IssueStatusRef, Journal, NewRelation, Project, ProjectChanges,
-    Relation, SearchResult, TimeEntry, TimeEntryChanges, Upload, User, Version, VersionChanges,
+    Found, Issue, IssueChanges, IssueJournals, IssueStatusRef, Journal, NewRelation, Project,
+    ProjectChanges, Relation, SearchResult, SearchScope, TimeEntry, TimeEntryChanges, Upload, User,
+    Version, VersionChanges,
 };
 use crate::store::{Metadata, Store};
 
@@ -249,6 +250,7 @@ impl Syncer {
                     "relations",
                     "attachments",
                     "allowed_statuses",
+                    "changesets",
                 ],
             )
             .await
@@ -612,8 +614,13 @@ impl Syncer {
     }
 
     /// One page of what Redmine search finds, newest first.
-    pub async fn search(&self, text: &str, offset: u64) -> Result<Found<SearchResult>> {
-        let page = self.client.search(text, offset, SEARCH_PAGE).await?;
+    pub async fn search(
+        &self,
+        text: &str,
+        offset: u64,
+        scope: &SearchScope,
+    ) -> Result<Found<SearchResult>> {
+        let page = self.client.search(text, offset, SEARCH_PAGE, scope).await?;
         Ok(Found {
             items: page.items,
             total: page.total_count,
@@ -698,6 +705,54 @@ impl Syncer {
         found.sort_by_key(|f| order.iter().position(|o| o == f).unwrap_or(usize::MAX));
         found.dedup();
         Ok(found)
+    }
+
+    /// Journals of cached issues, for the activity feed: from the cache when
+    /// they're as new as the issue, otherwise read from Redmine (journals
+    /// only) and cached. Issues Redline doesn't have, or that are gone or
+    /// hidden now, are left out.
+    pub async fn issue_journals(&self, ids: &[u64]) -> Result<Vec<IssueJournals>> {
+        let mut out = Vec::with_capacity(ids.len());
+        let mut stale = Vec::new();
+        for &id in ids {
+            let Some(issue) = self.store.issue(id)? else {
+                continue;
+            };
+            match self.store.journals(id)? {
+                Some((at, journals)) if at >= issue.updated_on => out.push(IssueJournals {
+                    issue_id: id,
+                    journals,
+                }),
+                _ => stale.push(id),
+            }
+        }
+        // A few at a time, so a long feed doesn't flood the server.
+        for chunk in stale.chunks(4) {
+            let mut tasks = JoinSet::new();
+            for &id in chunk {
+                let client = self.client.clone();
+                tasks.spawn(async move { (id, client.issue(id, &["journals"]).await) });
+            }
+            let mut fetched = Vec::with_capacity(chunk.len());
+            while let Some(done) = tasks.join_next().await {
+                fetched.push(done.map_err(|e| Error::Network(e.to_string()))?);
+            }
+            for (id, result) in fetched {
+                match result {
+                    Ok(issue) => {
+                        let journals = issue.journals.unwrap_or_default();
+                        self.store.set_journals(id, &issue.updated_on, &journals)?;
+                        out.push(IssueJournals {
+                            issue_id: id,
+                            journals,
+                        });
+                    }
+                    Err(Error::NotFound | Error::Forbidden) => {}
+                    Err(e) => return Err(e),
+                }
+            }
+        }
+        Ok(out)
     }
 
     /// Cached details for an issue, if its journals are as new as the issue.

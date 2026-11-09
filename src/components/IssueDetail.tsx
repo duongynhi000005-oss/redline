@@ -3,7 +3,7 @@ import { describeDetail } from "../lib/journal";
 import { CATEGORY_LABEL, PRIORITY_LABEL, issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
 import { isTyping, matchesShortcut, shortcutLabel } from "../lib/platform";
 import { blockingIssues, mentionsIn, relatedGroups, subIssues } from "../lib/relations";
-import type { Attachment, Issue, IssueDetails, Journal, Relation } from "../lib/types";
+import type { Attachment, Changeset, Issue, IssueDetails, Journal, Relation } from "../lib/types";
 import { errorMessage } from "../lib/types";
 import { allowed, canEditComment, timeAccess } from "../lib/permissions";
 import { fieldEnabled, fieldShape, fieldValues, knownLabelValues, moveTargets } from "../lib/edit";
@@ -377,6 +377,50 @@ function Connections({ issue, journals }: { issue: Issue; journals: Journal[] | 
   );
 }
 
+/** A revision as people write it: Git's first 8 characters, Subversion's r123. */
+export function shortRevision(revision: string): string {
+  return /^\d+$/.test(revision) ? `r${revision}` : revision.slice(0, 8);
+}
+
+/** Commits whose message mentions the issue, newest first; each opens in Redmine's repository browser. */
+function Commits({ issue, commits }: { issue: Issue; commits: Changeset[] }) {
+  const openInRedmine = useApp((s) => s.openInRedmine);
+  const project = useDerived().projects.get(issue.project.id);
+  const sorted = [...commits].sort((a, b) => (b.committed_on ?? "").localeCompare(a.committed_on ?? ""));
+  return (
+    <section className="connections" aria-label="Commits">
+      <header className="connections-header">
+        <h2>Commits</h2>
+        <span className="muted">{commits.length}</span>
+      </header>
+      <ul className="commit-list">
+        {sorted.map((c) => {
+          const message = c.comments?.split("\n")[0]?.trim() || "No message";
+          return (
+            <li key={c.revision}>
+              <button
+                type="button"
+                className="commit-row"
+                title={`Open ${shortRevision(c.revision)} in Redmine`}
+                onClick={() => project && openInRedmine(`projects/${project.identifier}/repository/revisions/${encodeURIComponent(c.revision)}`)}
+              >
+                <Icon name="commit" size={12} />
+                <span className="commit-revision">{shortRevision(c.revision)}</span>
+                <span className="commit-message">{message}</span>
+                <span className="commit-meta muted">
+                  {c.user?.name ?? ""}
+                  {c.user && c.committed_on ? ", " : ""}
+                  {c.committed_on ? relativeTime(c.committed_on) : ""}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function fileName(path: string) {
   return path.split(/[\\/]/).pop() ?? path;
 }
@@ -660,6 +704,7 @@ export function IssueDetail({ id }: { id: number }) {
           )}
           <Attachments issue={issue} onAttach={() => void pickAndAttach()} />
           <Connections issue={issue} journals={details?.journals ?? null} />
+          {details?.issue.changesets?.length ? <Commits issue={issue} commits={details.issue.changesets} /> : null}
           <h2 className="activity-title">Activity</h2>
           <div className="activity-change">
             <PersonAvatar person={issue.author} size={16} />

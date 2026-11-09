@@ -10,6 +10,7 @@ import { useApp } from "../state/app";
 import { routeTitle, useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
 import { Icon } from "./icons";
+import { OpenInRedmineButton } from "./OpenInRedmine";
 
 const GROUPINGS: { value: TimeGrouping; label: string }[] = [
   { value: "day", label: "Day" },
@@ -118,6 +119,7 @@ export function TimeView({ teamId }: { teamId: number }) {
             ))}
           </select>
         </label>
+        <OpenInRedmineButton />
       </header>
       {current?.error ? (
         <div className="empty-state">

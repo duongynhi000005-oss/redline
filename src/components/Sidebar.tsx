@@ -16,6 +16,9 @@ function sameRoute(a: Route, b: Route): boolean {
   if (a.view === "wiki" && b.view === "wiki") return a.projectId === b.projectId;
   if (a.view === "news" && b.view === "news") return a.projectId === b.projectId;
   if (a.view === "files" && b.view === "files") return a.projectId === b.projectId;
+  if (a.view === "activity" && b.view === "activity") return a.projectId === b.projectId;
+  if (a.view === "documents" && b.view === "documents") return a.projectId === b.projectId;
+  if (a.view === "forums" && b.view === "forums") return a.projectId === b.projectId;
   if (a.view === "time" && b.view === "time") return a.teamId === b.teamId;
   if (a.view === "query" && b.view === "query") return a.queryId === b.queryId;
   // A cycle's issues light up the team's Cycles item.
@@ -192,6 +195,12 @@ export function Sidebar() {
                       depth={1}
                     />
                   )}
+                  <NavItem
+                    route={{ view: "activity", projectId: team.id }}
+                    icon={<Icon name="activity" />}
+                    label="Activity"
+                    depth={1}
+                  />
                   {d.wikis.has(team.id) && (
                     <NavItem
                       route={{ view: "wiki", projectId: team.id, title: null }}

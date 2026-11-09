@@ -9,6 +9,7 @@ import { useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { Icon } from "./icons";
+import { OpenInRedmineButton } from "./OpenInRedmine";
 import { useDialogFocus } from "./useDialogFocus";
 
 type Loaded<T> = { key: string; value?: T; error?: string };
@@ -38,7 +39,6 @@ export function FilesView({ projectId }: { projectId: number }) {
   const backend = useApp((s) => s.backend);
   const meta = useApp((s) => s.meta);
   const navigate = useApp((s) => s.navigate);
-  const openInRedmine = useApp((s) => s.openInRedmine);
   const saveAttachment = useApp((s) => s.saveAttachment);
   const showToast = useApp((s) => s.showToast);
   const d = useDerived();
@@ -99,15 +99,7 @@ export function FilesView({ projectId }: { projectId: number }) {
             Add files
           </button>
         )}
-        <button
-          type="button"
-          className="icon-button"
-          onClick={() => openInRedmine(`projects/${project.identifier}/files`)}
-          aria-label="Open in Redmine"
-          title="Open in Redmine"
-        >
-          <Icon name="external" />
-        </button>
+        <OpenInRedmineButton />
       </header>
       <div className="detail-body">
         <div className="detail-content files-content">

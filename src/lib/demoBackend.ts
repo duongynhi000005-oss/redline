@@ -2,8 +2,11 @@ import type { Backend } from "./backend";
 import { applyChanges as applyEdit } from "./edit";
 import { INVERSE, mentionedIds } from "./relations";
 import type {
+  SearchKind,
+  SearchResult,
   Account,
   Attachment,
+  Changeset,
   Issue,
   IssueChanges,
   IssueDetails,
@@ -117,6 +120,8 @@ function buildMetadata(): Metadata {
           { id: 4, name: "news" },
           { id: 5, name: "files" },
           { id: 6, name: "boards" },
+          { id: 7, name: "repository" },
+          { id: 8, name: "documents" },
         ],
         issue_custom_fields: [
           { id: 1, name: "Area" },
@@ -240,6 +245,9 @@ function buildMetadata(): Metadata {
           "comment_news",
           "view_files",
           "manage_files",
+          "view_changesets",
+          "view_documents",
+          "view_messages",
         ],
       },
       {
@@ -259,6 +267,9 @@ function buildMetadata(): Metadata {
           "view_news",
           "comment_news",
           "view_files",
+          "view_changesets",
+          "view_documents",
+          "view_messages",
         ],
       },
     ],
@@ -274,11 +285,46 @@ function buildMetadata(): Metadata {
   };
 }
 
-/** Pages the demo's search finds besides issues. */
-const DEMO_PAGES = [
-  { id: 1, title: "Wiki: Release checklist", type: "wiki-page", url: "https://redmine.example.com/projects/web/wiki/Release_checklist" },
-  { id: 1, title: "News: Board view ships in Sprint 2", type: "news", url: "https://redmine.example.com/news/1" },
-  { id: 3, title: "Document: Board view spec", type: "document", url: "https://redmine.example.com/documents/3" },
+/** Pages the demo's search finds besides issues, all in Web. */
+const DEMO_PAGES: (SearchResult & { kind: SearchKind; datetime: string })[] = [
+  { id: 1, title: "Wiki: Release checklist", type: "wiki-page", kind: "wiki_pages", url: "https://redmine.example.com/projects/web/wiki/Release_checklist", datetime: "2026-11-01T09:00:00Z" },
+  { id: 1, title: "News: Board view ships in Sprint 2", type: "news", kind: "news", url: "https://redmine.example.com/news/1", datetime: "2026-11-01T09:00:00Z" },
+  {
+    id: 3,
+    title: "Document: Board view spec",
+    type: "document",
+    kind: "documents",
+    url: "https://redmine.example.com/documents/3",
+    description: "How the board groups issues, and what dragging a card changes.",
+    datetime: "2026-11-02T10:00:00Z",
+  },
+  {
+    id: 4,
+    title: "Document: Keyboard shortcuts",
+    type: "document",
+    kind: "documents",
+    url: "https://redmine.example.com/documents/4",
+    description: "Every shortcut on the **board** and in lists, for macOS and Windows.",
+    datetime: "2026-10-28T10:00:00Z",
+  },
+  {
+    id: 2,
+    title: "General: RE: Syncing on a slow connection",
+    type: "reply",
+    kind: "messages",
+    url: "https://redmine.example.com/boards/1/topics/1?r=2#message-2",
+    description: "Not yet. A board of just your issues is planned.",
+    datetime: "2026-11-06T16:00:00Z",
+  },
+  {
+    id: 1,
+    title: "General: Syncing on a slow connection",
+    type: "message",
+    kind: "messages",
+    url: "https://redmine.example.com/boards/1/topics/1",
+    description: "Sync takes a minute on hotel Wi-Fi. Is there a way to sync only my issues?",
+    datetime: "2026-11-06T09:00:00Z",
+  },
 ];
 
 /** A date this many days from the demo's today. */
@@ -649,6 +695,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       issue: {
         ...(may(issue.project.id, "view_issue_watchers") ? { ...issue, watchers: list } : issue),
         attachments: (files.get(id) ?? []).map((f) => f.attachment),
+        ...(may(issue.project.id, "view_changesets") ? { changesets: commits.get(id) ?? [] } : {}),
       },
       journals: buildJournals(issue).flatMap((j) => {
         const edit = commentEdits.get(j.id);
@@ -663,6 +710,16 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   };
 
   const applyChanges = (issue: Issue, c: IssueChanges): Issue => applyEdit(issue, c, meta);
+  // Commits that mention issues, as if Web had a Git repository.
+  const commits = new Map<number, Changeset[]>([
+    [
+      2,
+      [
+        { revision: "4f1c2a9e7d3b8a6c5f0e1d2c3b4a59687f6e5d4c", user: people[0]!, comments: "Resume syncing after sleep, refs #2", committed_on: iso(0, 2) },
+        { revision: "9b0d7e1f2a3c4b5d6e7f8091a2b3c4d5e6f70812", user: people[1]!, comments: "Log the wake-up event\n\nHelps with #2.", committed_on: iso(1, 4) },
+      ],
+    ],
+  ]);
 
   return {
     appInfo: () =>
@@ -682,6 +739,8 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     listIssues: () => wait([...issues.values()].sort((a, b) => b.updated_on.localeCompare(a.updated_on))),
     getIssues: (ids) => wait(ids.flatMap((id) => (issues.has(id) ? [issues.get(id)!] : []))),
     getIssueDetails: (id) => wait(details(id)),
+    issueJournals: (ids) =>
+      wait(ids.slice(0, 200).flatMap((id) => (issues.has(id) ? [{ issue_id: id, journals: details(id).journals }] : []))),
     getSyncState: () => wait(account ? { state: "idle" as const, lastSyncedAt, message: null } : null),
     async syncNow() {
       lastSyncedAt = Date.now();
@@ -1193,12 +1252,15 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       if (!ids) throw { code: "not_found", message: "Not found in Redmine." };
       return { items: ids.map((i) => i.id), total: ids.length };
     },
-    async search(text, offset) {
+    async search(text, offset, scope) {
       await wait(null);
       const words = text.toLowerCase().split(/\s+/).filter(Boolean);
       const hit = (t: string) => words.every((w) => t.toLowerCase().includes(w));
+      const wants = (kind: SearchKind) => !scope?.kinds?.length || scope.kinds.includes(kind);
+      const inScope = (projectId: number) => scope?.projectId === undefined || scope.projectId === projectId;
       const found = [
         ...[...issues.values()]
+          .filter((i) => wants("issues") && inScope(i.project.id))
           .filter((i) => hit(`${i.subject} ${i.description ?? ""}`))
           .sort((a, b) => b.updated_on.localeCompare(a.updated_on))
           .map((i) => ({
@@ -1209,7 +1271,9 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
             description: i.description ?? "",
             datetime: i.updated_on,
           })),
-        ...DEMO_PAGES.filter((p) => hit(p.title)).map((p) => ({ ...p, description: "", datetime: "2026-11-01T09:00:00Z" })),
+        ...DEMO_PAGES.filter((p) => wants(p.kind) && inScope(1) && hit(`${p.title} ${p.description ?? ""}`)).map(
+          ({ kind: _kind, ...p }) => ({ ...p, description: p.description ?? "" }),
+        ),
       ];
       return { items: found.slice(offset, offset + 25), total: found.length };
     },

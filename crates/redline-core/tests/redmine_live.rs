@@ -11,7 +11,7 @@
 //! The key belongs to a regular, non-admin user, which is what Redline must
 //! work with.
 
-use redline_core::models::IssueChanges;
+use redline_core::models::{IssueChanges, SearchKind, SearchScope};
 use redline_core::{Client, Error, IssueQuery};
 
 fn live_client() -> Option<Client> {
@@ -638,7 +638,10 @@ async fn runs_saved_queries_and_searches_everything() {
         assert_eq!(issue.assigned_to.as_ref().map(|a| a.id), Some(me));
     }
 
-    let results = syncer.search("board", 0).await.unwrap();
+    let results = syncer
+        .search("board", 0, &SearchScope::default())
+        .await
+        .unwrap();
     assert!(results.items.iter().any(|r| r.kind.starts_with("issue")));
     assert!(results.total >= results.items.len() as u64);
 }
@@ -840,4 +843,68 @@ async fn reads_news_and_adds_and_deletes_a_file() {
             .iter()
             .any(|f| f.filename == name)
     );
+}
+
+#[tokio::test]
+async fn reads_an_issues_commits_and_journals_for_the_feed() {
+    use redline_core::{Store, Syncer};
+
+    let client = live!();
+    let id = issue_id(&client, "Drag cards between columns").await;
+    let syncer = Syncer::new(client.clone(), Store::in_memory().unwrap());
+    let details = syncer.issue_details(id).await.unwrap();
+    let commits = details.issue.changesets.clone().unwrap_or_default();
+    let commit = commits
+        .iter()
+        .find(|c| {
+            c.comments
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("Snap cards")
+        })
+        .expect("the seeded commit");
+    assert!(commit.revision.starts_with("4f1c2a9"));
+    assert!(commit.user.is_some());
+
+    // The cache now has this issue's journals, so the feed reads them
+    // without asking Redmine again; an issue it doesn't have is skipped.
+    let found = syncer.issue_journals(&[id, 999_999]).await.unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].journals, details.journals);
+}
+
+#[tokio::test]
+async fn finds_a_teams_documents_and_forum_messages() {
+    let client = live!();
+    let web = client
+        .projects()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|p| p.identifier == "web")
+        .expect("web");
+    let docs = SearchScope {
+        project_id: Some(web.id),
+        kinds: vec![SearchKind::Documents],
+    };
+    let found = client.search("board", 0, 25, &docs).await.unwrap();
+    assert!(
+        found
+            .items
+            .iter()
+            .any(|r| r.kind == "document" && r.title.ends_with("Board view spec"))
+    );
+    assert!(found.items.iter().all(|r| r.kind == "document"));
+
+    let forums = SearchScope {
+        project_id: Some(web.id),
+        kinds: vec![SearchKind::Messages],
+    };
+    let found = client
+        .search("slow connection", 0, 25, &forums)
+        .await
+        .unwrap();
+    let kinds: Vec<&str> = found.items.iter().map(|r| r.kind.as_str()).collect();
+    assert!(kinds.contains(&"message"), "{kinds:?}");
+    assert!(kinds.contains(&"reply"), "{kinds:?}");
 }
