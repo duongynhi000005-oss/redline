@@ -61,6 +61,8 @@ pub struct Session {
     pub account: Account,
     pub syncer: Syncer,
     wake: Arc<Notify>,
+    /// Set by Sync now, so the next pass also reads teams, cycles and people.
+    metadata_asked: Arc<AtomicBool>,
     latest: Arc<Mutex<SyncState>>,
     task: tauri::async_runtime::JoinHandle<()>,
 }
@@ -73,6 +75,7 @@ impl Session {
         focused: Arc<AtomicBool>,
     ) -> Self {
         let wake = Arc::new(Notify::new());
+        let metadata_asked = Arc::new(AtomicBool::new(false));
         let latest = Arc::new(Mutex::new(SyncState {
             state: "syncing",
             last_synced_at: None,
@@ -84,6 +87,7 @@ impl Session {
             app,
             syncer.clone(),
             wake.clone(),
+            metadata_asked.clone(),
             latest.clone(),
             focused,
         ));
@@ -91,6 +95,7 @@ impl Session {
             account,
             syncer,
             wake,
+            metadata_asked,
             latest,
             task,
         }
@@ -104,8 +109,13 @@ impl Session {
             .unwrap_or_else(|e| e.into_inner().clone())
     }
 
-    /// Runs a sync now instead of waiting for the next tick.
-    pub fn sync_now(&self) {
+    /// Runs a sync now instead of waiting for the next tick. With
+    /// `metadata`, it also reads projects, cycles and people again, as when
+    /// someone asks for Sync now after adding a team in Redmine.
+    pub fn sync_now(&self, metadata: bool) {
+        if metadata {
+            self.metadata_asked.store(true, Ordering::Relaxed);
+        }
         self.wake.notify_one();
     }
 
@@ -118,6 +128,12 @@ impl Drop for Session {
     fn drop(&mut self) {
         self.task.abort();
     }
+}
+
+/// Whether a sync pass also reads metadata: the first pass, every
+/// [`METADATA_INTERVAL`], and when someone asked for it.
+fn metadata_due(last: Option<Instant>, asked: bool) -> bool {
+    asked || last.is_none_or(|t| t.elapsed() >= METADATA_INTERVAL)
 }
 
 fn now_ms() -> u64 {
@@ -139,6 +155,7 @@ async fn sync_loop(
     app: AppHandle,
     syncer: Syncer,
     wake: Arc<Notify>,
+    metadata_asked: Arc<AtomicBool>,
     latest: Arc<Mutex<SyncState>>,
     focused: Arc<AtomicBool>,
 ) {
@@ -160,7 +177,8 @@ async fn sync_loop(
         );
 
         let result = async {
-            if last_metadata.is_none_or(|t| t.elapsed() >= METADATA_INTERVAL) {
+            let asked = metadata_asked.swap(false, Ordering::Relaxed);
+            if metadata_due(last_metadata, asked) {
                 syncer.sync_metadata().await?;
                 last_metadata = Some(Instant::now());
                 let _ = app.emit(EVENT_METADATA_CHANGED, ());
@@ -253,6 +271,22 @@ async fn sync_loop(
         tokio::select! {
             _ = tokio::time::sleep(wait) => {}
             _ = wake.notified() => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metadata_comes_first_then_on_a_schedule_or_when_asked() {
+        assert!(metadata_due(None, false));
+        let just_now = Instant::now();
+        assert!(!metadata_due(Some(just_now), false));
+        assert!(metadata_due(Some(just_now), true));
+        if let Some(long_ago) = Instant::now().checked_sub(METADATA_INTERVAL) {
+            assert!(metadata_due(Some(long_ago), false));
         }
     }
 }

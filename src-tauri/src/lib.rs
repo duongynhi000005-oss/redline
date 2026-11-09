@@ -78,7 +78,7 @@ pub fn run() {
                     if let Ok(guard) = state.session.try_read()
                         && let Some(session) = guard.as_ref()
                     {
-                        session.sync_now();
+                        session.sync_now(false);
                     }
                 }
             }
