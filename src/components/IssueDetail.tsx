@@ -176,6 +176,7 @@ function Comment({
           <textarea
             aria-label="Edit comment"
             autoFocus
+            onFocus={(e) => e.currentTarget.setSelectionRange(e.currentTarget.value.length, e.currentTarget.value.length)}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {

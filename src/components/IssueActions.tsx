@@ -73,7 +73,7 @@ export function IssueMenu({ issue }: { issue: Issue }) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? `${id}-menu` : undefined}
-        title="More actions"
+        title={open ? undefined : "More actions"}
         onClick={() => setOpen((o) => !o)}
       >
         <Icon name="more" />
