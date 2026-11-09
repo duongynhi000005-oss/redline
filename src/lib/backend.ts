@@ -37,6 +37,10 @@ export interface Backend {
   removeRelation(relation: Relation): Promise<void>;
   /** Ids of issues whose description or comments mention #id. */
   findMentions(id: number): Promise<number[]>;
+  /** Adds or removes a watcher, then returns the issue as Redmine has it. */
+  setWatcher(issueId: number, userId: number, watching: boolean): Promise<IssueDetails>;
+  /** Opens a page of the Redmine server in the browser, such as "issues/12". */
+  openInRedmine(path: string): Promise<void>;
   onSyncState(handler: (state: SyncState) => void): Promise<Unlisten>;
   onIssuesChanged(handler: (change: IssuesChanged) => void): Promise<Unlisten>;
   onMetadataChanged(handler: () => void): Promise<Unlisten>;

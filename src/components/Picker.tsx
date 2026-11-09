@@ -21,6 +21,8 @@ export interface PickerOption {
   icon?: React.ReactNode;
   selected: boolean;
   changes: IssueChanges;
+  /** For subscribers: whose subscription the option toggles. */
+  watcher?: number;
 }
 
 const PLACEHOLDER: Record<PickerKind, string> = {
@@ -30,6 +32,7 @@ const PLACEHOLDER: Record<PickerKind, string> = {
   cycle: "Move to cycle…",
   labels: "Change labels…",
   relation: "Connect an issue…",
+  subscribers: "Change subscribers…",
 };
 
 /** The choices for one property of an issue. */
@@ -144,6 +147,22 @@ export function pickerOptions(
       }
       return options;
     }
+    case "subscribers": {
+      const me = meta.user?.id;
+      const watching = new Set((issue.watchers ?? []).map((w) => w.id));
+      // Members first, you first; anyone already subscribed stays listed.
+      const list = [...people(meta, issue.project.id)];
+      for (const w of issue.watchers ?? []) if (!list.some((p) => p.id === w.id)) list.push(w);
+      const ordered = [...list.filter((p) => p.id === me), ...list.filter((p) => p.id !== me)];
+      return ordered.map((p) => ({
+        key: `subscriber-${p.id}`,
+        label: p.id === me ? `${p.name} (you)` : p.name,
+        icon: <Avatar name={p.name} size={16} />,
+        selected: watching.has(p.id),
+        changes: {},
+        watcher: p.id,
+      }));
+    }
     case "relation":
       // Issues, not values: see RelationPickerContent.
       return [];
@@ -178,6 +197,7 @@ function PickerContent({ kind, issueId }: { kind: PickerKind; issueId: number })
   const meta = useApp((s) => s.meta);
   const backend = useApp((s) => s.backend);
   const updateIssue = useApp((s) => s.updateIssue);
+  const setWatcher = useApp((s) => s.setWatcher);
   const closePicker = useApp((s) => s.closePicker);
   const d = useDerived();
   const [query, setQuery] = useState("");
@@ -206,9 +226,10 @@ function PickerContent({ kind, issueId }: { kind: PickerKind; issueId: number })
   if (!issue) return null;
 
   const choose = (option: PickerOption) => {
-    void updateIssue(issueId, option.changes);
-    // Labels toggle; other properties take one value.
-    if (kind !== "labels") closePicker();
+    if (option.watcher !== undefined) void setWatcher(issueId, option.watcher, !option.selected);
+    else void updateIssue(issueId, option.changes);
+    // Labels and subscribers toggle; other properties take one value.
+    if (kind !== "labels" && kind !== "subscribers") closePicker();
   };
 
   return (

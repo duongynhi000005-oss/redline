@@ -112,6 +112,14 @@ function PaletteContent() {
           run: () => runIssueCommand(s.kind, target),
         });
       }
+      list.push({
+        id: "issue-subscribers",
+        label: "Change subscribers…",
+        group: `Issue #${target}`,
+        icon: <Icon name="bell" />,
+        keywords: "watchers watch notify",
+        run: () => useApp.getState().openPicker("subscribers", target),
+      });
       for (const c of RELATION_CHOICES) {
         list.push({
           id: `issue-relate-${c.choice}`,

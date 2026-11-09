@@ -176,6 +176,19 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M2 2l10 10M4.5 10.5h5.2a2.3 2.3 0 0 0 .8-4.4M8.6 3.3A3.5 3.5 0 0 0 4 5.6a2.5 2.5 0 0 0-.6 4.6" {...stroke} />
         </Svg>
       );
+    case "bell":
+      return (
+        <Svg {...props}>
+          <path d="M3.5 9.8V6.6a3.5 3.5 0 0 1 7 0v3.2l1 1.2h-9z M5.8 12.2a1.3 1.3 0 0 0 2.4 0" {...stroke} />
+        </Svg>
+      );
+    case "bell-filled":
+      return (
+        <Svg {...props}>
+          <path d="M3.5 9.8V6.6a3.5 3.5 0 0 1 7 0v3.2l1 1.2h-9z" fill="currentColor" {...stroke} />
+          <path d="M5.8 12.2a1.3 1.3 0 0 0 2.4 0" {...stroke} />
+        </Svg>
+      );
     case "external":
       return (
         <Svg {...props}>
@@ -296,4 +309,6 @@ export type IconName =
   | "sync"
   | "offline"
   | "external"
+  | "bell"
+  | "bell-filled"
   | "cycle";

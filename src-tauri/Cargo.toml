@@ -24,6 +24,7 @@ tauri = { version = "2.12", features = ["macos-private-api"] }
 tokio.workspace = true
 thiserror.workspace = true
 tauri-plugin-window-state = "2"
+tauri-plugin-opener = "2"
 window-vibrancy = "0.8"
 
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -3,7 +3,8 @@ import type { Backend } from "../lib/backend";
 import type { Account, Issue, IssueChanges, IssueDetails, Metadata, Relation, SyncState } from "../lib/types";
 import type { RelationChoice } from "../lib/relations";
 import { newRelation } from "../lib/relations";
-import { errorMessage } from "../lib/types";
+import { errorMessage, isBackendError } from "../lib/types";
+import { allowed } from "../lib/permissions";
 import { applyChanges } from "../lib/edit";
 import type { ServerSettings } from "../lib/settings";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "../lib/settings";
@@ -43,7 +44,7 @@ export function routeKey(route: Route): string {
 
 export type Phase = "starting" | "signed-out" | "ready";
 
-export type PickerKind = "status" | "priority" | "assignee" | "cycle" | "labels" | "relation";
+export type PickerKind = "status" | "priority" | "assignee" | "cycle" | "labels" | "relation" | "subscribers";
 
 export interface PickerState {
   kind: PickerKind;
@@ -78,6 +79,8 @@ export interface AppState {
   filterMenu: { field: FilterField | null } | null;
   /** A short message shown at the bottom of the window, like a failed edit. */
   toast: string | null;
+  /** Whether you watch each issue, as far as Redmine has said. */
+  watching: Map<number, boolean>;
 
   start(backend: Backend): Promise<void>;
   signIn(serverUrl: string, apiKey: string): Promise<void>;
@@ -93,6 +96,14 @@ export interface AppState {
   /** Connects another issue to this one: a Redmine relation, a parent or a sub-issue. */
   relateIssue(issueId: number, choice: RelationChoice, otherId: number): Promise<boolean>;
   removeRelation(relation: Relation): Promise<boolean>;
+  /** Takes what a fresh read of an issue says that a list doesn't: relations, watchers, your subscription. */
+  takeDetails(details: IssueDetails): void;
+  /** Adds or removes a subscriber (a Redmine watcher). */
+  setWatcher(issueId: number, userId: number, watching: boolean): Promise<boolean>;
+  /** Subscribes you to an issue, or unsubscribes you. */
+  toggleSubscribe(issueId: number): Promise<void>;
+  /** Opens a page of the Redmine server in the browser, such as "issues/12". */
+  openInRedmine(path: string): void;
   showToast(message: string | null): void;
   setComposerOpen(open: boolean): void;
   setSettingsOpen(open: boolean): void;
@@ -132,6 +143,7 @@ function initial() {
     views: {} as Record<string, ViewOptions>,
     filterMenu: null as { field: FilterField | null } | null,
     toast: null as string | null,
+    watching: new Map<number, boolean>(),
   };
 }
 
@@ -350,6 +362,85 @@ export const useApp = create<AppState>()((set, get) => {
         set({ toast: `Couldn't remove the relation: ${errorMessage(e)}` });
         return false;
       }
+    },
+
+    takeDetails(details) {
+      const { issues, watching } = get();
+      const id = details.issue.id;
+      const known = issues.get(id);
+      const patch: Partial<Issue> = {};
+      // Redmine doesn't touch updated_on when relations or watchers change.
+      for (const key of ["relations", "watchers"] as const) {
+        const fresh = details.issue[key];
+        if (known && fresh && JSON.stringify(known[key] ?? []) !== JSON.stringify(fresh)) patch[key] = fresh as never;
+      }
+      const next: Partial<AppState> = {};
+      if (known && Object.keys(patch).length) next.issues = new Map(issues).set(id, { ...known, ...patch });
+      if (details.watching != null && watching.get(id) !== details.watching) {
+        next.watching = new Map(watching).set(id, details.watching);
+      }
+      if (Object.keys(next).length) set(next);
+    },
+
+    async setWatcher(issueId, userId, watching) {
+      const { backend, account, meta } = get();
+      const issue = get().issues.get(issueId);
+      if (!backend || !issue) return false;
+      const before = { issue, watching: get().watching.get(issueId) };
+      // Show the change at once; Redmine has the last word.
+      const person =
+        userId === account?.userId
+          ? { id: userId, name: account.name }
+          : meta?.memberships.find((m) => m.user?.id === userId)?.user;
+      const list = (issue.watchers ?? []).filter((w) => w.id !== userId);
+      if (watching && person) list.push(person);
+      const next: Partial<AppState> = {};
+      if (issue.watchers) next.issues = new Map(get().issues).set(issueId, { ...issue, watchers: list });
+      if (userId === account?.userId) next.watching = new Map(get().watching).set(issueId, watching);
+      set(next);
+      try {
+        get().takeDetails(await backend.setWatcher(issueId, userId, watching));
+        return true;
+      } catch (e) {
+        const issues = new Map(get().issues).set(issueId, before.issue);
+        const was = new Map(get().watching);
+        if (before.watching === undefined) was.delete(issueId);
+        else was.set(issueId, before.watching);
+        const forbidden = isBackendError(e) && e.code === "forbidden";
+        const mine = userId === account?.userId;
+        const act = mine ? (watching ? "subscribe" : "unsubscribe") : watching ? "add subscribers" : "remove subscribers";
+        set({
+          issues,
+          watching: was,
+          toast: forbidden
+            ? `Your role in ${issue.project.name} can't ${act} through Redmine's API. Open #${issueId} in Redmine to use Watch there.`
+            : `Couldn't ${act} on #${issueId}: ${errorMessage(e)}`,
+        });
+        return false;
+      }
+    },
+
+    async toggleSubscribe(issueId) {
+      const { account, meta, watching } = get();
+      const issue = get().issues.get(issueId);
+      if (!account || !issue) return;
+      const on = !(watching.get(issueId) ?? issue.watchers?.some((w) => w.id === account.userId) ?? false);
+      const permission = on ? "add_issue_watchers" : "delete_issue_watchers";
+      if (allowed(meta, issue.project.id, permission) === false) {
+        // Redmine only lets this role watch from its own page.
+        get().openInRedmine(`issues/${issueId}`);
+        set({
+          toast: `Opened #${issueId} in Redmine: your role in ${issue.project.name} can only ${on ? "watch" : "unwatch"} issues there.`,
+        });
+        return;
+      }
+      await get().setWatcher(issueId, account.userId, on);
+    },
+
+    openInRedmine(path) {
+      get()
+        .backend?.openInRedmine(path)
+        .catch((e) => set({ toast: errorMessage(e) }));
     },
 
     showToast(toast) {

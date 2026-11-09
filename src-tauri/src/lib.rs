@@ -52,6 +52,7 @@ pub fn run() {
                 )
                 .build(),
         )
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState::default())
         .on_menu_event(|app, event| {
             let _ = app.emit(menu::EVENT_MENU, event.id().as_ref());
@@ -95,6 +96,8 @@ pub fn run() {
             commands::update_issue,
             commands::create_issue,
             commands::add_relation,
+            commands::set_watcher,
+            commands::open_in_redmine,
             commands::remove_relation,
             commands::find_mentions,
         ])

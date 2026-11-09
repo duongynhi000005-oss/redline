@@ -290,3 +290,33 @@ async fn finds_mentions_in_descriptions_and_comments() {
     // A comment on the drag issue mentions the keyboard one.
     assert!(syncer.mentions_of(keys).await.unwrap().contains(&drag));
 }
+
+#[tokio::test]
+async fn knows_what_the_role_allows_and_whether_the_user_watches() {
+    use redline_core::{Store, Syncer};
+
+    let client = live!();
+    let id = issue_id(&client, "Show blocked issues on cards").await;
+    let syncer = Syncer::new(client, Store::in_memory().unwrap());
+    let meta = syncer.sync_metadata().await.unwrap();
+    let me = meta.user.clone().unwrap();
+    // A regular user can read their memberships and every role's permissions.
+    assert!(!me.memberships.is_empty());
+    let developer = meta.roles.iter().find(|r| r.name == "Developer").unwrap();
+    assert!(developer.permissions.iter().any(|p| p == "view_issues"));
+
+    // Redmine's default Developer role can't see or add watchers through the
+    // API, but Redline still learns whether the user watches the issue.
+    let details = syncer.issue_details(id).await.unwrap();
+    assert!(details.watching.is_some());
+    if !developer
+        .permissions
+        .iter()
+        .any(|p| p == "add_issue_watchers")
+    {
+        assert!(matches!(
+            syncer.set_watcher(id, me.id, true).await,
+            Err(Error::Forbidden)
+        ));
+    }
+}

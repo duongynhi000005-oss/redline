@@ -213,6 +213,7 @@ pub async fn get_issue_details(
                     .unwrap_or_default(),
                 issue,
                 allowed_statuses: None,
+                watching: None,
             }),
             None => Err(Error::Network(msg).into()),
         },
@@ -282,6 +283,56 @@ fn emit_changed(app: &AppHandle, changed: Vec<u64>) {
             },
         );
     }
+}
+
+/// Adds or removes an issue's watcher in Redmine, then re-reads the issue.
+#[tauri::command]
+pub async fn set_watcher(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    issue_id: u64,
+    user_id: u64,
+    watching: bool,
+) -> CmdResult<IssueDetails> {
+    let syncer = syncer(&state).await?;
+    let details = syncer.set_watcher(issue_id, user_id, watching).await?;
+    emit_changed(&app, vec![issue_id]);
+    Ok(details)
+}
+
+/// Opens a page of the signed-in Redmine in the browser, such as
+/// `issues/12`. Only paths on that server, so nothing else can be opened.
+#[tauri::command]
+pub async fn open_in_redmine(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let ok = !path.is_empty()
+        && !path.contains("..")
+        && path
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.' | '#'));
+    if !ok {
+        return Err(UiError::new(
+            "invalid",
+            "That isn't a Redmine page Redline can open.",
+        ));
+    }
+    let base = {
+        let guard = state.session.read().await;
+        let session = guard.as_ref().ok_or_else(UiError::signed_out)?;
+        session.account.server_url.clone()
+    };
+    let url = format!("{base}{}", path.trim_start_matches('/'));
+    app.opener().open_url(&url, None::<&str>).map_err(|_| {
+        UiError::new(
+            "browser",
+            format!("Couldn't open your browser. The page is {url}"),
+        )
+    })
 }
 
 /// Relates two issues in Redmine and refreshes both in the cache.

@@ -64,7 +64,17 @@ function iso(daysAgo: number, hours = 0): string {
 
 function buildMetadata(): Metadata {
   return {
-    user: { id: 1, login: "dev", firstname: "Dana", lastname: "Developer", admin: false },
+    user: {
+      id: 1,
+      login: "dev",
+      firstname: "Dana",
+      lastname: "Developer",
+      admin: false,
+      memberships: [
+        { project: { id: 1, name: "Web" }, roles: [{ id: 3, name: "Manager" }] },
+        { project: { id: 2, name: "Mobile" }, roles: [{ id: 4, name: "Developer" }] },
+      ],
+    },
     projects: [
       {
         id: 1,
@@ -134,6 +144,15 @@ function buildMetadata(): Metadata {
           roles: [{ id: 4, name: "Developer" }],
         })),
       ),
+    // As in Redmine's defaults: managers handle watchers, developers can't.
+    roles: [
+      {
+        id: 3,
+        name: "Manager",
+        permissions: ["view_issues", "edit_issues", "view_issue_watchers", "add_issue_watchers", "delete_issue_watchers"],
+      },
+      { id: 4, name: "Developer", permissions: ["view_issues", "edit_issues"] },
+    ],
   };
 }
 
@@ -232,13 +251,25 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   const changeHandlers = new Set<(c: IssuesChanged) => void>();
   let lastSyncedAt = Date.now();
 
+  // Who watches what; the demo user watches what they're assigned.
+  const watchers = new Map<number, Named[]>();
+  for (const issue of issues.values()) {
+    const list = [issue.author, issue.assigned_to].filter((p): p is Named => !!p);
+    watchers.set(issue.id, list.filter((p, i) => list.findIndex((q) => q.id === p.id) === i));
+  }
+  const may = (projectId: number, permission: string) =>
+    meta.user!.memberships!.some(
+      (m) => m.project.id === projectId && m.roles.some((r) => meta.roles!.find((x) => x.id === r.id)?.permissions.includes(permission)),
+    );
   const details = (id: number): IssueDetails => {
     const issue = issues.get(id);
     if (!issue) throw { code: "not_found", message: "Not found in Redmine." };
+    const list = watchers.get(id) ?? [];
     return {
-      issue,
+      issue: may(issue.project.id, "view_issue_watchers") ? { ...issue, watchers: list } : issue,
       journals: buildJournals(issue),
       allowedStatuses: meta.statuses.map((s) => ({ id: s.id, name: s.name, is_closed: s.is_closed })),
+      watching: list.some((w) => w.id === meta.user!.id),
     };
   };
 
@@ -320,6 +351,20 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       }
       changeHandlers.forEach((h) => h({ changed: [relation.issue_id, relation.issue_to_id], removed: [] }));
     },
+    async setWatcher(issueId, userId, watching) {
+      await wait(null);
+      const issue = issues.get(issueId);
+      if (!issue) throw { code: "not_found", message: "Not found in Redmine." };
+      if (!may(issue.project.id, watching ? "add_issue_watchers" : "delete_issue_watchers")) {
+        throw { code: "forbidden", message: "You don't have permission to do that in Redmine." };
+      }
+      const list = (watchers.get(issueId) ?? []).filter((w) => w.id !== userId);
+      const person = people.find((p) => p.id === userId);
+      if (watching && person) list.push(person);
+      watchers.set(issueId, list);
+      return details(issueId);
+    },
+    async openInRedmine() {},
     async findMentions(id) {
       await wait(null);
       return [...issues.values()]

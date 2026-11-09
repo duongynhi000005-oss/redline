@@ -377,3 +377,93 @@ async fn finds_mentions_in_descriptions_and_comments_but_not_lookalikes() {
     found.sort();
     assert_eq!(found, vec![20, 21, 30]);
 }
+
+#[tokio::test]
+async fn subscribes_and_reads_back_whether_the_user_watches() {
+    use redline_core::models::User;
+    use redline_core::{Metadata, Store, Syncer};
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/issues/3/watchers.json"))
+        .and(body_json(json!({"user_id": 5})))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // This role may not see watchers, so the issue comes back without them…
+    Mock::given(method("GET"))
+        .and(path("/issues/3.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"issue": issue(3)})))
+        .mount(&server)
+        .await;
+    // …and Redline asks whether the issue is among the ones the user watches.
+    Mock::given(method("GET"))
+        .and(path("/issues.json"))
+        .and(query_param("watcher_id", "me"))
+        .and(query_param("issue_id", "3"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [issue(3)], "total_count": 1, "offset": 0, "limit": 1
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/issues/3/watchers/9.json"))
+        .respond_with(ResponseTemplate::new(403))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let store = Store::in_memory().unwrap();
+    store
+        .replace_metadata(&Metadata {
+            user: Some(User {
+                id: 5,
+                login: "dev".into(),
+                firstname: "Dana".into(),
+                lastname: "Developer".into(),
+                mail: None,
+                admin: false,
+                created_on: None,
+                memberships: Vec::new(),
+            }),
+            ..Default::default()
+        })
+        .unwrap();
+    let syncer = Syncer::new(client(&server), store);
+    let details = syncer.set_watcher(3, 5, true).await.unwrap();
+    assert_eq!(details.watching, Some(true));
+    // A role without "Delete watchers" is refused, and Redline says so.
+    assert!(matches!(
+        syncer.set_watcher(3, 9, false).await,
+        Err(Error::Forbidden)
+    ));
+}
+
+#[tokio::test]
+async fn reads_roles_and_their_permissions() {
+    let server = MockServer::start().await;
+    Mock::given(path("/roles.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "roles": [{"id": 3, "name": "Manager"}, {"id": 4, "name": "Developer"}]
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(path("/roles/3.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "role": {"id": 3, "name": "Manager", "permissions": ["view_issues", "add_issue_watchers"]}
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(path("/roles/4.json"))
+        .respond_with(ResponseTemplate::new(403))
+        .mount(&server)
+        .await;
+    let roles = client(&server).roles().await.unwrap();
+    assert_eq!(roles.len(), 1);
+    assert_eq!(
+        roles[0].permissions,
+        vec!["view_issues", "add_issue_watchers"]
+    );
+}

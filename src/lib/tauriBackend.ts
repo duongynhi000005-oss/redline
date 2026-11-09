@@ -19,6 +19,8 @@ export const tauriBackend: Backend = {
   addRelation: (issueId, relation) => invoke("add_relation", { issueId, relation }),
   removeRelation: (relation) => invoke("remove_relation", { relation }),
   findMentions: (id) => invoke("find_mentions", { id }),
+  setWatcher: (issueId, userId, watching) => invoke("set_watcher", { issueId, userId, watching }),
+  openInRedmine: (path) => invoke("open_in_redmine", { path }),
   onSyncState: (handler) => listen<SyncState>("sync-state", (e) => handler(e.payload)),
   onIssuesChanged: (handler) => listen<IssuesChanged>("issues-changed", (e) => handler(e.payload)),
   onMetadataChanged: (handler) => listen("metadata-changed", () => handler()),
