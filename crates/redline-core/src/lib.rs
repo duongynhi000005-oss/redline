@@ -11,7 +11,7 @@ pub mod models;
 pub mod store;
 pub mod sync;
 
-pub use client::{Client, IssueQuery, Page};
+pub use client::{Client, IssueQuery, Page, TimeQuery};
 pub use error::{Error, Result};
 pub use store::{Metadata, Store};
 pub use sync::{IssueDetails, NewFile, SyncReport, Syncer};

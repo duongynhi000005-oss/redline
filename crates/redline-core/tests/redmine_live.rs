@@ -367,3 +367,64 @@ async fn attaches_downloads_and_deletes_a_file() {
             .any(|a| a.id == attachment.id)
     );
 }
+
+#[tokio::test]
+async fn logs_changes_and_deletes_time() {
+    use redline_core::models::TimeEntryChanges;
+    use redline_core::{Store, Syncer, TimeQuery};
+
+    let client = live!();
+    let id = issue_id(&client, "Show blocked issues on cards").await;
+    let syncer = Syncer::new(client, Store::in_memory().unwrap());
+    let meta = syncer.sync_metadata().await.unwrap();
+    let activity = meta
+        .time_entry_activities
+        .iter()
+        .find(|a| a.is_default)
+        .or(meta.time_entry_activities.first())
+        .expect("the server has time entry activities")
+        .id;
+    let entry = syncer
+        .log_time(&TimeEntryChanges {
+            issue_id: Some(id),
+            hours: Some(0.25),
+            activity_id: Some(activity),
+            comments: Some("Logged by the live test".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    // Redmine fills in today when no day is given.
+    assert!(!entry.spent_on.is_empty());
+    let listed = syncer
+        .client()
+        .time_entries(&TimeQuery {
+            issue_id: Some(id),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(listed.iter().any(|e| e.id == entry.id));
+    let changed = syncer
+        .update_time_entry(
+            entry.id,
+            &TimeEntryChanges {
+                hours: Some(0.5),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(changed.hours, 0.5);
+    assert!(
+        syncer
+            .store()
+            .issue(id)
+            .unwrap()
+            .unwrap()
+            .spent_hours
+            .unwrap_or(0.0)
+            >= 0.5
+    );
+    assert_eq!(syncer.delete_time_entry(entry.id).await.unwrap(), Some(id));
+}

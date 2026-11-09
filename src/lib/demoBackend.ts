@@ -13,6 +13,7 @@ import type {
   Named,
   Relation,
   SyncState,
+  TimeEntry,
 } from "./types";
 
 // Sample data for running the UI in a plain browser (`npm run dev`) and in
@@ -86,7 +87,10 @@ function buildMetadata(): Metadata {
           { id: 2, name: "Feature" },
         ],
         issue_categories: [],
-        enabled_modules: [{ id: 1, name: "issue_tracking" }],
+        enabled_modules: [
+          { id: 1, name: "issue_tracking" },
+          { id: 2, name: "time_tracking" },
+        ],
         issue_custom_fields: [
           { id: 1, name: "Area" },
           { id: 2, name: "Size" },
@@ -108,7 +112,10 @@ function buildMetadata(): Metadata {
         identifier: "mobile",
         trackers: [{ id: 1, name: "Bug" }],
         issue_categories: [],
-        enabled_modules: [{ id: 1, name: "issue_tracking" }],
+        enabled_modules: [
+          { id: 1, name: "issue_tracking" },
+          { id: 2, name: "time_tracking" },
+        ],
         issue_custom_fields: [],
       },
     ],
@@ -145,14 +152,29 @@ function buildMetadata(): Metadata {
           roles: [{ id: 4, name: "Developer" }],
         })),
       ),
-    // As in Redmine's defaults: managers handle watchers, developers can't.
+    // As in Redmine's defaults: managers handle watchers and anyone's time,
+    // developers can't watch for others and fix only their own time.
     roles: [
       {
         id: 3,
         name: "Manager",
-        permissions: ["view_issues", "edit_issues", "view_issue_watchers", "add_issue_watchers", "delete_issue_watchers"],
+        permissions: [
+          "view_issues",
+          "edit_issues",
+          "view_issue_watchers",
+          "add_issue_watchers",
+          "delete_issue_watchers",
+          "view_time_entries",
+          "log_time",
+          "edit_time_entries",
+        ],
       },
-      { id: 4, name: "Developer", permissions: ["view_issues", "edit_issues"] },
+      { id: 4, name: "Developer", permissions: ["view_issues", "edit_issues", "view_time_entries", "log_time", "edit_own_time_entries"] },
+    ],
+    time_entry_activities: [
+      { id: 8, name: "Design", is_default: false },
+      { id: 9, name: "Development", is_default: true },
+      { id: 10, name: "Review", is_default: false },
     ],
   };
 }
@@ -275,6 +297,44 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml", txt: "text/plain", pdf: "application/pdf" })[
       name.split(".").pop()?.toLowerCase() ?? ""
     ] ?? "application/octet-stream";
+
+  // Time logged over the last two weeks.
+  let nextTimeEntry = 500;
+  const timeEntries: TimeEntry[] = [];
+  const activityName = (id: number) => meta.time_entry_activities!.find((a) => a.id === id)?.name ?? "Development";
+  const spentOn = (issueId: number) => timeEntries.filter((e) => e.issue?.id === issueId).reduce((sum, e) => sum + e.hours, 0);
+  const setSpent = (issueId: number) => {
+    const issue = issues.get(issueId);
+    if (issue) issues.set(issueId, { ...issue, spent_hours: spentOn(issueId), total_spent_hours: spentOn(issueId) });
+  };
+  for (const [issueId, who, offset, hours, activity, comments] of [
+    [1, 0, 0, 1.5, 9, "Palette shortcuts"],
+    [1, 1, -1, 0.5, 10, "Review"],
+    [2, 1, -1, 3, 9, "Reproduced on a sleeping laptop"],
+    [3, 0, -2, 2, 9, ""],
+    [4, 2, -3, 1.25, 8, "Theme tokens"],
+    [3, 1, -4, 4, 9, "Virtualized rows"],
+    [6, 0, -7, 0.75, 9, ""],
+    [8, 2, -8, 2.5, 9, "Retry queue"],
+    [7, 1, -2, 1, 9, "Offline banner"],
+    [7, 0, -5, 0.5, 10, ""],
+  ] as const) {
+    const issue = issues.get(issueId)!;
+    timeEntries.push({
+      id: nextTimeEntry++,
+      project: issue.project,
+      issue: { id: issueId },
+      user: people[who]!,
+      activity: { id: activity, name: activityName(activity) },
+      hours,
+      comments,
+      spent_on: day(offset),
+      created_on: iso(-offset),
+    });
+  }
+  for (const id of new Set(timeEntries.map((e) => e.issue!.id))) setSpent(id);
+  const subProjectsOf = (projectId: number) =>
+    new Set([projectId, ...meta.projects.filter((p) => p.parent?.id === projectId).map((p) => p.id)]);
 
   const may = (projectId: number, permission: string) =>
     meta.user!.memberships!.some(
@@ -420,6 +480,80 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       );
       changeHandlers.forEach((h) => h({ changed: [issueId], removed: [] }));
       return details(issueId);
+    },
+    async timeEntries(query) {
+      await wait(null);
+      const projects = query.project_id ? subProjectsOf(query.project_id) : null;
+      return timeEntries
+        .filter((e) => !projects || projects.has(e.project.id))
+        .filter((e) => !query.issue_id || e.issue?.id === query.issue_id)
+        .filter((e) => !query.user_id || e.user.id === query.user_id)
+        .filter((e) => (!query.from || e.spent_on >= query.from) && (!query.to || e.spent_on <= query.to))
+        .sort((a, b) => b.spent_on.localeCompare(a.spent_on) || b.id - a.id);
+    },
+    async logTime(entry) {
+      await wait(null);
+      const issue = entry.issue_id ? issues.get(entry.issue_id) : undefined;
+      const project = issue?.project ?? meta.projects.find((p) => p.id === entry.project_id);
+      if (!project) throw { code: "validation", message: "Issue is invalid" };
+      if (!may(project.id, "log_time")) throw { code: "forbidden", message: "You don't have permission to do that in Redmine." };
+      if (!entry.hours || entry.hours <= 0) throw { code: "validation", message: "Hours is invalid" };
+      const activity = entry.activity_id ?? 9;
+      const created: TimeEntry = {
+        id: nextTimeEntry++,
+        project: { id: project.id, name: project.name },
+        issue: issue ? { id: issue.id } : null,
+        user: people[0]!,
+        activity: { id: activity, name: activityName(activity) },
+        hours: entry.hours,
+        comments: entry.comments ?? "",
+        spent_on: entry.spent_on ?? day(0),
+        created_on: new Date().toISOString(),
+      };
+      timeEntries.push(created);
+      if (issue) {
+        setSpent(issue.id);
+        changeHandlers.forEach((h) => h({ changed: [issue.id], removed: [] }));
+      }
+      return created;
+    },
+    async updateTimeEntry(id, changes) {
+      await wait(null);
+      const i = timeEntries.findIndex((e) => e.id === id);
+      if (i < 0) throw { code: "not_found", message: "Not found in Redmine." };
+      const entry = timeEntries[i]!;
+      const own = entry.user.id === people[0]!.id;
+      if (!may(entry.project.id, "edit_time_entries") && !(own && may(entry.project.id, "edit_own_time_entries"))) {
+        throw { code: "forbidden", message: "You don't have permission to do that in Redmine." };
+      }
+      const next: TimeEntry = {
+        ...entry,
+        hours: changes.hours ?? entry.hours,
+        spent_on: changes.spent_on ?? entry.spent_on,
+        comments: changes.comments ?? entry.comments,
+        activity: changes.activity_id ? { id: changes.activity_id, name: activityName(changes.activity_id) } : entry.activity,
+      };
+      timeEntries[i] = next;
+      if (entry.issue) {
+        setSpent(entry.issue.id);
+        changeHandlers.forEach((h) => h({ changed: [entry.issue!.id], removed: [] }));
+      }
+      return next;
+    },
+    async deleteTimeEntry(id) {
+      await wait(null);
+      const i = timeEntries.findIndex((e) => e.id === id);
+      if (i < 0) return;
+      const entry = timeEntries[i]!;
+      const own = entry.user.id === people[0]!.id;
+      if (!may(entry.project.id, "edit_time_entries") && !(own && may(entry.project.id, "edit_own_time_entries"))) {
+        throw { code: "forbidden", message: "You don't have permission to do that in Redmine." };
+      }
+      timeEntries.splice(i, 1);
+      if (entry.issue) {
+        setSpent(entry.issue.id);
+        changeHandlers.forEach((h) => h({ changed: [entry.issue!.id], removed: [] }));
+      }
     },
     async onFileDrop() {
       return () => {};

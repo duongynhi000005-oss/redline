@@ -104,6 +104,60 @@ pub struct IssuePriority {
     pub active: bool,
 }
 
+/// A kind of work time can be logged as, like Design or Development.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimeEntryActivity {
+    pub id: u64,
+    pub name: String,
+    #[serde(default)]
+    pub is_default: bool,
+    #[serde(default = "default_true")]
+    pub active: bool,
+}
+
+/// Time someone logged, on an issue or on a project.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TimeEntry {
+    pub id: u64,
+    pub project: Named,
+    #[serde(default)]
+    pub issue: Option<IssueRef>,
+    pub user: Named,
+    pub activity: Named,
+    pub hours: f64,
+    #[serde(default)]
+    pub comments: Option<String>,
+    /// The day the time was spent, YYYY-MM-DD.
+    pub spent_on: String,
+    #[serde(default)]
+    pub created_on: Option<String>,
+    #[serde(default)]
+    pub updated_on: Option<String>,
+}
+
+/// An issue a time entry belongs to.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct IssueRef {
+    pub id: u64,
+}
+
+/// Fields to set when logging or changing time. Only `Some` fields are sent.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TimeEntryChanges {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub issue_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub project_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spent_on: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hours: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activity_id: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comments: Option<String>,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -345,6 +399,12 @@ pub struct Issue {
     pub is_private: bool,
     #[serde(default)]
     pub estimated_hours: Option<f64>,
+    /// Time logged on the issue itself; only for roles that may see time.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spent_hours: Option<f64>,
+    /// With its sub-issues.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_spent_hours: Option<f64>,
     #[serde(default)]
     pub custom_fields: Vec<CustomFieldValue>,
     pub created_on: String,

@@ -8,6 +8,8 @@ import { NewIssue } from "./components/NewIssue";
 import { Picker } from "./components/Picker";
 import { FilterMenu } from "./components/Filters";
 import { Settings } from "./components/Settings";
+import { TimeDialog } from "./components/TimeDialog";
+import { TimeView } from "./components/TimeView";
 import { useIssueShortcuts } from "./components/useIssueShortcuts";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
@@ -64,6 +66,8 @@ export function App({ backend }: { backend?: Backend }) {
         <InboxView />
       ) : route.view === "cycles" ? (
         <CycleList teamId={route.teamId} />
+      ) : route.view === "time" ? (
+        <TimeView teamId={route.teamId} />
       ) : (
         <IssueList />
       )}
@@ -72,6 +76,7 @@ export function App({ backend }: { backend?: Backend }) {
       <FilterMenu />
       <NewIssue />
       <Settings />
+      <TimeDialog />
       <Toast />
     </div>
   );

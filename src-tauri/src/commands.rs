@@ -369,6 +369,57 @@ pub async fn find_mentions(state: State<'_, AppState>, id: u64) -> CmdResult<Vec
     Ok(syncer.mentions_of(id).await?)
 }
 
+// ----- Time ---------------------------------------------------------------
+
+/// Time entries, read from Redmine each time (they aren't cached).
+#[tauri::command]
+pub async fn time_entries(
+    state: State<'_, AppState>,
+    query: redline_core::TimeQuery,
+) -> CmdResult<Vec<redline_core::models::TimeEntry>> {
+    Ok(syncer(&state).await?.client().time_entries(&query).await?)
+}
+
+#[tauri::command]
+pub async fn log_time(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    entry: redline_core::models::TimeEntryChanges,
+) -> CmdResult<redline_core::models::TimeEntry> {
+    let created = syncer(&state).await?.log_time(&entry).await?;
+    emit_changed(&app, created.issue.iter().map(|i| i.id).collect());
+    Ok(created)
+}
+
+#[tauri::command]
+pub async fn update_time_entry(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: u64,
+    changes: redline_core::models::TimeEntryChanges,
+) -> CmdResult<redline_core::models::TimeEntry> {
+    let changed = syncer(&state)
+        .await?
+        .update_time_entry(id, &changes)
+        .await?;
+    let mut issues: Vec<u64> = changed.issue.iter().map(|i| i.id).collect();
+    issues.extend(changes.issue_id);
+    issues.dedup();
+    emit_changed(&app, issues);
+    Ok(changed)
+}
+
+#[tauri::command]
+pub async fn delete_time_entry(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: u64,
+) -> CmdResult<()> {
+    let issue = syncer(&state).await?.delete_time_entry(id).await?;
+    emit_changed(&app, issue.into_iter().collect());
+    Ok(())
+}
+
 // ----- Attachments --------------------------------------------------------
 
 /// Redmine's attachments never change, so each is cached on disk by id, per

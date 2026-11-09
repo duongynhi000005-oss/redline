@@ -12,6 +12,7 @@ function sameRoute(a: Route, b: Route): boolean {
   if (a.view !== b.view) return false;
   if (a.view === "team" && b.view === "team") return a.teamId === b.teamId;
   if (a.view === "project" && b.view === "project") return a.projectId === b.projectId;
+  if (a.view === "time" && b.view === "time") return a.teamId === b.teamId;
   // A cycle's issues light up the team's Cycles item.
   if ((a.view === "cycles" || a.view === "cycle") && (b.view === "cycles" || b.view === "cycle")) return a.teamId === b.teamId;
   return true;
@@ -73,7 +74,8 @@ export function Sidebar() {
   const syncNow = useApp((s) => s.syncNow);
   const meta = useApp((s) => s.meta);
   const unread = useApp((s) => s.inbox.items.filter((i) => !i.read).length);
-  const { teams, teamProjects } = useDerived();
+  const d = useDerived();
+  const { teams, teamProjects } = d;
   const hasCycles = useMemo(
     () => new Set(meta ? meta.versions.map((v) => teamOf(v.project.id, meta)) : []),
     [meta],
@@ -153,6 +155,9 @@ export function Sidebar() {
                       label="Cycles"
                       depth={1}
                     />
+                  )}
+                  {d.teamTime.has(team.id) && (
+                    <NavItem route={{ view: "time", teamId: team.id }} icon={<Icon name="time" />} label="Time" depth={1} />
                   )}
                   {teamProjects.get(team.id)?.map((p) => (
                     <NavItem

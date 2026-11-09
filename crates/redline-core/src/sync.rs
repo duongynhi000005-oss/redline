@@ -23,7 +23,10 @@ use tokio::task::JoinSet;
 use crate::client::{Client, IssueQuery, PAGE_SIZE};
 use crate::error::{Error, Result};
 use crate::mentions;
-use crate::models::{Issue, IssueChanges, IssueStatusRef, Journal, NewRelation, Relation, Upload};
+use crate::models::{
+    Issue, IssueChanges, IssueStatusRef, Journal, NewRelation, Relation, TimeEntry,
+    TimeEntryChanges, Upload,
+};
 use crate::store::{Metadata, Store};
 
 const CURSOR_KEY: &str = "issues_cursor";
@@ -132,6 +135,10 @@ impl Syncer {
 
         // Any user may read roles; a locked-down server may still refuse.
         let roles = ok_unless_forbidden(self.client.roles().await)?;
+        let time_entry_activities = ok_unless_forbidden(self.client.time_entry_activities().await)?
+            .into_iter()
+            .filter(|a| a.active)
+            .collect();
 
         let meta = Metadata {
             user: Some(user),
@@ -142,6 +149,7 @@ impl Syncer {
             versions,
             memberships,
             roles,
+            time_entry_activities,
         };
         self.store.replace_metadata(&meta)?;
         Ok(meta)
@@ -333,6 +341,45 @@ impl Syncer {
             Err(e) => return Err(e),
         }
         self.issue_details(issue_id).await
+    }
+
+    /// Logs time, then re-reads the issue it's on so its spent time is current.
+    pub async fn log_time(&self, entry: &TimeEntryChanges) -> Result<TimeEntry> {
+        let created = self.client.create_time_entry(entry).await?;
+        self.refresh_spent(created.issue.iter().map(|i| i.id)).await;
+        Ok(created)
+    }
+
+    /// Changes a time entry. Re-reads the issues it was and is on.
+    pub async fn update_time_entry(
+        &self,
+        id: u64,
+        changes: &TimeEntryChanges,
+    ) -> Result<TimeEntry> {
+        let before = self.client.time_entry(id).await?;
+        self.client.update_time_entry(id, changes).await?;
+        let after = self.client.time_entry(id).await?;
+        self.refresh_spent(before.issue.iter().chain(after.issue.iter()).map(|i| i.id))
+            .await;
+        Ok(after)
+    }
+
+    /// Deletes a time entry. Returns the issue it was on, re-read.
+    pub async fn delete_time_entry(&self, id: u64) -> Result<Option<u64>> {
+        let entry = self.client.time_entry(id).await?;
+        self.client.delete_time_entry(id).await?;
+        let issue = entry.issue.map(|i| i.id);
+        self.refresh_spent(issue).await;
+        Ok(issue)
+    }
+
+    /// Spent time isn't a change Redmine dates, so a sync wouldn't pick it
+    /// up; read the issues again. Best effort: the time is logged either way.
+    async fn refresh_spent(&self, ids: impl IntoIterator<Item = u64>) {
+        let ids: HashSet<u64> = ids.into_iter().collect();
+        for id in ids {
+            let _ = self.issue_details(id).await;
+        }
     }
 
     /// Re-reads issues (with relations) into the cache. Returns the ids that

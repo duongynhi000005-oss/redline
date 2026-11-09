@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { CategoryMap, PriorityLevel, StatusCategory } from "../lib/model";
 import { categoryMap, issueCategory, priorityLevels, teamOf } from "../lib/model";
+import { moduleEnabled, timeAccess } from "../lib/permissions";
 import type { Issue, Metadata, Project, Version } from "../lib/types";
 import type { ServerSettings } from "../lib/settings";
 import { DEFAULT_SETTINGS } from "../lib/settings";
@@ -18,6 +19,8 @@ export interface Derived {
   teams: Project[];
   /** Subprojects of each team, at any depth. */
   teamProjects: Map<number, Project[]>;
+  /** Teams where the user can see time logged in at least one project. */
+  teamTime: Set<number>;
 }
 
 export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTINGS): Derived {
@@ -31,6 +34,8 @@ export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTIN
     if (team !== p.id) teamProjects.get(team)?.push(p);
   }
   teamProjects.forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name)));
+  const teamTime = new Set<number>();
+  for (const p of meta.projects) if (moduleEnabled(meta, p.id, "time_tracking") && timeAccess(meta, p.id).view) teamTime.add(teamOf(p.id, meta));
   return {
     categories: categoryMap(meta, settings.statusCategories),
     labelFields: settings.labelFields ? new Set(settings.labelFields) : null,
@@ -39,6 +44,7 @@ export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTIN
     versions: new Map(meta.versions.map((v) => [v.id, v])),
     teams,
     teamProjects,
+    teamTime,
   };
 }
 
@@ -80,6 +86,7 @@ const EMPTY: Derived = {
   projects: new Map(),
   teams: [],
   teamProjects: new Map(),
+  teamTime: new Set(),
 };
 
 export function useDerived(): Derived {
@@ -134,6 +141,7 @@ export function issuesForRoute(
         if (issue.fixed_version?.id === route.versionId) out.push(issue);
         break;
       case "cycles":
+      case "time":
       case "inbox":
         break;
     }
@@ -153,6 +161,8 @@ export function routeTitle(route: Route, d: Derived): string {
       return d.projects.get(route.projectId)?.name ?? "Project";
     case "cycles":
       return `${d.projects.get(route.teamId)?.name ?? "Team"} cycles`;
+    case "time":
+      return `${d.projects.get(route.teamId)?.name ?? "Team"} time`;
     case "cycle":
       return d.versions.get(route.versionId)?.name ?? "Cycle";
   }
