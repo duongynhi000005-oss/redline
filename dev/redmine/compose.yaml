@@ -11,9 +11,10 @@
 
 services:
   redmine:
-    # Pin a major version so everyone tests against the same Redmine.
-    # Change to redmine:6.1 to check behaviour on the previous release.
-    image: redmine:7
+    # Redline supports Redmine 6.1 and later. This runs the latest 7.x unless
+    # REDMINE_VERSION says otherwise, for example REDMINE_VERSION=6.1 to check
+    # the oldest supported release. CI runs both.
+    image: redmine:${REDMINE_VERSION:-7}
     ports:
       - "3000:3000"
     environment:

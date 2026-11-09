@@ -51,7 +51,7 @@ body:
     id: redmine-version
     attributes:
       label: Redmine version
-      description: Shown under Administration > Information, or ask your Redmine admin.
+      description: Shown under Administration > Information, or ask your Redmine admin. Redline supports 6.1 and later.
       placeholder: e.g. 7.0.3
   - type: textarea
     id: logs

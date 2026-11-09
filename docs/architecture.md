@@ -43,9 +43,10 @@ design doc
 
 ## Rules every change follows
 
-1. **Any Redmine.** No admin key, no plugins, no single team's setup. Read
-   statuses, trackers and custom fields from the API, and detect what the server
-   supports at runtime.
+1. **Any Redmine 6.1 or later.** No admin key, no plugins, no single team's
+   setup. Read statuses, trackers and custom fields from the API, and detect
+   what the server supports at runtime. Older Redmine releases aren't
+   supported (see ADR 0005).
 2. **Be gentle with the server.** Few requests, pages of 100, a small
    concurrency limit, back off on 429 and 503, and only send the fields an
    edit changes.
