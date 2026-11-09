@@ -336,29 +336,39 @@ pub struct IssueChanges {
     pub description: Option<String>,
     /// `Some(None)` clears the assignee.
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_clearable"
+        serialize_with = "serialize_clearable",
+        deserialize_with = "deserialize_clearable"
     )]
     pub assigned_to_id: Option<Option<u64>>,
     /// `Some(None)` clears the version.
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_clearable"
+        serialize_with = "serialize_clearable",
+        deserialize_with = "deserialize_clearable"
     )]
     pub fixed_version_id: Option<Option<u64>>,
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_clearable"
+        serialize_with = "serialize_clearable",
+        deserialize_with = "deserialize_clearable"
     )]
     pub parent_issue_id: Option<Option<u64>>,
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_clearable"
+        serialize_with = "serialize_clearable",
+        deserialize_with = "deserialize_clearable"
     )]
     pub due_date: Option<Option<String>>,
     #[serde(
+        default,
         skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_clearable"
+        serialize_with = "serialize_clearable",
+        deserialize_with = "deserialize_clearable"
     )]
     pub start_date: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -375,6 +385,15 @@ pub struct IssueChanges {
 pub struct CustomFieldChange {
     pub id: u64,
     pub value: Value,
+}
+
+/// A present `null` means "clear this field": `Some(None)`.
+fn deserialize_clearable<'de, T, D>(d: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    Option::<T>::deserialize(d).map(Some)
 }
 
 /// Redmine clears a field when it's sent as an empty string.
@@ -453,6 +472,15 @@ mod tests {
             serde_json::to_value(&changes).unwrap(),
             json!({"status_id": 2, "assigned_to_id": ""})
         );
+    }
+
+    #[test]
+    fn changes_from_the_ui_distinguish_clear_from_unchanged() {
+        let changes: IssueChanges =
+            serde_json::from_value(json!({"assigned_to_id": null, "status_id": 3})).unwrap();
+        assert_eq!(changes.assigned_to_id, Some(None));
+        assert_eq!(changes.fixed_version_id, None);
+        assert_eq!(changes.status_id, Some(3));
     }
 
     #[test]
