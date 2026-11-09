@@ -1,7 +1,7 @@
 {
   "name": "redline",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A fast, keyboard-first, Linear-style desktop client for Redmine.",
   "license": "Apache-2.0",
   "type": "module",
