@@ -324,7 +324,7 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
 
   const order = useMemo(() => issueRows.map((r) => r.id), [issueRows]);
 
-  // Keyboard: ↑/↓ or j/k move, Enter opens, Shift+↑/↓ pick as they move, Cmd/Ctrl+A picks all.
+  // Keyboard: ↑/↓ or j/k move, Home/End and Page Up/Down jump, Enter opens, Shift+↑/↓ pick as they move, Cmd/Ctrl+A picks all.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (overlay || isTyping(e.target) || !issueRows.length) return;
@@ -338,6 +338,14 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
       let next: number | null = null;
       if (e.key === "ArrowDown" || e.key === "j") next = pos < 0 ? 0 : Math.min(issueRows.length - 1, pos + 1);
       else if (e.key === "ArrowUp" || e.key === "k") next = pos < 0 ? 0 : Math.max(0, pos - 1);
+      else if (e.key === "Home") next = 0;
+      else if (e.key === "End") next = issueRows.length - 1;
+      else if (e.key === "PageDown" || e.key === "PageUp") {
+        // A page is the rows that fit on screen, less one so the last stays in view.
+        const page = Math.max(1, Math.floor((scrollRef.current?.clientHeight ?? 0) / ROW_HEIGHT) - 1);
+        const from = pos < 0 ? 0 : pos;
+        next = e.key === "PageDown" ? Math.min(issueRows.length - 1, from + page) : Math.max(0, from - page);
+      }
       else if (e.key === "Enter" && focusedId !== null) {
         e.preventDefault();
         openIssue(focusedId);
