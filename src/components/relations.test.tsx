@@ -52,6 +52,22 @@ describe("related issues", () => {
     expect(useApp.getState().issues.get(5)!.relations?.some((r) => r.issue_id === 2 || r.issue_to_id === 2)).toBe(true);
   });
 
+  it("starts the issue search empty and focused, whether the kind was typed or clicked", async () => {
+    const { user } = await openIssue(2);
+    await user.click(screen.getByRole("button", { name: "Add relation" }));
+    await user.keyboard("blocking{Enter}");
+    const search = await screen.findByPlaceholderText("Blocking…");
+    expect(search).toHaveValue("");
+    expect(search).toHaveFocus();
+    await user.keyboard("#5");
+    expect(await screen.findByRole("option", { name: /^#5(?!\d)/ })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: "Add relation" }));
+    await user.click(await screen.findByRole("option", { name: /Mark as related to/ }));
+    expect(screen.getByRole("combobox")).toHaveFocus();
+  });
+
   it("removes a relation, which unblocks the issue", async () => {
     const { user } = await openIssue(2);
     await user.click(screen.getByRole("button", { name: "Remove relation to #3" }));
