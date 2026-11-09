@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { CategoryMap, PriorityLevel, StatusCategory } from "../lib/model";
 import { categoryMap, issueCategory, priorityLevels, projectTree, teamOf } from "../lib/model";
-import { moduleEnabled, timeAccess, wikiAccess } from "../lib/permissions";
+import { filesAccess, moduleEnabled, newsAccess, timeAccess, wikiAccess } from "../lib/permissions";
 import type { Issue, Metadata, Project, SavedQuery, Version } from "../lib/types";
 import type { ServerSettings } from "../lib/settings";
 import { DEFAULT_SETTINGS } from "../lib/settings";
@@ -25,6 +25,10 @@ export interface Derived {
   queries: Map<number, SavedQuery>;
   /** Projects whose wiki the user can read. */
   wikis: Set<number>;
+  /** Projects whose news the user can read. */
+  news: Set<number>;
+  /** Projects whose Files the user can see. */
+  files: Set<number>;
 }
 
 export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTINGS): Derived {
@@ -51,6 +55,8 @@ export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTIN
     teamTime,
     queries: new Map((meta.queries ?? []).map((q) => [q.id, q])),
     wikis: new Set(meta.projects.filter((p) => wikiAccess(meta, p.id).view).map((p) => p.id)),
+    news: new Set(meta.projects.filter((p) => newsAccess(meta, p.id).view).map((p) => p.id)),
+    files: new Set(meta.projects.filter((p) => filesAccess(meta, p.id).view).map((p) => p.id)),
   };
 }
 
@@ -95,6 +101,8 @@ const EMPTY: Derived = {
   teamTime: new Set(),
   queries: new Map(),
   wikis: new Set(),
+  news: new Set(),
+  files: new Set(),
 };
 
 export function useDerived(): Derived {
@@ -139,6 +147,8 @@ export function issuesForRoute(
       case "search":
       case "overview":
       case "wiki":
+      case "news":
+      case "files":
       case "cycles":
       case "time":
       case "inbox":
@@ -177,6 +187,10 @@ export function routeTitle(route: Route, d: Derived): string {
       return d.projects.get(route.projectId)?.name ?? "Team";
     case "wiki":
       return `${d.projects.get(route.projectId)?.name ?? "Team"} wiki`;
+    case "news":
+      return route.projectId === null ? "Updates" : `${d.projects.get(route.projectId)?.name ?? "Team"} news`;
+    case "files":
+      return `${d.projects.get(route.projectId)?.name ?? "Team"} files`;
     case "cycles":
       return `${d.projects.get(route.teamId)?.name ?? "Team"} cycles`;
     case "time":

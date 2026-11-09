@@ -760,3 +760,84 @@ async fn writes_reads_and_deletes_a_wiki_page() {
     let gone = client.wiki_page(web.id, Some(title), None).await;
     assert!(matches!(gone, Err(Error::NotFound)), "{gone:?}");
 }
+
+#[tokio::test]
+async fn reads_news_and_adds_and_deletes_a_file() {
+    use redline_core::models::NewsChanges;
+
+    let client = live!();
+    let projects = client.projects().await.unwrap();
+    let web = projects
+        .iter()
+        .find(|p| p.identifier == "web")
+        .expect("web");
+
+    let all = client.news(None, 0).await.unwrap();
+    let post = all
+        .items
+        .iter()
+        .find(|n| n.title == "Redline 0.1 is out")
+        .expect("seeded news");
+    let full = client.news_item(post.id).await.unwrap();
+    assert_eq!(full.comments[0].content, "Works great on my Mac.");
+    assert!(!client.news(Some(web.id), 0).await.unwrap().items.is_empty());
+    // dev is a Developer, who can't manage news.
+    let posted = client
+        .create_news(
+            web.id,
+            &NewsChanges {
+                title: Some("Nope".into()),
+                description: Some("Nope".into()),
+                ..Default::default()
+            },
+        )
+        .await;
+    assert!(matches!(posted, Err(Error::Forbidden)), "{posted:?}");
+
+    let name = "live-test-file.txt";
+    // Clean up after an earlier run that stopped half way.
+    for f in client.files(web.id).await.unwrap() {
+        if f.filename == name {
+            let _ = client.delete_attachment(f.id).await;
+        }
+    }
+    let files = client.files(web.id).await.unwrap();
+    let sprint = files
+        .iter()
+        .find(|f| f.filename == "release-notes.txt")
+        .and_then(|f| f.version.clone())
+        .expect("seeded version file");
+    let token = client.upload(name, b"hello".to_vec()).await.unwrap();
+    client
+        .add_file(
+            web.id,
+            &token,
+            name,
+            Some(sprint.id),
+            Some("From the live test"),
+        )
+        .await
+        .unwrap();
+    let added = client
+        .files(web.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|f| f.filename == name)
+        .expect("added file");
+    assert_eq!(added.version.as_ref().map(|v| v.id), Some(sprint.id));
+    assert_eq!(added.description.as_deref(), Some("From the live test"));
+    assert_eq!(
+        client.download_attachment(added.id).await.unwrap(),
+        b"hello"
+    );
+    client.delete_attachment(added.id).await.unwrap();
+    assert!(
+        !client
+            .files(web.id)
+            .await
+            .unwrap()
+            .iter()
+            .any(|f| f.filename == name)
+    );
+}

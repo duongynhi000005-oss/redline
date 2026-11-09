@@ -255,7 +255,7 @@ end
 
 # A wiki and news in Web, for search and their own views.
 if web
-  web.enabled_module_names = (web.enabled_module_names | %w[wiki news])
+  web.enabled_module_names = (web.enabled_module_names | %w[wiki news files])
   wiki = web.wiki || Wiki.create!(project: web, start_page: "Wiki")
   if wiki.pages.none?
     {
@@ -297,6 +297,31 @@ if web
                  description: "The board view groups issues by status, assignee or cycle. Drag a card to change it.")
     say "posted news"
   end
+  unless News.exists?(project: web, title: "Redline 0.1 is out")
+    news = News.create!(project: web, author: admin, title: "Redline 0.1 is out",
+                        summary: "The first release, for macOS and Windows.",
+                        description: "Download it from the releases page. Sign in with your Redmine address and API key.\n\nTell us what's missing in the **Web** team.")
+    Comment.create!(commented: news, author: user, content: "Works great on my Mac.")
+    say "posted release news"
+  end
+  # Files, one under a version and one for the whole team.
+  {
+    "release-notes.txt" => [current, "What's in Sprint 2", "Board view, timeline and keyboard moves.\n"],
+    "brand-colors.txt" => [nil, "Colors for the web app", "Red #e5484d\nInk #1c2024\n"]
+  }.each do |filename, (version, description, content)|
+    next if Attachment.exists?(filename: filename)
+    container = version || web
+    io = StringIO.new(content)
+    attachment = Attachment.new(container: container, file: io, author: user, filename: filename,
+                                description: description, content_type: "text/plain")
+    attachment.save!
+    say "added file #{filename}"
+  end
+  # The seed runs as root, but Redmine serves as its own user: hand back any
+  # folder the seed made under files/ so later uploads can be written there.
+  root = Attachment.storage_path
+  owner = File.stat(root)
+  FileUtils.chown_R(owner.uid, owner.gid, root)
 end
 
 # What the team overview shows: a description and a homepage for Web.

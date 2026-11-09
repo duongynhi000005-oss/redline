@@ -68,13 +68,13 @@ browser, because Redmine has no API for it
 | Redmine | API with a user key | Redline | Where it lives |
 | --- | --- | --- | --- |
 | Wiki | `GET /projects/:id/wiki/index.json`, `GET/PUT/DELETE /projects/:id/wiki/:title.json`, `GET /projects/:id/wiki/:title/:version.json` | ✅ | Team > Wiki: page tree, reader with `[[wiki links]]` (pages not written yet look it), attachments, sub-pages. Editor with preview, a comment for the history and the parent page (Rename wiki pages), refusing a save over someone else's. History of the last 10 versions, reading and restoring an older one. New page and sub-page, delete with or without sub-pages. Wiki search results open here. Uploading files to a page, protecting pages, watchers and renaming a title stay in Redmine (the API has no rename). #46 |
-| News | `GET /news.json`, `GET/POST/PUT/DELETE` news (comments have no API) | ⬜ | Team > News, and an Updates list across teams. #47 |
-| Files | `GET/POST /projects/:id/files.json` | ⬜ | Team > Files: list, save, upload. #47 |
+| News | `GET /news.json`, `GET /projects/:id/news.json`, `GET/PUT/DELETE /news/:id.json`, `POST /projects/:id/news.json` (writes need Manage news); comments are read-only in the API | ✅ | Updates in the sidebar lists every team's news; Team > News lists one team's. A post shows its summary, text, attachments and comments. New post (with a team picker in Updates), edit (also the E key) and delete where the role has Manage news. Comments are read here and added in Redmine, which has no API to add them. News search results open here. #47 |
+| Files | `GET/POST /projects/:id/files.json`, `POST /uploads.json`, `DELETE /attachments/:id.json` | ✅ | Team > Files: the team's own files first, then each version's, with description, size, downloads and who added them. Save any file; add files under a version or the whole team, with a description, and delete them where the role has Manage files. #47 |
 | Documents | No API (search finds them) | 🌐 | Team > Documents lists what search finds; opening one goes to the browser. #49 |
 | Forums (boards and messages) | No API (search finds messages) | 🌐 | Team > Forums lists what search finds; opening one goes to the browser. #49 |
 | Repository browser | No API, except linking issues to revisions | 🌐 | Commits show on issues (#48); the browser opens in Redmine |
 | Activity | No API (Atom feeds need the separate Atom key) | ⬜ | Team > Activity, built from the cache: issue changes, comments, time, wiki, news, files. #48 |
-| Search | `GET /search.json` across issues, wiki, news, documents, messages, changesets | ✅ | Command menu "Search Redmine for …" and a search view; issues open in Redline, the rest in the browser until their own views land. #44 |
+| Search | `GET /search.json` across issues, wiki, news, documents, messages, changesets | ✅ | Command menu "Search Redmine for …" and a search view; issues, wiki pages and news open in Redline, the rest in the browser until their own views land. #44 |
 
 ## Everything else
 

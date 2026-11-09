@@ -95,7 +95,7 @@ function PaletteContent() {
       { id: "new-issue", label: "Create new issue", group: "Issues", shortcut: "c", run: () => setComposerOpen(true) },
     ];
     // Lists of issues can be filtered; the inbox, cycle overview and search can't.
-    if (route.view !== "inbox" && route.view !== "cycles" && route.view !== "time" && route.view !== "search" && route.view !== "overview" && route.view !== "wiki" && !detailOpen) {
+    if (route.view !== "inbox" && route.view !== "cycles" && route.view !== "time" && route.view !== "search" && route.view !== "overview" && route.view !== "wiki" && route.view !== "news" && route.view !== "files" && !detailOpen) {
       list.push({
         id: "filter",
         label: "Filter…",
@@ -281,6 +281,15 @@ function PaletteContent() {
         run: go({ view: "my-issues", tab: "assigned" }),
       },
     );
+    if (d.news.size > 0)
+      list.push({
+        id: "go-updates",
+        label: "Go to Updates",
+        group: "Navigation",
+        icon: <Icon name="news" />,
+        keywords: "news announcements posts all teams",
+        run: go({ view: "news", projectId: null, newsId: null }),
+      });
     for (const q of d.queries.values()) {
       list.push({
         id: `go-query-${q.id}`,
@@ -316,6 +325,24 @@ function PaletteContent() {
           icon: <Icon name="wiki" />,
           keywords: `${team.identifier} docs pages`,
           run: go({ view: "wiki", projectId: team.id, title: null }),
+        });
+      if (d.news.has(team.id))
+        list.push({
+          id: `go-news-${team.id}`,
+          label: `Go to ${team.name} news`,
+          group: "Navigation",
+          icon: <Icon name="news" />,
+          keywords: `${team.identifier} updates announcements posts`,
+          run: go({ view: "news", projectId: team.id, newsId: null }),
+        });
+      if (d.files.has(team.id))
+        list.push({
+          id: `go-files-${team.id}`,
+          label: `Go to ${team.name} files`,
+          group: "Navigation",
+          icon: <Icon name="file" />,
+          keywords: `${team.identifier} downloads uploads documents`,
+          run: go({ view: "files", projectId: team.id }),
         });
       list.push({
         id: `go-cycles-${team.id}`,
@@ -358,6 +385,24 @@ function PaletteContent() {
             icon: <Icon name="wiki" />,
             keywords: `${team.name} ${p.identifier} docs pages`,
             run: go({ view: "wiki", projectId: p.id, title: null }),
+          });
+        if (d.news.has(p.id))
+          list.push({
+            id: `go-news-${p.id}`,
+            label: `Go to ${p.name} news`,
+            group: "Navigation",
+            icon: <Icon name="news" />,
+            keywords: `${team.name} ${p.identifier} updates announcements posts`,
+            run: go({ view: "news", projectId: p.id, newsId: null }),
+          });
+        if (d.files.has(p.id))
+          list.push({
+            id: `go-files-${p.id}`,
+            label: `Go to ${p.name} files`,
+            group: "Navigation",
+            icon: <Icon name="file" />,
+            keywords: `${team.name} ${p.identifier} downloads uploads documents`,
+            run: go({ view: "files", projectId: p.id }),
           });
       }
     }

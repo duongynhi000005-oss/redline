@@ -72,3 +72,19 @@ export function wikiAccess(meta: Metadata | null, projectId: number) {
     delete: open && may("delete_wiki_pages"),
   };
 }
+
+/** What the user can do with a project's news. A closed project's news is read-only. */
+export function newsAccess(meta: Metadata | null, projectId: number) {
+  const on = moduleEnabled(meta, projectId, "news") === true;
+  const may = (permission: string) => on && allowed(meta, projectId, permission) !== false;
+  const open = meta?.projects.find((p) => p.id === projectId)?.status !== 5;
+  return { view: may("view_news"), manage: open && may("manage_news") };
+}
+
+/** What the user can do with a project's Files. A closed project's files are read-only. */
+export function filesAccess(meta: Metadata | null, projectId: number) {
+  const on = moduleEnabled(meta, projectId, "files") === true;
+  const may = (permission: string) => on && allowed(meta, projectId, permission) !== false;
+  const open = meta?.projects.find((p) => p.id === projectId)?.status !== 5;
+  return { view: may("view_files"), manage: open && may("manage_files") };
+}

@@ -1091,3 +1091,135 @@ async fn reads_saves_and_deletes_wiki_pages() {
 
     c.delete_wiki_page(1, "Wiki", false).await.unwrap();
 }
+
+#[tokio::test]
+async fn reads_posts_and_deletes_news() {
+    use redline_core::models::NewsChanges;
+
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/news.json"))
+        .and(query_param("offset", "0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "news": [{"id": 2, "project": {"id": 1, "name": "Web"}, "title": "Out", "summary": "Now"}],
+            "total_count": 1, "offset": 0, "limit": 100
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/projects/1/news.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "news": [], "total_count": 0, "offset": 0, "limit": 100
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/news/2.json"))
+        .and(query_param("include", "comments,attachments"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"news": {
+            "id": 2, "project": {"id": 1, "name": "Web"}, "title": "Out",
+            "description": "**Done**", "author": {"id": 5, "name": "Dana"},
+            "comments": [{"id": 1, "author": {"id": 6, "name": "Sam"}, "content": "Nice"}],
+            "attachments": []
+        }})))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/projects/1/news.json"))
+        .and(body_json(
+            json!({"news": {"title": "Hi", "description": "Body"}}),
+        ))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/news/2.json"))
+        .and(body_json(json!({"news": {"summary": "Short"}})))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/news/2.json"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let c = client(&server);
+    let all = c.news(None, 0).await.unwrap();
+    assert_eq!(all.total_count, 1);
+    assert_eq!(all.items[0].project.name, "Web");
+    assert!(c.news(Some(1), 0).await.unwrap().items.is_empty());
+
+    let post = c.news_item(2).await.unwrap();
+    assert_eq!(post.comments[0].content, "Nice");
+    assert_eq!(post.description.as_deref(), Some("**Done**"));
+
+    c.create_news(
+        1,
+        &NewsChanges {
+            title: Some("Hi".into()),
+            description: Some("Body".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    c.update_news(
+        2,
+        &NewsChanges {
+            summary: Some("Short".into()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    c.delete_news(2).await.unwrap();
+}
+
+#[tokio::test]
+async fn lists_and_adds_project_files() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/projects/1/files.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"files": [
+            {"id": 20, "filename": "notes.txt", "filesize": 41, "downloads": 3,
+             "version": {"id": 2, "name": "Sprint 2"}},
+            {"id": 21, "filename": "colors.txt"}
+        ]})))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/projects/1/files.json"))
+        .and(body_json(json!({"file": {
+            "token": "7.abc", "filename": "a.pdf", "version_id": 2, "description": "Spec"
+        }})))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/projects/1/files.json"))
+        .and(body_json(
+            json!({"file": {"token": "8.def", "filename": "b.pdf"}}),
+        ))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let c = client(&server);
+    let files = c.files(1).await.unwrap();
+    assert_eq!(files[0].version.as_ref().unwrap().name, "Sprint 2");
+    assert_eq!(files[0].downloads, 3);
+    assert_eq!(files[1].version, None);
+    c.add_file(1, "7.abc", "a.pdf", Some(2), Some("Spec"))
+        .await
+        .unwrap();
+    // An empty description isn't sent.
+    c.add_file(1, "8.def", "b.pdf", None, Some(""))
+        .await
+        .unwrap();
+}

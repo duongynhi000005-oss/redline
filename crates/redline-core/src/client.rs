@@ -407,6 +407,107 @@ impl Client {
         Ok(url)
     }
 
+    // ----- News ----------------------------------------------------------
+
+    /// One page of news, newest first: a project's, or across every project
+    /// the user can see.
+    pub async fn news(&self, project_id: Option<u64>, offset: u64) -> Result<Page<News>> {
+        let path = match project_id {
+            Some(id) => format!("projects/{id}/news.json"),
+            None => "news.json".to_string(),
+        };
+        let body: Value = self
+            .get(
+                &path,
+                &[
+                    ("offset", offset.to_string()),
+                    ("limit", PAGE_SIZE.to_string()),
+                ],
+            )
+            .await?;
+        page(body, "news")
+    }
+
+    /// One news post with its comments and attachments.
+    pub async fn news_item(&self, id: u64) -> Result<News> {
+        take(
+            self.get(
+                &format!("news/{id}.json"),
+                &[("include", "comments,attachments".into())],
+            )
+            .await?,
+            "news",
+        )
+    }
+
+    /// Posts news in a project. Needs "Manage news". Redmine answers with no
+    /// body, so the new post is found by reading the project's news again.
+    pub async fn create_news(&self, project_id: u64, changes: &NewsChanges) -> Result<()> {
+        self.send_json(
+            Method::POST,
+            &format!("projects/{project_id}/news.json"),
+            &json!({ "news": changes }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Changes a news post. Needs "Manage news".
+    pub async fn update_news(&self, id: u64, changes: &NewsChanges) -> Result<()> {
+        self.send_json(
+            Method::PUT,
+            &format!("news/{id}.json"),
+            &json!({ "news": changes }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Deletes a news post. Needs "Manage news".
+    pub async fn delete_news(&self, id: u64) -> Result<()> {
+        let url = self.url(&format!("news/{id}.json"))?;
+        self.send(|| self.http.delete(url.clone())).await?;
+        Ok(())
+    }
+
+    // ----- Files ---------------------------------------------------------
+
+    /// The files in a project's Files area, the project's own and its
+    /// versions'.
+    pub async fn files(&self, project_id: u64) -> Result<Vec<ProjectFile>> {
+        take(
+            self.get(&format!("projects/{project_id}/files.json"), &[])
+                .await?,
+            "files",
+        )
+    }
+
+    /// Adds an uploaded file (see [`Client::upload`]) to a project's Files,
+    /// under one of its versions or the whole project. Needs "Manage files".
+    pub async fn add_file(
+        &self,
+        project_id: u64,
+        token: &str,
+        filename: &str,
+        version_id: Option<u64>,
+        description: Option<&str>,
+    ) -> Result<()> {
+        let mut file = json!({ "token": token, "filename": filename });
+        if let Some(v) = version_id {
+            file["version_id"] = json!(v);
+        }
+        if let Some(d) = description.filter(|d| !d.is_empty()) {
+            file["description"] = json!(d);
+        }
+        self.send_json(
+            Method::POST,
+            &format!("projects/{project_id}/files.json"),
+            &json!({ "file": file }),
+        )
+        .await?;
+        Ok(())
+    }
+
     /// The members of a project. This is how Redline knows who can be
     /// assigned, since listing all users needs an admin key.
     pub async fn memberships(&self, project_id: u64) -> Result<Vec<Membership>> {

@@ -4296,3 +4296,283 @@ textarea.team-description {
   flex: none;
   white-space: nowrap;
 }
+
+/* News and Files: a reading column like the wiki's, without its page tree. */
+.breadcrumb .breadcrumb-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.breadcrumb .count {
+  margin-left: 4px;
+}
+
+.breadcrumb-current {
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 360px;
+}
+
+.news-view .main-header .button-secondary.small,
+.files-view .main-header .button-secondary.small {
+  margin-right: 4px;
+}
+
+.news-content,
+.files-content {
+  padding: 28px 40px 64px;
+}
+
+.news-list,
+.news-post,
+.news-editor,
+.news-empty,
+.news-more,
+.files-group {
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.news-list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.news-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  text-align: left;
+}
+
+.news-item:hover {
+  background: var(--bg-hover);
+}
+
+.news-item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.news-item-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.news-item-summary {
+  color: var(--text-secondary);
+}
+
+.news-item-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.news-more {
+  display: block;
+  margin-top: 12px;
+}
+
+.news-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding-top: 64px;
+  color: var(--text-secondary);
+}
+
+.news-empty .button-primary {
+  height: 30px;
+  border-radius: 6px;
+}
+
+.news-summary {
+  margin: 0 0 16px;
+  font-size: 15px;
+  color: var(--text-secondary);
+}
+
+.news-post .attachments {
+  margin-top: 24px;
+}
+
+.news-comments {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.news-comment-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.news-comment {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.news-comment-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.news-comment-author {
+  font-weight: 600;
+  font-size: 12.5px;
+}
+
+.news-comments-note {
+  margin-top: 12px;
+  font-size: 12.5px;
+}
+
+.news-text {
+  min-height: 260px;
+}
+
+.files-group + .files-group {
+  margin-top: 28px;
+}
+
+.files-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.file-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  padding: 8px 12px;
+}
+
+.file-row + .file-row {
+  border-top: 1px solid var(--border);
+}
+
+.file-row:hover {
+  background: var(--bg-hover);
+}
+
+.file-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 6px;
+  background: var(--bg-active);
+  color: var(--text-secondary);
+}
+
+.file-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.file-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.file-description {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.file-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.file-who {
+  width: 64px;
+}
+
+.file-actions {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  opacity: 0;
+}
+
+.file-row:hover .file-actions,
+.file-row:focus-within .file-actions {
+  opacity: 1;
+}
+
+.upload-names {
+  list-style: none;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-active);
+  font-size: 12.5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.upload-names li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.upload-fields {
+  display: flex;
+  gap: 10px;
+}
+
+.upload-fields .time-field {
+  flex: 1;
+}
+
+.upload-fields .upload-description {
+  flex: 1.4;
+}

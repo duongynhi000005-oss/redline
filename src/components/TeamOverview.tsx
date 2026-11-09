@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { projectTree, teamOf } from "../lib/model";
-import { allowed, wikiAccess } from "../lib/permissions";
+import { allowed, filesAccess, newsAccess, wikiAccess } from "../lib/permissions";
 import type { Layout } from "../lib/views";
 import type { Membership, Metadata, Project } from "../lib/types";
 import type { Route } from "../state/app";
@@ -58,6 +58,10 @@ export function areasOf(project: Project, meta: Metadata): Area[] {
       out.push({ module: name, label, icon, route: { view: "time", teamId: team } });
     } else if (name === "wiki" && wikiAccess(meta, project.id).view) {
       out.push({ module: name, label, icon, route: { view: "wiki", projectId: project.id, title: null } });
+    } else if (name === "news" && newsAccess(meta, project.id).view) {
+      out.push({ module: name, label, icon, route: { view: "news", projectId: project.id, newsId: null } });
+    } else if (name === "files" && filesAccess(meta, project.id).view) {
+      out.push({ module: name, label, icon, route: { view: "files", projectId: project.id } });
     } else if (name === "calendar" || name === "gantt") {
       out.push({ module: name, label, icon, route: issuesRoute(project), layout: name === "calendar" ? "calendar" : "timeline" });
     } else {

@@ -629,6 +629,109 @@ pub async fn delete_wiki_page(
         .await?)
 }
 
+// ----- News ---------------------------------------------------------------
+
+/// One page of news, a team's or every team's. Read from Redmine each time.
+#[tauri::command]
+pub async fn news(
+    state: State<'_, AppState>,
+    project_id: Option<u64>,
+    offset: u64,
+) -> CmdResult<Found<redline_core::models::News>> {
+    let page = syncer(&state)
+        .await?
+        .client()
+        .news(project_id, offset)
+        .await?;
+    Ok(Found {
+        items: page.items,
+        total: page.total_count,
+    })
+}
+
+#[tauri::command]
+pub async fn news_item(
+    state: State<'_, AppState>,
+    id: u64,
+) -> CmdResult<redline_core::models::News> {
+    Ok(syncer(&state).await?.client().news_item(id).await?)
+}
+
+#[tauri::command]
+pub async fn create_news(
+    state: State<'_, AppState>,
+    project_id: u64,
+    changes: redline_core::models::NewsChanges,
+) -> CmdResult<()> {
+    Ok(syncer(&state)
+        .await?
+        .client()
+        .create_news(project_id, &changes)
+        .await?)
+}
+
+#[tauri::command]
+pub async fn update_news(
+    state: State<'_, AppState>,
+    id: u64,
+    changes: redline_core::models::NewsChanges,
+) -> CmdResult<()> {
+    Ok(syncer(&state)
+        .await?
+        .client()
+        .update_news(id, &changes)
+        .await?)
+}
+
+#[tauri::command]
+pub async fn delete_news(state: State<'_, AppState>, id: u64) -> CmdResult<()> {
+    Ok(syncer(&state).await?.client().delete_news(id).await?)
+}
+
+// ----- Files --------------------------------------------------------------
+
+/// A team's files, under its versions or the whole team.
+#[tauri::command]
+pub async fn project_files(
+    state: State<'_, AppState>,
+    project_id: u64,
+) -> CmdResult<Vec<redline_core::models::ProjectFile>> {
+    Ok(syncer(&state).await?.client().files(project_id).await?)
+}
+
+/// Uploads picked files to a team's Files, under a version or the team.
+#[tauri::command]
+pub async fn add_project_files(
+    state: State<'_, AppState>,
+    project_id: u64,
+    paths: Vec<String>,
+    version_id: Option<u64>,
+    description: Option<String>,
+) -> CmdResult<()> {
+    let syncer = syncer(&state).await?;
+    let client = syncer.client();
+    for path in paths {
+        let file = read_local_file(&path).await?;
+        let token = client.upload(&file.filename, file.bytes).await?;
+        client
+            .add_file(
+                project_id,
+                &token,
+                &file.filename,
+                version_id,
+                description.as_deref(),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+/// Deletes a file from a team's Files. Needs "Manage files".
+#[tauri::command]
+pub async fn delete_project_file(state: State<'_, AppState>, id: u64) -> CmdResult<()> {
+    Ok(syncer(&state).await?.client().delete_attachment(id).await?)
+}
+
 // ----- Time ---------------------------------------------------------------
 
 /// Time entries, read from Redmine each time (they aren't cached).
@@ -789,6 +892,38 @@ pub async fn pick_files(app: AppHandle) -> CmdResult<Vec<String>> {
 /// usually far lower and it says so when a file is over it.
 const MAX_ATTACHMENT_BYTES: u64 = 512 * 1024 * 1024;
 
+/// Reads a file someone picked or dropped, checking it's a plain file
+/// under the size limit.
+async fn read_local_file(path: &str) -> CmdResult<redline_core::NewFile> {
+    let path = std::path::PathBuf::from(path);
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let meta = tokio::fs::metadata(&path).await.ok();
+    if name.is_empty() || !path.is_absolute() || !meta.as_ref().is_some_and(|m| m.is_file()) {
+        return Err(UiError::new(
+            "invalid",
+            format!("{name} isn't a file Redline can attach."),
+        ));
+    }
+    if meta.is_some_and(|m| m.len() > MAX_ATTACHMENT_BYTES) {
+        return Err(UiError::new(
+            "too_large",
+            format!("{name} is too large to attach."),
+        ));
+    }
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|e| UiError::new("storage", format!("Couldn't read {name}: {e}")))?;
+    Ok(redline_core::NewFile {
+        filename: name,
+        // Redmine works out the type from the name.
+        content_type: None,
+        bytes,
+    })
+}
+
 /// Uploads files (dropped on the window or picked) and attaches them to an
 /// issue, with an optional comment.
 #[tauri::command]
@@ -801,33 +936,7 @@ pub async fn attach_files(
 ) -> CmdResult<IssueDetails> {
     let mut files = Vec::with_capacity(paths.len());
     for path in paths {
-        let path = std::path::PathBuf::from(path);
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let meta = tokio::fs::metadata(&path).await.ok();
-        if name.is_empty() || !path.is_absolute() || !meta.as_ref().is_some_and(|m| m.is_file()) {
-            return Err(UiError::new(
-                "invalid",
-                format!("{name} isn't a file Redline can attach."),
-            ));
-        }
-        if meta.is_some_and(|m| m.len() > MAX_ATTACHMENT_BYTES) {
-            return Err(UiError::new(
-                "too_large",
-                format!("{name} is too large to attach."),
-            ));
-        }
-        let bytes = tokio::fs::read(&path)
-            .await
-            .map_err(|e| UiError::new("storage", format!("Couldn't read {name}: {e}")))?;
-        files.push(redline_core::NewFile {
-            filename: name,
-            // Redmine works out the type from the name.
-            content_type: None,
-            bytes,
-        });
+        files.push(read_local_file(&path).await?);
     }
     let details = syncer(&state)
         .await?
