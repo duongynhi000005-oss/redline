@@ -138,5 +138,45 @@ if web.issues.count.zero?
   say "created #{Issue.count} issues"
 end
 
+# A second batch for the board, timeline, calendar and related-issue views:
+# dates, sub-issues, relations and #mentions. Added once, even to older seeds.
+unless web.issues.exists?(subject: "Plan the board view")
+  Issue.transaction do
+    User.current = user
+    statuses = IssueStatus.sorted.to_a
+    priorities = IssuePriority.active.to_a
+    by_name = ->(name) { statuses.find { |s| s.name == name } || statuses.first }
+    make = lambda do |subject, status:, start: nil, due: nil, assignee: user, version: current, parent: nil, description: nil, priority: 1|
+      issue = Issue.new(
+        project: web, tracker: Tracker.first, author: user, subject: subject,
+        description: description, status: by_name.call(status), priority: priorities[priority % priorities.size],
+        assigned_to: assignee, fixed_version: version, start_date: start, due_date: due, parent_issue_id: parent&.id
+      )
+      issue.custom_field_values = { labels.id.to_s => %w[UI], size.id.to_s => "M" }
+      issue.save!
+      issue
+  end
+  epic = make.call("Plan the board view", status: "In Progress", start: today - 10, due: today + 12, priority: 2,
+                   description: "Kanban for every list. Follows on from the list work in #1.")
+  columns = make.call("Board columns follow the list's grouping", status: "Resolved", start: today - 9, due: today - 3, parent: epic)
+  drag = make.call("Drag cards between columns", status: "In Progress", start: today - 4, due: today + 3, parent: epic, assignee: teammate,
+                   description: "Needs #{"#"}#{columns.id} first. Status drops must respect the workflow.")
+  keys = make.call("Move cards with the keyboard", status: "New", start: today + 2, due: today + 6, parent: epic)
+  timeline = make.call("Timeline view with dependencies", status: "New", start: today + 5, due: today + 16, version: nil, priority: 3)
+  calendar = make.call("Calendar view of due dates", status: "Feedback", due: today + 9, assignee: teammate)
+  make.call("Fix overlapping cards on narrow windows", status: "New", due: today - 2, priority: 3,
+            description: "Seen while testing #{"#"}#{drag.id}.")
+  make.call("Empty columns can be hidden", status: "Closed", start: today - 12, due: today - 8, version: nil)
+  make.call("Show blocked issues on cards", status: "New", assignee: nil, version: nil, priority: 0)
+  make.call("Board remembers its columns per list", status: "Rejected", version: nil, assignee: teammate)
+  IssueRelation.create!(issue_from: columns, issue_to: drag, relation_type: "precedes")
+  IssueRelation.create!(issue_from: drag, issue_to: keys, relation_type: "blocks")
+  IssueRelation.create!(issue_from: timeline, issue_to: calendar, relation_type: "relates")
+  drag.init_journal(teammate, "Started on this. The shell may need pointer events, see #{"#"}#{keys.id}.")
+  drag.save!
+  end
+  say "added board and timeline issues"
+end
+
 token = Token.find_by(user: user, action: "api") || Token.create!(user: user, action: "api")
 puts "REDLINE_TEST_API_KEY=#{token.value}"
