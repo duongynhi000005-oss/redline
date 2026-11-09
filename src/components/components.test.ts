@@ -33,4 +33,13 @@ describe("syncLabel", () => {
     expect(syncLabel("offline", null, now, now)).toBe("Offline, showing saved issues");
     expect(syncLabel("error", "Redmine is busy", now, now)).toBe("Redmine is busy");
   });
+
+  it("counts a long sync's progress", () => {
+    expect(syncLabel("syncing", null, null, now)).toBe("Syncing…");
+    expect(syncLabel("syncing", null, null, now, { fetched: 1200, total: 5000 })).toBe(
+      `Syncing ${(1200).toLocaleString()} of ${(5000).toLocaleString()} issues`,
+    );
+    // Progress left over from a finished sync isn't shown.
+    expect(syncLabel("idle", null, now - 10_000, now, { fetched: 5000, total: 5000 })).toBe("Synced just now");
+  });
 });

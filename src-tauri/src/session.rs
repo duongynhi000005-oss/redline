@@ -21,6 +21,9 @@ const METADATA_INTERVAL: Duration = Duration::from_secs(30 * 60);
 /// Look for issues deleted on the server this often.
 const PRUNE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 
+/// Show a count while syncing when there are more issues than this to read.
+const PROGRESS_FROM: u64 = 500;
+
 pub const EVENT_SYNC_STATE: &str = "sync-state";
 pub const EVENT_ISSUES_CHANGED: &str = "issues-changed";
 pub const EVENT_METADATA_CHANGED: &str = "metadata-changed";
@@ -33,6 +36,15 @@ pub struct SyncState {
     /// Milliseconds since the epoch of the last successful sync.
     pub last_synced_at: Option<u64>,
     pub message: Option<String>,
+    /// How far a long sync has got, while it runs.
+    pub progress: Option<SyncCount>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncCount {
+    pub fetched: u64,
+    pub total: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,6 +74,7 @@ impl Session {
             state: "syncing",
             last_synced_at: None,
             message: None,
+            progress: None,
         }));
         let task = tauri::async_runtime::spawn(sync_loop(
             app,
@@ -137,6 +150,7 @@ async fn sync_loop(
                 state: "syncing",
                 last_synced_at,
                 message: None,
+                progress: None,
             },
         );
 
@@ -146,20 +160,48 @@ async fn sync_loop(
                 last_metadata = Some(Instant::now());
                 let _ = app.emit(EVENT_METADATA_CHANGED, ());
             }
-            let report = syncer.sync_issues().await?;
-            let mut removed = Vec::new();
+            // Each page reaches the UI as it lands, so a long first sync
+            // fills the lists as it goes instead of all at the end.
+            syncer
+                .sync_issues_with(|page| {
+                    if !page.changed.is_empty() {
+                        let _ = app.emit(
+                            EVENT_ISSUES_CHANGED,
+                            IssuesChanged {
+                                changed: page.changed.clone(),
+                                removed: Vec::new(),
+                            },
+                        );
+                    }
+                    if page.total > PROGRESS_FROM {
+                        publish(
+                            &app,
+                            &latest,
+                            SyncState {
+                                state: "syncing",
+                                last_synced_at,
+                                message: None,
+                                progress: Some(SyncCount {
+                                    fetched: page.fetched,
+                                    total: page.total,
+                                }),
+                            },
+                        );
+                    }
+                })
+                .await?;
             if last_prune.elapsed() >= PRUNE_INTERVAL {
-                removed = syncer.prune_deleted().await?;
+                let removed = syncer.prune_deleted().await?;
                 last_prune = Instant::now();
-            }
-            if !report.changed.is_empty() || !removed.is_empty() {
-                let _ = app.emit(
-                    EVENT_ISSUES_CHANGED,
-                    IssuesChanged {
-                        changed: report.changed,
-                        removed,
-                    },
-                );
+                if !removed.is_empty() {
+                    let _ = app.emit(
+                        EVENT_ISSUES_CHANGED,
+                        IssuesChanged {
+                            changed: Vec::new(),
+                            removed,
+                        },
+                    );
+                }
             }
             Ok::<_, Error>(())
         }
@@ -172,17 +214,20 @@ async fn sync_loop(
                     state: "idle",
                     last_synced_at,
                     message: None,
+                    progress: None,
                 }
             }
             Err(e @ Error::Network(_)) => SyncState {
                 state: "offline",
                 last_synced_at,
                 message: Some(e.to_string()),
+                progress: None,
             },
             Err(e) => SyncState {
                 state: "error",
                 last_synced_at,
                 message: Some(e.to_string()),
+                progress: None,
             },
         };
         publish(&app, &latest, state);

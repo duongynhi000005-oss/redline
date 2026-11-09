@@ -359,6 +359,13 @@ export interface SyncState {
   state: SyncPhase;
   lastSyncedAt: number | null;
   message: string | null;
+  /** How far a long sync has got, while it runs. */
+  progress?: SyncCount | null;
+}
+
+export interface SyncCount {
+  fetched: number;
+  total: number;
 }
 
 export interface IssuesChanged {

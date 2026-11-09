@@ -14,13 +14,13 @@
 //!    changes don't touch `updated_on` either, so the same pass refreshes
 //!    relations; opening an issue refreshes its own.
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::Serialize;
 use tokio::task::JoinSet;
 
-use crate::client::{Client, IssueQuery, PAGE_SIZE};
+use crate::client::{Client, IssueQuery, PAGE_SIZE, Page};
 use crate::error::{Error, Result};
 use crate::mentions;
 use crate::models::{
@@ -38,6 +38,14 @@ const QUERY_LIMIT: usize = 500;
 
 /// Search results per page.
 const SEARCH_PAGE: u32 = 25;
+
+/// Pages of issues read at once after the first. The client's own limit
+/// keeps the whole app at four requests at a time.
+const PARALLEL_PAGES: usize = 4;
+
+/// How many issues consecutive sync pages share; see
+/// [`Syncer::sync_issues_with`].
+const PAGE_OVERLAP: u64 = 10;
 
 /// How far behind the newest `updated_on` the next delta starts. Covers
 /// clock differences and several edits in the same second; issues that
@@ -65,6 +73,20 @@ pub struct SyncReport {
     /// Issues Redmine sent, changed or not.
     pub fetched: u64,
     /// True when this was the first, full pull.
+    pub initial: bool,
+}
+
+/// One page of a sync, as it lands in the cache.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncProgress {
+    /// Issues on this page that are new or changed in the cache.
+    pub changed: Vec<u64>,
+    /// How far through the list this sync has read.
+    pub fetched: u64,
+    /// Issues this sync expects to read.
+    pub total: u64,
+    /// True during the first, full pull.
     pub initial: bool,
 }
 
@@ -168,47 +190,111 @@ impl Syncer {
     /// Pulls issues changed since the last sync (or everything, the first
     /// time) into the cache.
     pub async fn sync_issues(&self) -> Result<SyncReport> {
+        self.sync_issues_with(|_| {}).await
+    }
+
+    /// Like [`Syncer::sync_issues`], calling `on_page` as each page lands in
+    /// the cache, in order, so a long first sync can show issues as they
+    /// arrive.
+    ///
+    /// After the first page, up to [`PARALLEL_PAGES`] pages are read at
+    /// once. Pages overlap by [`PAGE_OVERLAP`] issues: the list is sorted by
+    /// `updated_on`, so an issue edited mid-sync jumps to the end and every
+    /// later issue shifts back one place, and without the overlap the issue
+    /// at a page boundary would be skipped for good. The cursor is saved
+    /// after each page, so a sync that fails part-way picks up from there.
+    pub async fn sync_issues_with(
+        &self,
+        mut on_page: impl FnMut(&SyncProgress),
+    ) -> Result<SyncReport> {
         let cursor: Option<String> = self.store.get_value(CURSOR_KEY)?;
         let since = cursor.as_deref().map(|c| rewind(c, CURSOR_OVERLAP));
         let mut report = SyncReport {
             initial: cursor.is_none(),
             ..Default::default()
         };
-        let mut newest = cursor.clone();
-        let mut offset = 0;
+        let mut newest = cursor;
+
+        let first = fetch_issue_page(self.client.clone(), since.clone(), 0).await?;
+        let got = first.items.len() as u64;
+        let mut total = first.total_count;
+        self.take_page(0, first, &mut newest, &mut report, total, &mut on_page)?;
+        if got == 0 || got >= total {
+            return Ok(report);
+        }
+
+        // Step by what the server really sends per page, which can be less
+        // than asked for.
+        let step = if got > 2 * PAGE_OVERLAP {
+            got - PAGE_OVERLAP
+        } else {
+            got
+        };
+        let mut next = step;
+        let mut expect = step;
+        let mut tasks = JoinSet::new();
+        let mut landed = BTreeMap::new();
         loop {
-            let page = self
-                .client
-                .issues(&IssueQuery {
-                    updated_since: since.clone(),
-                    include: vec!["relations"],
-                    offset,
-                    limit: Some(PAGE_SIZE),
-                    ..Default::default()
-                })
-                .await?;
-            let count = page.items.len() as u64;
-            report.fetched += count;
-            for issue in &page.items {
-                if newest
-                    .as_deref()
-                    .is_none_or(|n| issue.updated_on.as_str() > n)
-                {
-                    newest = Some(issue.updated_on.clone());
+            while tasks.len() < PARALLEL_PAGES && next < total {
+                let client = self.client.clone();
+                let since = since.clone();
+                let offset = next;
+                tasks.spawn(async move { (offset, fetch_issue_page(client, since, offset).await) });
+                next += step;
+            }
+            let Some(joined) = tasks.join_next().await else {
+                break;
+            };
+            let (offset, page) = joined.map_err(|e| Error::Network(e.to_string()))?;
+            // Dropping `tasks` on an error cancels the pages still in flight.
+            landed.insert(offset, page?);
+            while let Some(page) = landed.remove(&expect) {
+                let empty = page.items.is_empty();
+                // Issues created during the sync grow the list; go on to the end.
+                total = total.max(page.total_count);
+                self.take_page(expect, page, &mut newest, &mut report, total, &mut on_page)?;
+                expect += step;
+                if empty {
+                    // Issues deleted during the sync shrank the list.
+                    total = total.min(expect);
                 }
             }
-            report
-                .changed
-                .extend(self.store.upsert_issues(&page.items)?);
-            offset += count;
-            if count == 0 || offset >= page.total_count {
-                break;
-            }
-        }
-        if let Some(newest) = newest {
-            self.store.set_value(CURSOR_KEY, &newest)?;
         }
         Ok(report)
+    }
+
+    /// Caches one page of a sync, moves the cursor past it and reports it.
+    fn take_page(
+        &self,
+        offset: u64,
+        page: Page<Issue>,
+        newest: &mut Option<String>,
+        report: &mut SyncReport,
+        total: u64,
+        on_page: &mut impl FnMut(&SyncProgress),
+    ) -> Result<()> {
+        report.fetched += page.items.len() as u64;
+        let reached = offset + page.items.len() as u64;
+        for issue in &page.items {
+            if newest
+                .as_deref()
+                .is_none_or(|n| issue.updated_on.as_str() > n)
+            {
+                *newest = Some(issue.updated_on.clone());
+            }
+        }
+        let changed = self.store.upsert_issues(&page.items)?;
+        if let Some(newest) = newest {
+            self.store.set_value(CURSOR_KEY, newest)?;
+        }
+        report.changed.extend(&changed);
+        on_page(&SyncProgress {
+            changed,
+            fetched: reached.min(total),
+            total,
+            initial: report.initial,
+        });
+        Ok(())
     }
 
     /// Drops cached issues that the server no longer returns (deleted, moved
@@ -789,6 +875,24 @@ fn ok_unless_forbidden<T>(result: Result<Vec<T>>) -> Result<Vec<T>> {
         Err(Error::Forbidden | Error::NotFound) => Ok(Vec::new()),
         Err(e) => Err(e),
     }
+}
+
+/// One page of issues changed since `since` (every issue when it's `None`),
+/// with their relations, oldest change first.
+async fn fetch_issue_page(
+    client: Client,
+    since: Option<String>,
+    offset: u64,
+) -> Result<Page<Issue>> {
+    client
+        .issues(&IssueQuery {
+            updated_since: since,
+            include: vec!["relations"],
+            offset,
+            limit: Some(PAGE_SIZE),
+            ..Default::default()
+        })
+        .await
 }
 
 /// `timestamp` minus `by`, in the format Redmine's filters accept. Leaves an

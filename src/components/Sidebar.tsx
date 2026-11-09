@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { teamOf } from "../lib/model";
 import { shortcutLabel } from "../lib/platform";
+import type { SyncCount } from "../lib/types";
 import type { Route } from "../state/app";
 import { useApp } from "../state/app";
 import { useDerived } from "../state/derived";
@@ -65,7 +66,10 @@ export function syncLabel(
   message: string | null,
   lastSyncedAt: number | null,
   now = Date.now(),
+  progress: SyncCount | null = null,
 ): string {
+  if (state === "syncing" && progress)
+    return `Syncing ${progress.fetched.toLocaleString()} of ${progress.total.toLocaleString()} issues`;
   if (state === "syncing") return "Syncing…";
   if (state === "offline") return "Offline, showing saved issues";
   if (state === "error") return message ?? "Couldn't sync";
@@ -242,7 +246,15 @@ export function Sidebar() {
         aria-live="polite"
       >
         <Icon name={sync.state === "offline" ? "offline" : "sync"} className={sync.state === "syncing" ? "spin" : ""} />
-        <span>{syncLabel(sync.state, sync.message, sync.lastSyncedAt)}</span>
+        {sync.state === "syncing" && sync.progress ? (
+          <>
+            {/* The count changes with every page; screen readers hear it once. */}
+            <span aria-hidden="true">{syncLabel(sync.state, sync.message, sync.lastSyncedAt, undefined, sync.progress)}</span>
+            <span className="sr-only">Syncing issues…</span>
+          </>
+        ) : (
+          <span>{syncLabel(sync.state, sync.message, sync.lastSyncedAt)}</span>
+        )}
       </button>
     </nav>
   );
