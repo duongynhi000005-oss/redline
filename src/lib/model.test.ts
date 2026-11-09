@@ -1,5 +1,10 @@
 import { defaultCategory, priorityLevels, issueLabels, relativeTime, teamOf, activeCycle, initials } from "./model";
 import { createDemoBackend } from "./demoBackend";
+import type { Metadata } from "./types";
+
+function project(id: number, parent?: number) {
+  return { id, name: `P${id}`, parent: parent ? { id: parent, name: `P${parent}` } : undefined };
+}
 
 const trackers = [{ id: 1, name: "Bug", default_status: { id: 1, name: "New" } }];
 
@@ -41,6 +46,26 @@ describe("labels and teams", () => {
     const meta = await createDemoBackend().getMetadata();
     expect(teamOf(3, meta)).toBe(1);
     expect(teamOf(2, meta)).toBe(2);
+  });
+
+  it("finds the team through deep nesting, hidden parents and loops", () => {
+    const meta = {
+      // 4 sits under 3 under 2 under 1; 6's parent (5) isn't visible to the user;
+      // 7 and 8 name each other, which Redmine never sends, but mustn't hang.
+      projects: [project(1), project(2, 1), project(3, 2), project(4, 3), project(6, 5), project(7, 8), project(8, 7)],
+    } as unknown as Metadata;
+    expect(teamOf(4, meta)).toBe(1);
+    expect(teamOf(6, meta)).toBe(6);
+    expect([7, 8]).toContain(teamOf(7, meta));
+    expect(teamOf(99, meta)).toBe(99);
+  });
+
+  it("follows a project that moved once the metadata is replaced", () => {
+    const before = { projects: [project(1), project(2), project(3, 1)] } as unknown as Metadata;
+    expect(teamOf(3, before)).toBe(1);
+    const after = { projects: [project(1), project(2), project(3, 2)] } as unknown as Metadata;
+    expect(teamOf(3, after)).toBe(2);
+    expect(teamOf(3, before)).toBe(1);
   });
 
   it("finds the active cycle", async () => {
