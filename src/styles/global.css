@@ -1856,6 +1856,358 @@ h2 {
   }
 }
 
+/* Timeline: issues as rows, bars from start to due date. */
+
+.timeline {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  outline: none;
+  overscroll-behavior: contain;
+}
+
+.timeline.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.timeline-canvas {
+  position: relative;
+  min-width: 100%;
+}
+
+.timeline-header {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  height: 32px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.timeline-corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  flex: none;
+  width: 300px;
+  padding: 0 16px 0 22px;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.timeline-ticks {
+  position: relative;
+  flex: none;
+}
+
+.timeline-tick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.timeline-tick.major {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.timeline-lines,
+.timeline-arrows {
+  position: absolute;
+  top: 0;
+  pointer-events: none;
+}
+
+.timeline-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.timeline-line.major {
+  border-left-color: var(--border);
+}
+
+.timeline-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  border-left: 1.5px solid var(--danger);
+}
+
+.timeline-today::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: -4.5px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+.timeline-arrows {
+  z-index: 2;
+  overflow: visible;
+}
+
+.timeline-arrows path {
+  fill: none;
+  stroke: var(--text-tertiary);
+  stroke-width: 1.3;
+}
+
+.timeline-arrows path.late {
+  stroke: var(--danger);
+}
+
+.timeline-row {
+  position: absolute;
+  left: 0;
+  display: flex;
+  height: 36px;
+  border-bottom: 1px solid var(--border);
+}
+
+.timeline-row.focused,
+.timeline-row.focused .timeline-label {
+  background: color-mix(in srgb, var(--bg-hover) 100%, var(--bg));
+}
+
+.timeline:focus-visible .timeline-row.focused {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.timeline-group {
+  background: color-mix(in srgb, var(--bg-hover) 70%, var(--bg));
+}
+
+.timeline-label {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  width: 300px;
+  height: 100%;
+  padding: 0 12px 0 22px;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+  cursor: default;
+  min-width: 0;
+}
+
+.timeline-group .timeline-label {
+  width: 300px;
+  background: color-mix(in srgb, var(--bg-hover) 70%, var(--bg));
+  border-right: none;
+}
+
+.timeline-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.timeline-label .chip {
+  max-width: 90px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.timeline-track {
+  position: relative;
+  flex: none;
+  height: 100%;
+}
+
+.timeline-track.undated {
+  cursor: crosshair;
+}
+
+.timeline-hint {
+  position: sticky;
+  left: 312px;
+  display: none;
+  align-items: center;
+  height: 100%;
+  padding-left: 12px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.timeline-row.focused .timeline-hint {
+  display: inline-flex;
+}
+
+.timeline-bar {
+  --bar: var(--status-backlog);
+  position: absolute;
+  top: 7px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  min-width: 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bar) 22%, var(--bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bar) 55%, transparent);
+  cursor: grab;
+}
+
+.timeline.dragging .timeline-bar {
+  cursor: grabbing;
+}
+
+.timeline-bar::before {
+  content: "";
+  flex: none;
+  width: 3px;
+  align-self: stretch;
+  margin: 4px 0 4px 4px;
+  border-radius: 2px;
+  background: var(--bar);
+}
+
+.cat-triage {
+  --bar: var(--status-triage);
+}
+.cat-backlog,
+.cat-unstarted,
+.cat-canceled {
+  --bar: var(--status-backlog);
+}
+.cat-started {
+  --bar: var(--status-started);
+}
+.cat-completed {
+  --bar: var(--status-completed);
+}
+
+.timeline-bar.cat-canceled .timeline-bar-title,
+.timeline-bar.cat-completed .timeline-bar-title {
+  color: var(--text-secondary);
+}
+
+.timeline-bar-title {
+  flex: 1;
+  min-width: 0;
+  padding: 0 8px 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.timeline-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.timeline-handle.start {
+  left: -3px;
+}
+
+.timeline-handle.end {
+  right: -3px;
+}
+
+.timeline-handle::after {
+  content: "";
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 3px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--bar);
+  opacity: 0;
+}
+
+.timeline-row.focused .timeline-handle::after {
+  opacity: 0.9;
+}
+
+.timeline-milestone {
+  --bar: var(--status-backlog);
+  position: absolute;
+  top: 12px;
+  width: 12px;
+  height: 12px;
+  margin-left: -6px;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  background: var(--bar);
+  cursor: grab;
+}
+
+.timeline-milestone .timeline-outside {
+  transform: rotate(-45deg) translate(14px, 9px);
+  transform-origin: 0 0;
+}
+
+.timeline-outside {
+  position: absolute;
+  left: calc(100% + 8px);
+  top: 50%;
+  translate: 0 -50%;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.timeline-milestone .timeline-outside {
+  top: 0;
+  left: 0;
+  translate: none;
+}
+
+@media (forced-colors: active) {
+  .timeline-bar,
+  .timeline-milestone {
+    border: 1px solid CanvasText;
+  }
+
+  .timeline-row.focused {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .timeline-today,
+  .timeline-today::before {
+    forced-color-adjust: none;
+    border-color: Highlight;
+    background: Highlight;
+  }
+}
+
 /* Native materials and floating panels.
    The window's backdrop (Liquid Glass or vibrancy on macOS, Mica on Windows 11)
    shows through the sidebar; each view floats over it as a rounded panel.

@@ -13,6 +13,7 @@ import type { Group, Layout, ViewOptions } from "../lib/views";
 import { LAYOUTS, groupIssues } from "../lib/views";
 import { matchesShortcut, shortcutLabel } from "../lib/platform";
 import { BoardView } from "./BoardView";
+import { TimelineView } from "./TimelineView";
 import { DisplayMenu } from "./DisplayMenu";
 import { Avatar } from "./Avatar";
 import { FilterBar, useRouteIssues } from "./Filters";
@@ -97,7 +98,7 @@ export function LayoutSwitcher({ layout, onChange }: { layout: Layout; onChange:
           className="layout-option"
           onClick={() => onChange(l.value)}
         >
-          <Icon name={l.value === "board" ? "board" : "list"} />
+          <Icon name={l.value} />
         </button>
       ))}
     </div>
@@ -182,7 +183,7 @@ export function IssueList() {
   const issues = useMemo(() => (filters.length ? base.filter((i) => matchesFilters(i, filters, d)) : base), [base, filters, d]);
   const total = issues.length;
 
-  // F filters; Cmd/Ctrl+1 and 2 switch between list and board.
+  // F filters; Cmd/Ctrl+1, 2 and 3 switch between list, board and timeline.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (overlay || isTyping(e.target)) return;
@@ -234,6 +235,8 @@ export function IssueList() {
         </div>
       ) : view.layout === "board" ? (
         <BoardView issues={issues} view={view} route={route} />
+      ) : view.layout === "timeline" ? (
+        <TimelineView issues={issues} view={view} route={route} />
       ) : (
         <ListBody issues={issues} view={view} route={route} />
       )}
