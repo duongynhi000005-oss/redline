@@ -363,14 +363,24 @@ impl Client {
     }
 
     /// Changes an issue. Only the fields set in `changes` are sent.
+    ///
+    /// When two changes land at once, for example on sub-issues of the same
+    /// parent, Redmine may find the parent changed under it and answer 422
+    /// with no messages. The change sent never names a version, so sending it
+    /// again is safe; it's tried twice more before giving up.
     pub async fn update_issue(&self, id: u64, changes: &IssueChanges) -> Result<()> {
-        self.send_json(
-            Method::PUT,
-            &format!("issues/{id}.json"),
-            &json!({ "issue": changes }),
-        )
-        .await?;
-        Ok(())
+        let body = json!({ "issue": changes });
+        let path = format!("issues/{id}.json");
+        let mut attempt = 0u32;
+        loop {
+            match self.send_json(Method::PUT, &path, &body).await {
+                Err(Error::Rejected(messages)) if messages.is_empty() && attempt < 2 => {
+                    attempt += 1;
+                    tokio::time::sleep(self.retry_unit * attempt).await;
+                }
+                other => return other.map(|_| ()),
+            }
+        }
     }
 
     /// Deletes an issue with its sub-issues and the time logged on them.

@@ -275,14 +275,29 @@ export function Picker() {
         (picker.kind === "relation" ? (
           <RelationPickerContent issueId={picker.issueId} choice={picker.relation ?? null} />
         ) : (
-          <PickerContent kind={picker.kind} issueId={picker.issueId} fieldId={picker.fieldId} />
+          <PickerContent kind={picker.kind} issueId={picker.issueId} fieldId={picker.fieldId} issueIds={picker.issueIds} />
         ))}
     </Command.Dialog>
   );
 }
 
-function PickerContent({ kind, issueId, fieldId }: { kind: PickerKind; issueId: number; fieldId?: number }) {
+/** Kinds whose options switch on and off, rather than pick one value. */
+const TOGGLES: PickerKind[] = ["labels", "subscribers"];
+
+function PickerContent({
+  kind,
+  issueId,
+  fieldId,
+  issueIds,
+}: {
+  kind: PickerKind;
+  issueId: number;
+  fieldId?: number;
+  issueIds?: number[];
+}) {
   const issue = useApp((s) => s.issues.get(issueId));
+  const updateIssues = useApp((s) => s.updateIssues);
+  const bulk = !!issueIds && issueIds.length > 1;
   const issues = useApp((s) => s.issues);
   const meta = useApp((s) => s.meta);
   const backend = useApp((s) => s.backend);
@@ -295,7 +310,7 @@ function PickerContent({ kind, issueId, fieldId }: { kind: PickerKind; issueId: 
 
   // Redmine's workflow decides which statuses this user may pick.
   useEffect(() => {
-    if (kind !== "status" || !backend) return;
+    if (kind !== "status" || !backend || bulk) return;
     let live = true;
     backend
       .getIssueDetails(issueId, true)
@@ -304,12 +319,28 @@ function PickerContent({ kind, issueId, fieldId }: { kind: PickerKind; issueId: 
     return () => {
       live = false;
     };
-  }, [kind, issueId, backend]);
+  }, [kind, issueId, backend, bulk]);
 
-  const options = useMemo(
-    () => (issue && meta ? pickerOptions(kind, issue, meta, d, issues.values(), allowed, fieldId) : []),
-    [kind, issue, meta, d, issues, allowed, fieldId],
+  // With several issues, each gets its own options (assignees depend on the
+  // project, say); an option shows as picked when it is for all of them.
+  const perIssue = useMemo(
+    () =>
+      bulk && meta
+        ? issueIds!.flatMap((id) => {
+            const i = issues.get(id);
+            return i ? [{ issue: i, options: pickerOptions(kind, i, meta, d, issues.values(), null, fieldId) }] : [];
+          })
+        : [],
+    [bulk, issueIds, issues, meta, kind, d, fieldId],
   );
+  const options = useMemo(() => {
+    const own = issue && meta ? pickerOptions(kind, issue, meta, d, issues.values(), allowed, fieldId) : [];
+    if (!bulk) return own;
+    return own.map((o) => ({
+      ...o,
+      selected: perIssue.every((p) => p.options.find((x) => x.key === o.key)?.selected),
+    }));
+  }, [kind, issue, meta, d, issues, allowed, fieldId, bulk, perIssue]);
   const field = kind === "field" ? issue?.custom_fields.find((f) => f.id === fieldId) : undefined;
   const filtered = query.trim() ? options.filter((o) => matchesQuery(`${o.label} ${o.group ?? ""}`, query)) : options;
   // A custom field can take a value no issue has yet: offer what was typed.
@@ -333,18 +364,36 @@ function PickerContent({ kind, issueId, fieldId }: { kind: PickerKind; issueId: 
   if (!issue) return null;
 
   const choose = (option: PickerOption) => {
-    if (option.watcher !== undefined) void setWatcher(issueId, option.watcher, !option.selected);
+    if (bulk) chooseForAll(option);
+    else if (option.watcher !== undefined) void setWatcher(issueId, option.watcher, !option.selected);
     else void updateIssue(issueId, option.changes);
     // Labels, subscribers and multi-value fields toggle; other properties take one value.
     if (kind !== "labels" && kind !== "subscribers" && !field?.multiple) closePicker();
     if (field?.multiple) setQuery("");
   };
 
+  function chooseForAll(option: PickerOption) {
+    const toggles = TOGGLES.includes(kind) || !!field?.multiple;
+    // A toggle picked on every issue comes off them all; otherwise it goes on where it's missing.
+    const want = toggles ? !option.selected : true;
+    const changes: [number, IssueChanges][] = [];
+    for (const p of perIssue) {
+      if (option.key.endsWith("-typed") && field) {
+        const own = p.issue.custom_fields.find((f) => f.id === field.id);
+        const value = nextFieldValue(fieldValues(own?.value), !!field.multiple, typed);
+        changes.push([p.issue.id, { custom_fields: [{ id: field.id, value }] }]);
+        continue;
+      }
+      const own = p.options.find((x) => x.key === option.key);
+      if (own && !!own.selected !== want) changes.push([p.issue.id, own.changes]);
+    }
+    if (changes.length) void updateIssues(changes, perIssue.length - changes.length);
+    else useApp.setState({ toast: "Nothing to change: they all have that already." });
+  }
+
   return (
     <>
-      <div className="picker-context">
-        #{issue.id} {issue.subject}
-      </div>
+      <div className="picker-context">{bulk ? `${perIssue.length} issues` : `#${issue.id} ${issue.subject}`}</div>
       <Command.Input value={query} onValueChange={setQuery} placeholder={field ? `Set ${field.name}…` : PLACEHOLDER[kind]} />
       <Command.List>
         <Command.Empty>

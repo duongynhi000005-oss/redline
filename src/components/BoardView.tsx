@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BoardColumn } from "../lib/board";
 import { boardColumns, canDrop } from "../lib/board";
 import { hueFor, issueCategory, issueLabels, teamOf } from "../lib/model";
-import { isTyping } from "../lib/platform";
+import { isTyping, matchesShortcut } from "../lib/platform";
+import { clickSelection } from "../lib/selection";
 import type { Issue } from "../lib/types";
 import type { ViewOptions } from "../lib/views";
 import type { Route } from "../state/app";
@@ -52,6 +53,8 @@ function Card({
   showProject,
   grouping,
   ghost = false,
+  selected = false,
+  selecting = false,
   onPointerDown,
   onOpen,
   onFocus,
@@ -65,8 +68,12 @@ function Card({
   grouping: ViewOptions["grouping"];
   /** The copy that follows the pointer while dragging. */
   ghost?: boolean;
+  /** Picked for changing several issues at once. */
+  selected?: boolean;
+  /** Whether any issue is picked. */
+  selecting?: boolean;
   onPointerDown?: (e: React.PointerEvent) => void;
-  onOpen?: () => void;
+  onOpen?: (e: React.MouseEvent) => void;
   onFocus?: () => void;
 }) {
   const category = issueCategory(issue, d.categories);
@@ -80,10 +87,10 @@ function Card({
         : {
             id: `issue-card-${issue.id}`,
             role: "option",
-            "aria-selected": focused,
+            "aria-selected": selecting ? selected : focused,
             "aria-label": `${spokenIssue(issue, d, true)}. In ${column.label}.`,
           })}
-      className={`board-card${focused ? " focused" : ""}${dragging ? " drag-source" : ""}`}
+      className={`board-card${focused ? " focused" : ""}${selected ? " selected" : ""}${dragging ? " drag-source" : ""}`}
       onPointerDown={onPointerDown}
       onClick={onOpen}
       onMouseMove={onFocus}
@@ -132,6 +139,7 @@ function Column({
   d,
   grouping,
   focusedId,
+  selection,
   drag,
   showProject,
   registerColumn,
@@ -143,11 +151,12 @@ function Column({
   d: Derived;
   grouping: ViewOptions["grouping"];
   focusedId: number | null;
+  selection: number[];
   drag: Drag | null;
   showProject: (issue: Issue) => boolean;
   registerColumn: (key: string, el: HTMLElement | null) => void;
   onCardPointerDown: (e: React.PointerEvent, issue: Issue, column: BoardColumn) => void;
-  onOpen: (id: number) => void;
+  onOpen: (id: number, e: React.MouseEvent) => void;
   onFocus: (id: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -202,7 +211,9 @@ function Column({
                   dragging={drag?.issue.id === issue.id}
                   showProject={showProject(issue)}
                   onPointerDown={(e) => onCardPointerDown(e, issue, column)}
-                  onOpen={() => onOpen(issue.id)}
+                  selected={selection.includes(issue.id)}
+                  selecting={selection.length > 0}
+                  onOpen={(e) => onOpen(issue.id, e)}
                   onFocus={() => issue.id !== focusedId && onFocus(issue.id)}
                 />
               </div>
@@ -224,6 +235,8 @@ export function BoardView({ issues, view, route }: { issues: Issue[]; view: View
   const focusedId = useApp((s) => s.focusedIssueId);
   const focusIssue = useApp((s) => s.focusIssue);
   const openIssue = useApp((s) => s.openIssue);
+  const selection = useApp((s) => s.selection);
+  const setSelection = useApp((s) => s.setSelection);
   const updateIssue = useApp((s) => s.updateIssue);
   const showToast = useApp((s) => s.showToast);
   const overlay = useApp(overlayOpen);
@@ -383,7 +396,13 @@ export function BoardView({ issues, view, route }: { issues: Issue[]; view: View
   // moves the card to the next column.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (overlay || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey || dragRef.current) return;
+      if (overlay || isTyping(e.target) || dragRef.current) return;
+      if (matchesShortcut(e, "mod+a")) {
+        e.preventDefault();
+        setSelection(columns.flatMap((c) => c.issues.map((i) => i.id)));
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const filled = columns.filter((c) => c.issues.length);
       if (!filled.length) return;
       let col = columns.findIndex((c) => c.issues.some((i) => i.id === focusedId));
@@ -429,7 +448,14 @@ export function BoardView({ issues, view, route }: { issues: Issue[]; view: View
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [columns, focusedId, overlay, focusIssue, openIssue, loadAllowed, moveTo]);
+  }, [columns, focusedId, overlay, focusIssue, openIssue, loadAllowed, moveTo, setSelection]);
+
+  // Cards that drop off the board stop being picked.
+  useEffect(() => {
+    const ids = new Set(columns.flatMap((c) => c.issues.map((i) => i.id)));
+    const picked = useApp.getState().selection;
+    if (picked.some((id) => !ids.has(id))) setSelection(picked.filter((id) => ids.has(id)));
+  }, [columns, setSelection]);
 
   const registerColumn = useCallback((key: string, el: HTMLElement | null) => {
     if (el) columnEls.current.set(key, el);
@@ -441,12 +467,20 @@ export function BoardView({ issues, view, route }: { issues: Issue[]; view: View
     pending.current = { issue, column, x: e.clientX, y: e.clientY, rect: e.currentTarget.getBoundingClientRect() };
   }, []);
 
+  // A plain click opens; Cmd/Ctrl+click and Shift+click pick cards to change together.
   const open = useCallback(
-    (id: number) => {
+    (id: number, e: React.MouseEvent) => {
       if (suppressClick.current) return;
-      openIssue(id);
+      const { selection: picked, focusedIssueId } = useApp.getState();
+      const anchor = picked.length ? picked[picked.length - 1]! : focusedIssueId;
+      const order = columns.flatMap((c) => c.issues.map((i) => i.id));
+      const next = clickSelection(order, picked, anchor, id, e);
+      if (next) {
+        setSelection(next);
+        focusIssue(id);
+      } else openIssue(id);
     },
-    [openIssue],
+    [columns, focusIssue, openIssue, setSelection],
   );
 
   const sourceColumn = drag ? columns.find((c) => c.key === drag.fromKey) : undefined;
@@ -456,6 +490,7 @@ export function BoardView({ issues, view, route }: { issues: Issue[]; view: View
       className={`board${drag ? " is-dragging" : ""}`}
       role="listbox"
       aria-label="Issues board"
+      aria-multiselectable="true"
       aria-activedescendant={focusedId ? `issue-card-${focusedId}` : undefined}
       tabIndex={0}
     >
@@ -466,6 +501,7 @@ export function BoardView({ issues, view, route }: { issues: Issue[]; view: View
           d={d}
           grouping={view.grouping}
           focusedId={focusedId}
+          selection={selection}
           drag={drag}
           showProject={showProject}
           registerColumn={registerColumn}

@@ -36,7 +36,7 @@ browser, because Redmine has no API for it
 | Spent time on an issue | `GET/POST/PUT/DELETE /time_entries.json` | ✅ | Spent property and a Time section on the issue: who logged what, when and as which activity, changed or deleted where the role allows. Log time with Cmd/Ctrl+Shift+T, typing 1.5, 1:30 or 1h 30m. #40 |
 | Copy issue | No API | ✅ | Duplicate, in the issue's … menu and the command palette, creates an issue with the same fields (not status, history, files or sub-issues, as Redmine's Copy does by default) and a "copied to" relation, then opens it. #42 |
 | Delete issue | `DELETE /issues/:id.json` (needs Delete issues) | ✅ | In the issue's … menu and the command palette, where the role may delete. A confirmation says how many sub-issues and how much logged time go with it, since Redmine deletes both. #42 |
-| Bulk edit | No bulk API; one request per issue | ⬜ | Multi-select (X) then a picker, sent politely one by one. #43 |
+| Bulk edit | No bulk API; one request per issue | ✅ | Pick with X, Cmd/Ctrl+click, Shift+click or Cmd/Ctrl+A, in the list or on the board; change status, priority, assignee, labels or cycle for all of them, four requests at a time. #43 |
 | Reactions | UI since 6.1; no API before 7.1 | 🌐 | Shown when the server's API offers them. Not planned until 7.1 ships |
 
 ## Planning

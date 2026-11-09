@@ -1528,6 +1528,97 @@ button.time-row-issue:hover {
   color: var(--danger);
 }
 
+/* Picking several issues */
+
+.main {
+  position: relative;
+}
+
+.issue-row {
+  position: relative;
+}
+
+/* Sits in the row's left margin, so rows don't shift when it shows. */
+.issue-check {
+  display: none;
+  place-items: center;
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 14px;
+  height: 14px;
+  margin-top: -7px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--accent-text);
+}
+
+.issue-row.selecting .issue-check,
+.issue-row.focused .issue-check {
+  display: grid;
+}
+
+.issue-row.selected .issue-check {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.issue-row.selected {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.issue-row.selected.focused {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.selection-bar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 4px 4px 12px;
+  border-radius: 10px;
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.selection-count {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.selection-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--border-strong);
+}
+
+.selection-action {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.selection-action:hover,
+.selection-action:focus-visible {
+  background: var(--bg-hover);
+  outline: none;
+}
+
+/* Keep messages clear of the bar. */
+.app:has(.selection-bar) .toast {
+  bottom: 68px;
+}
+
 .confirm-dialog {
   width: min(440px, calc(100vw - 48px));
   padding: 18px 18px 14px;
@@ -2750,6 +2841,13 @@ button.time-row-issue:hover {
 
 .board-card.drag-source {
   opacity: 0.35;
+}
+
+/* Picked to change with others. An inset ring, so the column doesn't clip it. */
+.board-card.selected,
+.board:focus-visible .board-card.selected {
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-elevated));
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .board-card-top {

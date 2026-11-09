@@ -7,7 +7,7 @@ import { routeKey, targetIssueId, useApp } from "../state/app";
 import { LAYOUTS } from "../lib/views";
 import { RELATION_CHOICES } from "../lib/relations";
 import { canManageVersions, cycleProjects } from "./Cycle";
-import { ISSUE_SHORTCUTS, issueCommandAvailable, runIssueCommand } from "./useIssueShortcuts";
+import { ISSUE_SHORTCUTS, bulkCommand, issueCommandAvailable, runIssueCommand, runIssueCommandOn } from "./useIssueShortcuts";
 import { useDerived } from "../state/derived";
 import type { IconName } from "./icons";
 import { issueActions } from "./IssueActions";
@@ -84,6 +84,8 @@ function PaletteContent() {
   const issues = useApp((s) => s.issues);
   const meta = useApp((s) => s.meta);
   const target = useApp((s) => targetIssueId(s));
+  // Several picked issues, when no issue is open: commands then change them all.
+  const selection = useApp((s) => (s.openIssueId === null && s.selection.length > 1 ? s.selection : null));
   const d = useDerived();
   const [query, setQuery] = useState("");
 
@@ -154,7 +156,27 @@ function PaletteContent() {
         });
       }
     }
-    if (target !== null) {
+    if (selection) {
+      const group = `${selection.length} selected issues`;
+      for (const s of ISSUE_SHORTCUTS) {
+        if (!bulkCommand(s.kind)) continue;
+        list.push({
+          id: `bulk-${s.kind}`,
+          label: s.label,
+          group,
+          shortcut: s.shortcut,
+          run: () => runIssueCommandOn(s.kind, selection),
+        });
+      }
+      list.push({
+        id: "bulk-clear",
+        label: "Clear selection",
+        group,
+        icon: <Icon name="close" />,
+        keywords: "deselect unselect",
+        run: () => useApp.getState().setSelection([]),
+      });
+    } else if (target !== null) {
       for (const s of ISSUE_SHORTCUTS) {
         if (!issueCommandAvailable(s.kind, target)) continue;
         list.push({
@@ -307,6 +329,7 @@ function PaletteContent() {
     syncNow,
     signOut,
     target,
+    selection,
     setComposerOpen,
     setSettingsOpen,
     openFilterMenu,

@@ -321,6 +321,12 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M9.5 4.5V3.8a1.3 1.3 0 0 0-1.3-1.3H3.8a1.3 1.3 0 0 0-1.3 1.3v4.4a1.3 1.3 0 0 0 1.3 1.3h.7" {...stroke} />
         </Svg>
       );
+    case "check":
+      return (
+        <Svg {...props}>
+          <path d="M3 7.3 5.8 10 11 4" {...stroke} strokeWidth={1.8} />
+        </Svg>
+      );
     case "lock":
       return (
         <Svg {...props}>
@@ -401,5 +407,6 @@ export type IconName =
   | "tracker"
   | "done"
   | "lock"
+  | "check"
   | "more"
   | "copy";

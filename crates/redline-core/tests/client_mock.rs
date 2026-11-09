@@ -214,6 +214,43 @@ async fn updates_send_only_changed_fields_and_surface_redmine_errors() {
 }
 
 #[tokio::test]
+async fn sends_a_change_again_when_redmine_hit_a_conflict() {
+    let server = MockServer::start().await;
+    // A conflict at first, then the change goes through.
+    Mock::given(method("PUT"))
+        .and(path("/issues/9.json"))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({ "errors": [] })))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/issues/9.json"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // Conflicts every time.
+    Mock::given(method("PUT"))
+        .and(path("/issues/10.json"))
+        .respond_with(ResponseTemplate::new(422).set_body_json(json!({ "errors": [] })))
+        .expect(3)
+        .mount(&server)
+        .await;
+
+    let client = client(&server);
+    let change = IssueChanges {
+        status_id: Some(4),
+        ..Default::default()
+    };
+    client.update_issue(9, &change).await.unwrap();
+    let err = client.update_issue(10, &change).await.unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "Redmine refused the change because the issue changed at the same moment. Try again."
+    );
+}
+
+#[tokio::test]
 async fn sync_pages_and_moves_the_cursor_forward() {
     use redline_core::{Store, Syncer};
 

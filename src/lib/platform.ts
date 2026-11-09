@@ -39,6 +39,11 @@ export function shortcutLabel(shortcut: string): string {
   return isMac ? labels.join("") : labels.join("+");
 }
 
+/** Whether the platform's main modifier (Cmd on macOS, Ctrl elsewhere) is held. */
+export function modHeld(event: { metaKey: boolean; ctrlKey: boolean }): boolean {
+  return isMac ? event.metaKey : event.ctrlKey;
+}
+
 /** Whether a keyboard event matches a shortcut like "mod+k" or "shift+c". */
 export function matchesShortcut(event: KeyboardEvent | React.KeyboardEvent, shortcut: string): boolean {
   const parts = shortcut.toLowerCase().split("+");
