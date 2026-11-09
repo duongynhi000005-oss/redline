@@ -103,6 +103,8 @@ pub fn run() {
             commands::delete_issue,
             commands::update_comment,
             commands::find_mentions,
+            commands::run_query,
+            commands::search,
             commands::attachment_data,
             commands::save_attachment,
             commands::pick_files,

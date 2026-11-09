@@ -9,7 +9,7 @@ import type { Issue } from "../lib/types";
 import type { MyIssuesTab, Route, TeamTab } from "../state/app";
 import { overlayOpen, routeKey, useApp, viewFor } from "../state/app";
 import type { Derived } from "../state/derived";
-import { routeTitle, useDerived } from "../state/derived";
+import { routeTitle, showsProject, useDerived } from "../state/derived";
 import type { Group, Layout, ViewOptions } from "../lib/views";
 import { LAYOUTS, groupIssues } from "../lib/views";
 import { matchesShortcut, shortcutLabel } from "../lib/platform";
@@ -196,6 +196,7 @@ export function IssueList() {
   const filters = view.filters;
 
   const base = useRouteIssues(route);
+  const run = useApp((s) => (route.view === "query" ? s.queryRuns.get(route.queryId) : undefined));
   const issues = useMemo(() => (filters.length ? base.filter((i) => matchesFilters(i, filters, d)) : base), [base, filters, d]);
   const total = issues.length;
 
@@ -234,7 +235,21 @@ export function IssueList() {
       </header>
       {route.view === "cycle" && <CycleHeader teamId={route.teamId} versionId={route.versionId} />}
       <FilterBar route={route} shown={total} total={base.length} />
-      {total === 0 && filters.length ? (
+      {run && !run.loading && !run.error && run.total > run.ids.length && (
+        <p className="list-note muted">
+          Showing the first {run.ids.length} of {run.total} issues this view finds in Redmine.
+        </p>
+      )}
+      {run?.error && !run.ids.length ? (
+        <div className="empty-state" role="alert">
+          <p>Couldn't run this view.</p>
+          <p className="muted">{run.error}</p>
+        </div>
+      ) : !run?.ids.length && run?.loading ? (
+        <div className="empty-state" aria-busy="true">
+          <p className="muted">Asking Redmine…</p>
+        </div>
+      ) : total === 0 && filters.length ? (
         <div className="empty-state">
           <p>No issues match these filters.</p>
           <p className="muted">Remove a filter above, or press F to change them.</p>
@@ -247,7 +262,9 @@ export function IssueList() {
               ? "Issues assigned to you in Redmine show up here."
               : route.view === "cycle"
                 ? "Set an issue's cycle with Shift+C to add it here."
-                : "Nothing matches this view yet."}
+                : route.view === "query"
+                  ? "Redmine finds no issues for this view."
+                  : "Nothing matches this view yet."}
           </p>
         </div>
       ) : view.layout === "board" ? (
@@ -399,10 +416,7 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
                   issue={row.issue}
                   d={d}
                   focused={row.issue.id === focusedId}
-                  showProject={
-                    route.view === "my-issues" ||
-                    ((route.view === "team" || route.view === "cycle") && row.issue.project.id !== route.teamId)
-                  }
+                  showProject={showsProject(route, row.issue.project.id, d)}
                   showCycle={route.view !== "cycle"}
                   selected={selection.includes(row.issue.id)}
                   selecting={selection.length > 0}

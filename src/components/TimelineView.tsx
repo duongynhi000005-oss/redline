@@ -9,7 +9,7 @@ import type { Group, ViewOptions } from "../lib/views";
 import { groupIssues } from "../lib/views";
 import type { Route } from "../state/app";
 import { overlayOpen, useApp } from "../state/app";
-import { useDerived } from "../state/derived";
+import { showsProject, useDerived } from "../state/derived";
 import { BlockedMark, GroupIcon, spokenIssue } from "./IssueList";
 import { StatusIcon } from "./icons";
 
@@ -258,8 +258,7 @@ export function TimelineView({ issues, view, route }: { issues: Issue[]; view: V
     ];
   });
 
-  const showProject = (issue: Issue) =>
-    route.view === "my-issues" || ((route.view === "team" || route.view === "cycle") && issue.project.id !== route.teamId);
+  const showProject = (issue: Issue) => showsProject(route, issue.project.id, d);
   const height = virtualizer.getTotalSize();
 
   return (

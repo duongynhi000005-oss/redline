@@ -602,3 +602,43 @@ async fn edits_and_removes_a_comment_but_may_not_delete_the_issue() {
     assert!(matches!(err, Error::Forbidden), "{err:?}");
     assert!(client.issue(created.id, &[]).await.is_ok());
 }
+
+#[tokio::test]
+async fn runs_saved_queries_and_searches_everything() {
+    use redline_core::{Store, Syncer};
+
+    let client = live!();
+    let queries = client.queries().await.unwrap();
+    let bugs = queries
+        .iter()
+        .find(|q| q.name == "Open bugs")
+        .expect("public query");
+    let mine = queries
+        .iter()
+        .find(|q| q.name == "Assigned to me, by due date")
+        .expect("own query");
+    assert!(bugs.is_public);
+    assert!(bugs.project_id.is_some());
+    assert!(mine.project_id.is_none());
+
+    let syncer = Syncer::new(client.clone(), Store::in_memory().unwrap());
+    let (found, _) = syncer.query_issues(bugs.id, bugs.project_id).await.unwrap();
+    assert!(!found.items.is_empty());
+    assert_eq!(found.total, found.items.len() as u64);
+    for id in &found.items {
+        let issue = syncer.store().issue(*id).unwrap().expect("cached");
+        assert_ne!(issue.status.is_closed, Some(true));
+        assert_eq!(issue.tracker.id, 1);
+    }
+
+    let (mine_found, _) = syncer.query_issues(mine.id, None).await.unwrap();
+    let me = client.current_user().await.unwrap().id;
+    for id in &mine_found.items {
+        let issue = syncer.store().issue(*id).unwrap().unwrap();
+        assert_eq!(issue.assigned_to.as_ref().map(|a| a.id), Some(me));
+    }
+
+    let results = syncer.search("board", 0).await.unwrap();
+    assert!(results.items.iter().any(|r| r.kind.starts_with("issue")));
+    assert!(results.total >= results.items.len() as u64);
+}

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { CategoryMap, PriorityLevel, StatusCategory } from "../lib/model";
 import { categoryMap, issueCategory, priorityLevels, teamOf } from "../lib/model";
 import { moduleEnabled, timeAccess } from "../lib/permissions";
-import type { Issue, Metadata, Project, Version } from "../lib/types";
+import type { Issue, Metadata, Project, SavedQuery, Version } from "../lib/types";
 import type { ServerSettings } from "../lib/settings";
 import { DEFAULT_SETTINGS } from "../lib/settings";
 import type { Route } from "./app";
@@ -21,6 +21,8 @@ export interface Derived {
   teamProjects: Map<number, Project[]>;
   /** Teams where the user can see time logged in at least one project. */
   teamTime: Set<number>;
+  /** Saved Redmine queries, by id. */
+  queries: Map<number, SavedQuery>;
 }
 
 export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTINGS): Derived {
@@ -45,6 +47,7 @@ export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTIN
     teams,
     teamProjects,
     teamTime,
+    queries: new Map((meta.queries ?? []).map((q) => [q.id, q])),
   };
 }
 
@@ -87,6 +90,7 @@ const EMPTY: Derived = {
   teams: [],
   teamProjects: new Map(),
   teamTime: new Set(),
+  queries: new Map(),
 };
 
 export function useDerived(): Derived {
@@ -140,6 +144,9 @@ export function issuesForRoute(
       case "cycle":
         if (issue.fixed_version?.id === route.versionId) out.push(issue);
         break;
+      // A query's issues come from Redmine (see useRouteIssues); search isn't a list of issues.
+      case "query":
+      case "search":
       case "cycles":
       case "time":
       case "inbox":
@@ -147,6 +154,21 @@ export function issuesForRoute(
     }
   }
   return out;
+}
+
+/** Whether a list's rows name each issue's project: where they can come from more than one. */
+export function showsProject(route: Route, projectId: number, d: Derived): boolean {
+  switch (route.view) {
+    case "my-issues":
+      return true;
+    case "team":
+    case "cycle":
+      return projectId !== route.teamId;
+    case "query":
+      return !d.queries.get(route.queryId)?.project_id;
+    default:
+      return false;
+  }
 }
 
 export function routeTitle(route: Route, d: Derived): string {
@@ -165,5 +187,9 @@ export function routeTitle(route: Route, d: Derived): string {
       return `${d.projects.get(route.teamId)?.name ?? "Team"} time`;
     case "cycle":
       return d.versions.get(route.versionId)?.name ?? "Cycle";
+    case "query":
+      return d.queries.get(route.queryId)?.name ?? "View";
+    case "search":
+      return "Search";
   }
 }

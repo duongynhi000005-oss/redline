@@ -94,8 +94,8 @@ function PaletteContent() {
     const list: Action[] = [
       { id: "new-issue", label: "Create new issue", group: "Issues", shortcut: "c", run: () => setComposerOpen(true) },
     ];
-    // Lists of issues can be filtered; the inbox and cycle overview can't.
-    if (route.view !== "inbox" && route.view !== "cycles" && route.view !== "time" && !detailOpen) {
+    // Lists of issues can be filtered; the inbox, cycle overview and search can't.
+    if (route.view !== "inbox" && route.view !== "cycles" && route.view !== "time" && route.view !== "search" && !detailOpen) {
       list.push({
         id: "filter",
         label: "Filter…",
@@ -281,6 +281,16 @@ function PaletteContent() {
         run: go({ view: "my-issues", tab: "assigned" }),
       },
     );
+    for (const q of d.queries.values()) {
+      list.push({
+        id: `go-query-${q.id}`,
+        label: `Go to ${q.name}`,
+        group: "Navigation",
+        icon: <Icon name="view" />,
+        keywords: "view saved query custom query",
+        run: go({ view: "query", queryId: q.id }),
+      });
+    }
     for (const team of d.teams) {
       list.push({
         id: `go-team-${team.id}`,
@@ -392,6 +402,14 @@ function PaletteContent() {
                 <span className="palette-label">{issue.subject}</span>
               </Command.Item>
             ))}
+          </Command.Group>
+        )}
+        {q && (
+          <Command.Group heading="Redmine">
+            <Command.Item value="search-redmine" onSelect={() => run(() => navigate({ view: "search", text: q }))}>
+              <Icon name="search" />
+              <span className="palette-label">Search Redmine for “{q}”</span>
+            </Command.Item>
           </Command.Group>
         )}
       </Command.List>

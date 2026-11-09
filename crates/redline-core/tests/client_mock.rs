@@ -826,3 +826,82 @@ async fn deletes_an_issue_with_its_sub_issues_and_refreshes_its_neighbours() {
         .await
         .unwrap();
 }
+
+#[tokio::test]
+async fn runs_a_saved_query_in_its_own_order_and_caches_the_issues() {
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    Mock::given(path("/queries.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "queries": [
+                {"id": 4, "name": "Open bugs", "is_public": true, "project_id": 1},
+                {"id": 5, "name": "Mine", "is_public": false}
+            ],
+            "total_count": 2, "offset": 0, "limit": 25
+        })))
+        .mount(&server)
+        .await;
+    // The query sets status and sort, so Redline sends neither.
+    Mock::given(path("/issues.json"))
+        .and(query_param("query_id", "4"))
+        .and(query_param("project_id", "1"))
+        .and(query_param("offset", "0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [issue(9), issue(3)], "total_count": 3, "offset": 0, "limit": 2
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(path("/issues.json"))
+        .and(query_param("query_id", "4"))
+        .and(query_param("offset", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [issue(5)], "total_count": 3, "offset": 2, "limit": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let queries = client(&server).queries().await.unwrap();
+    assert_eq!(queries[0].name, "Open bugs");
+    assert_eq!(queries[0].project_id, Some(1));
+    assert_eq!(queries[1].project_id, None);
+
+    let store = Store::in_memory().unwrap();
+    let syncer = Syncer::new(client(&server), store.clone());
+    let (found, changed) = syncer.query_issues(4, Some(1)).await.unwrap();
+    assert_eq!(found.items, vec![9, 3, 5]);
+    assert_eq!(found.total, 3);
+    assert_eq!(changed.len(), 3);
+    assert!(store.issue(5).unwrap().is_some());
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests
+            .iter()
+            .filter(|r| r.url.path() == "/issues.json")
+            .all(|r| !r.url.query().unwrap_or("").contains("status_id"))
+    );
+}
+
+#[tokio::test]
+async fn searches_everything_a_page_at_a_time() {
+    let server = MockServer::start().await;
+    Mock::given(path("/search.json"))
+        .and(query_param("q", "release notes"))
+        .and(query_param("offset", "25"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "results": [
+                {"id": 2, "title": "Wiki: Release notes", "type": "wiki-page", "url": "http://x/projects/web/wiki/Release_notes", "description": "", "datetime": "2026-11-01T00:00:00Z"},
+                {"id": 7, "title": "Feature #7 (New): Write release notes", "type": "issue", "url": "http://x/issues/7", "description": "", "datetime": "2026-11-02T00:00:00Z"}
+            ],
+            "total_count": 27, "offset": 25, "limit": 25
+        })))
+        .mount(&server)
+        .await;
+    let page = client(&server)
+        .search("release notes", 25, 25)
+        .await
+        .unwrap();
+    assert_eq!(page.total_count, 27);
+    assert_eq!(page.items[0].kind, "wiki-page");
+    assert_eq!(page.items[1].id, 7);
+}

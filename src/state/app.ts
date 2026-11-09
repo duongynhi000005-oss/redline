@@ -25,7 +25,7 @@ import type { Inbox } from "../lib/inbox";
 import { isMine, itemsFrom, loadInbox, mergeItems, saveInbox } from "../lib/inbox";
 import type { Filter, FilterField } from "../lib/filters";
 import type { ViewOptions } from "../lib/views";
-import { DEFAULT_VIEW, isDefaultView, loadViews, saveViews } from "../lib/views";
+import { defaultViewFor, isDefaultView, loadViews, saveViews } from "../lib/views";
 
 const NO_SELECTION: number[] = [];
 
@@ -37,7 +37,11 @@ export type Route =
   | { view: "project"; projectId: number }
   | { view: "cycles"; teamId: number }
   | { view: "time"; teamId: number }
-  | { view: "cycle"; teamId: number; versionId: number };
+  | { view: "cycle"; teamId: number; versionId: number }
+  /** A saved Redmine query, run on the server. */
+  | { view: "query"; queryId: number }
+  /** Redmine search, across issues, wiki, news, documents, forums and commits. */
+  | { view: "search"; text: string };
 
 export type MyIssuesTab = "assigned" | "created";
 export type TeamTab = "all" | "active" | "backlog";
@@ -56,7 +60,21 @@ export function routeKey(route: Route): string {
       return `project:${route.projectId}`;
     case "cycle":
       return `cycle:${route.versionId}`;
+    case "query":
+      return `query:${route.queryId}`;
+    case "search":
+      return "search";
   }
+}
+
+/** A saved query's latest run. */
+export interface QueryRun {
+  /** Issue ids in the query's own order. */
+  ids: number[];
+  /** How many Redmine finds, which can be more than `ids`. */
+  total: number;
+  loading: boolean;
+  error: string | null;
 }
 
 export type Phase = "starting" | "signed-out" | "ready";
@@ -100,6 +118,8 @@ export interface AppState {
   focusedIssueId: number | null;
   /** Issues picked with X, Shift or Cmd/Ctrl-click, for changing several at once. */
   selection: number[];
+  /** Saved queries run this session, by id. */
+  queryRuns: Map<number, QueryRun>;
   paletteOpen: boolean;
   /** The property picker open for an issue, like Linear's S, P and A menus. */
   picker: PickerState | null;
@@ -136,6 +156,8 @@ export interface AppState {
   /** Opens a picker that changes several issues at once. */
   openBulkPicker(kind: PickerKind, issueIds: number[]): void;
   setSelection(ids: number[]): void;
+  /** Runs a saved query in Redmine and keeps what it finds in `queryRuns`. */
+  runQuery(queryId: number): Promise<void>;
   toggleSelected(id: number): void;
   /** Changes several issues, a few at a time, and sums up what Redmine refused. */
   /**
@@ -211,6 +233,7 @@ function initial() {
     openIssueId: null as number | null,
     focusedIssueId: null as number | null,
     selection: NO_SELECTION,
+    queryRuns: new Map<number, QueryRun>(),
     paletteOpen: false,
     picker: null as PickerState | null,
     timeDialog: null as AppState["timeDialog"],
@@ -371,6 +394,31 @@ export const useApp = create<AppState>()((set, get) => {
 
     navigate(route) {
       set({ route, openIssueId: null, focusedIssueId: null, selection: NO_SELECTION });
+      // A query runs on the server, so each visit asks Redmine again.
+      if (route.view === "query") void get().runQuery(route.queryId);
+    },
+
+    async runQuery(queryId) {
+      const { backend, meta } = get();
+      if (!backend) return;
+      const query = meta?.queries?.find((q) => q.id === queryId);
+      const before = get().queryRuns.get(queryId);
+      const runs = (run: QueryRun) => set({ queryRuns: new Map(get().queryRuns).set(queryId, run) });
+      runs({ ids: before?.ids ?? [], total: before?.total ?? 0, loading: true, error: null });
+      try {
+        const found = await backend.runQuery(queryId, query?.project_id);
+        // Issues the cache didn't have yet arrive through onIssuesChanged; make sure they're here.
+        const missing = found.items.filter((id) => !get().issues.has(id));
+        if (missing.length) {
+          const fetched = await backend.getIssues(missing);
+          const issues = new Map(get().issues);
+          for (const i of fetched) issues.set(i.id, i);
+          set({ issues });
+        }
+        runs({ ids: found.items, total: found.total, loading: false, error: null });
+      } catch (e) {
+        runs({ ids: before?.ids ?? [], total: before?.total ?? 0, loading: false, error: errorMessage(e) });
+      }
     },
 
     openIssue(id) {
@@ -454,6 +502,8 @@ export const useApp = create<AppState>()((set, get) => {
 
     async syncNow() {
       await get().backend?.syncNow();
+      const { route } = get();
+      if (route.view === "query") await get().runQuery(route.queryId);
     },
 
     async updateIssue(id, changes) {
@@ -736,8 +786,9 @@ export const useApp = create<AppState>()((set, get) => {
 
     updateView(key, change) {
       const views = { ...get().views };
-      const next = { ...DEFAULT_VIEW, ...views[key], ...change };
-      if (isDefaultView(next)) delete views[key];
+      const base = defaultViewFor(key);
+      const next = { ...base, ...views[key], ...change };
+      if (isDefaultView(next, base)) delete views[key];
       else views[key] = next;
       set({ views });
       const account = get().account;
@@ -849,7 +900,7 @@ export function targetIssueId(s: Pick<AppState, "openIssueId" | "focusedIssueId"
 
 /** A list's display options, or the defaults. */
 export function viewFor(s: Pick<AppState, "views">, key: string): ViewOptions {
-  return s.views[key] ?? DEFAULT_VIEW;
+  return s.views[key] ?? defaultViewFor(key);
 }
 
 /** Whether a menu or dialog is up, so the views underneath ignore their shortcuts. */

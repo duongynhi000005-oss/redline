@@ -13,6 +13,7 @@ function sameRoute(a: Route, b: Route): boolean {
   if (a.view === "team" && b.view === "team") return a.teamId === b.teamId;
   if (a.view === "project" && b.view === "project") return a.projectId === b.projectId;
   if (a.view === "time" && b.view === "time") return a.teamId === b.teamId;
+  if (a.view === "query" && b.view === "query") return a.queryId === b.queryId;
   // A cycle's issues light up the team's Cycles item.
   if ((a.view === "cycles" || a.view === "cycle") && (b.view === "cycles" || b.view === "cycle")) return a.teamId === b.teamId;
   return true;
@@ -24,12 +25,14 @@ function NavItem({
   label,
   depth = 0,
   badge,
+  title,
 }: {
   route: Route;
   icon: React.ReactNode;
   label: string;
   depth?: number;
   badge?: string;
+  title?: string;
 }) {
   const current = useApp((s) => s.route);
   const navigate = useApp((s) => s.navigate);
@@ -40,6 +43,7 @@ function NavItem({
       className={`nav-item${active ? " active" : ""}`}
       style={{ paddingLeft: 8 + depth * 14 }}
       aria-current={active ? "page" : undefined}
+      title={title}
       onClick={() => navigate(route)}
     >
       {icon}
@@ -76,6 +80,12 @@ export function Sidebar() {
   const unread = useApp((s) => s.inbox.items.filter((i) => !i.read).length);
   const d = useDerived();
   const { teams, teamProjects } = d;
+  // Your own views first, then shared ones, each alphabetically.
+  const views = useMemo(
+    () =>
+      [...d.queries.values()].sort((a, b) => Number(a.is_public) - Number(b.is_public) || a.name.localeCompare(b.name)),
+    [d.queries],
+  );
   const hasCycles = useMemo(
     () => new Set(meta ? meta.versions.map((v) => teamOf(v.project.id, meta)) : []),
     [meta],
@@ -122,6 +132,21 @@ export function Sidebar() {
           badge={unread ? String(unread) : undefined}
         />
         <NavItem route={{ view: "my-issues", tab: "assigned" }} icon={<Icon name="my-issues" />} label="My issues" />
+
+        {views.length > 0 && (
+          <>
+            <div className="nav-section">Views</div>
+            {views.map((q) => (
+              <NavItem
+                key={q.id}
+                route={{ view: "query", queryId: q.id }}
+                icon={<Icon name="view" />}
+                label={q.name}
+                title={q.project_id ? `${q.name}, in ${d.projects.get(q.project_id)?.name ?? "a project"}` : undefined}
+              />
+            ))}
+          </>
+        )}
 
         <div className="nav-section">Your teams</div>
         {teams.map((team) => {

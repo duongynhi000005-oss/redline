@@ -490,6 +490,49 @@ impl Client {
         Ok(())
     }
 
+    /// The saved issue queries the user can see.
+    pub async fn queries(&self) -> Result<Vec<Query>> {
+        self.get_all("queries.json", "queries", &[]).await
+    }
+
+    /// One page of the issues a saved query finds, in the query's own order.
+    /// The query sets the filters, status and sort; a project query needs
+    /// its project.
+    pub async fn query_issues(
+        &self,
+        query_id: u64,
+        project_id: Option<u64>,
+        offset: u64,
+    ) -> Result<Page<Issue>> {
+        let mut params: Vec<(&str, String)> = vec![
+            ("query_id", query_id.to_string()),
+            ("offset", offset.to_string()),
+            ("limit", PAGE_SIZE.to_string()),
+        ];
+        if let Some(project_id) = project_id {
+            params.push(("project_id", project_id.to_string()));
+        }
+        let body: Value = self.get("issues.json", &params).await?;
+        page(body, "issues")
+    }
+
+    /// One page of what Redmine search finds for the text, newest first:
+    /// issues, wiki pages, news, documents, forum messages, changesets and
+    /// projects, as far as the user may see them.
+    pub async fn search(&self, text: &str, offset: u64, limit: u32) -> Result<Page<SearchResult>> {
+        let body: Value = self
+            .get(
+                "search.json",
+                &[
+                    ("q", text.to_string()),
+                    ("offset", offset.to_string()),
+                    ("limit", limit.to_string()),
+                ],
+            )
+            .await?;
+        page(body, "results")
+    }
+
     /// Searches issue subjects, descriptions and comments, newest first.
     /// Returns at most one page (100 hits).
     pub async fn search_issues(&self, query: &str) -> Result<Vec<SearchResult>> {

@@ -48,7 +48,7 @@ browser, because Redmine has no API for it
 | Gantt | No API; built from start and due dates, parents and precedes/blocks relations | ✅ | Timeline view: bars from start to due date, drag to move or resize, arrows for precedes and blocks, three zoom levels. #36 |
 | Calendar | No API; built from start and due dates | ✅ | Calendar view: a month of weeks with issues across their days, cycle ends, drag to reschedule, undated issues to drag on. #37 |
 | Issue categories | `GET/POST/PUT/DELETE /projects/:id/issue_categories.json` | ✅ shown and set | Category property, filter, list grouping and board columns. A board only takes issues into a category of their own project. Creating categories stays in Redmine's project settings. #42 |
-| Saved queries | `GET /queries.json`, run with `query_id` | ⬜ | Sidebar > Views: each Redmine query as a list Redline fetches. #44 |
+| Saved queries | `GET /queries.json`, run with `query_id` | ✅ | Sidebar > Views: each Redmine query runs on the server (up to 500 issues) and shows as a list, board, timeline or calendar in its own order. #44 |
 | Time tracking (spent time, reports) | `GET/POST/PUT/DELETE /time_entries.json`, activities from `/enumerations/time_entry_activities.json` | ✅ | Team > Time: this week, last week, this month or the last 30 days, a bar per day, entries grouped by day, person or issue with totals, and only your own on request. Redmine's report pivot (by custom field, CSV export) stays in Redmine for now. #40 |
 
 ## Projects and people
@@ -74,7 +74,7 @@ browser, because Redmine has no API for it
 | Forums (boards and messages) | No API (search finds messages) | 🌐 | Team > Forums lists what search finds; opening one goes to the browser. #49 |
 | Repository browser | No API, except linking issues to revisions | 🌐 | Commits show on issues (#48); the browser opens in Redmine |
 | Activity | No API (Atom feeds need the separate Atom key) | ⬜ | Team > Activity, built from the cache: issue changes, comments, time, wiki, news, files. #48 |
-| Search | `GET /search.json` across issues, wiki, news, documents, messages, changesets | ⬜ | Command menu "Search Redmine…" and a search view. #44 |
+| Search | `GET /search.json` across issues, wiki, news, documents, messages, changesets | ✅ | Command menu "Search Redmine for …" and a search view; issues open in Redline, the rest in the browser until their own views land. #44 |
 
 ## Everything else
 

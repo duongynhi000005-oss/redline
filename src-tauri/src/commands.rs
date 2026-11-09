@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use redline_core::models::{Issue, IssueChanges, NewRelation, Relation};
+use redline_core::models::{Found, Issue, IssueChanges, NewRelation, Relation, SearchResult};
 use redline_core::{Client, Error, IssueDetails, Metadata, Store, Syncer};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -312,11 +312,15 @@ pub async fn open_in_redmine(
 ) -> CmdResult<()> {
     use tauri_plugin_opener::OpenerExt;
 
+    // A path on the signed-in server, as search results and links give them:
+    // wiki titles arrive percent-encoded, forum replies carry ?r=…#message-….
     let ok = !path.is_empty()
         && !path.contains("..")
-        && path
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '/' | '-' | '_' | '.' | '#'));
+        && !path.contains("//")
+        && path.chars().all(|c| {
+            c.is_ascii_alphanumeric()
+                || matches!(c, '/' | '-' | '_' | '.' | '#' | '?' | '=' | '&' | '%')
+        });
     if !ok {
         return Err(UiError::new(
             "invalid",
@@ -388,6 +392,33 @@ pub async fn remove_relation(
     let changed = syncer.remove_relation(&relation).await?;
     emit_changed(&app, changed);
     Ok(())
+}
+
+/// Runs a saved query: the ids of the issues it finds, in its order, and how
+/// many there are in all. Issues it brought in or changed arrive as usual.
+#[tauri::command]
+pub async fn run_query(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    query_id: u64,
+    project_id: Option<u64>,
+) -> CmdResult<Found<u64>> {
+    let syncer = syncer(&state).await?;
+    let (found, changed) = syncer.query_issues(query_id, project_id).await?;
+    emit_changed(&app, changed);
+    Ok(found)
+}
+
+/// One page of Redmine search: issues, wiki pages, news, documents, forum
+/// messages, changesets and projects.
+#[tauri::command]
+pub async fn search(
+    state: State<'_, AppState>,
+    text: String,
+    offset: u64,
+) -> CmdResult<Found<SearchResult>> {
+    let syncer = syncer(&state).await?;
+    Ok(syncer.search(&text, offset).await?)
 }
 
 /// Ids of issues whose description or comments mention this one.
