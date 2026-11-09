@@ -8,6 +8,7 @@ mod session;
 use std::sync::atomic::Ordering;
 
 use tauri::{Emitter, Manager, WindowEvent};
+use tauri_plugin_window_state::StateFlags;
 
 use commands::AppState;
 
@@ -36,6 +37,17 @@ pub fn run() {
     let builder = builder.menu(menu::build);
 
     builder
+        // Reopen where the window was left, like other desktop apps.
+        .plugin(
+            tauri_plugin_window_state::Builder::default()
+                .with_state_flags(
+                    StateFlags::SIZE
+                        | StateFlags::POSITION
+                        | StateFlags::MAXIMIZED
+                        | StateFlags::FULLSCREEN,
+                )
+                .build(),
+        )
         .manage(AppState::default())
         .on_menu_event(|app, event| {
             let _ = app.emit(menu::EVENT_MENU, event.id().as_ref());
