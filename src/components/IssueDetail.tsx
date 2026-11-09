@@ -339,7 +339,7 @@ function CommentBox({
         <button type="button" className="icon-button" onClick={() => void pick()} aria-label="Attach files to the comment" title="Attach files">
           <Icon name="attachment" />
         </button>
-        <span className="muted">Markdown, #123 and @login work. Drop files here to attach them.</span>
+        <span className="muted">Markdown, #123 and @login work. Drop files to attach.</span>
         <button type="submit" className="button-secondary" disabled={!ready}>
           {busy ? "Sending…" : "Comment"} <kbd>{shortcutLabel("mod+enter")}</kbd>
         </button>

@@ -380,8 +380,9 @@ export const useApp = create<AppState>()((set, get) => {
       // Redmine doesn't touch updated_on when relations or watchers change; attachments
       // only come with details.
       for (const key of ["relations", "watchers", "attachments"] as const) {
-        const fresh = details.issue[key];
-        if (known && fresh && JSON.stringify(known[key] ?? []) !== JSON.stringify(fresh)) patch[key] = fresh as never;
+        // Watchers missing from details means the role can't see them (any more).
+        const fresh = key === "watchers" ? (details.issue.watchers ?? null) : details.issue[key];
+        if (known && fresh !== undefined && JSON.stringify(known[key] ?? null) !== JSON.stringify(fresh)) patch[key] = fresh as never;
       }
       const next: Partial<AppState> = {};
       if (known && Object.keys(patch).length) next.issues = new Map(issues).set(id, { ...known, ...patch });
