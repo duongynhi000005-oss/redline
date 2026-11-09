@@ -24,10 +24,10 @@ function Toast() {
     const timer = setTimeout(() => showToast(null), 6000);
     return () => clearTimeout(timer);
   }, [toast, showToast]);
-  if (!toast) return null;
+  // The live region stays in the page so screen readers announce each message.
   return (
-    <div className="toast" role="status">
-      {toast}
+    <div className="toast-region" role="status">
+      {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }

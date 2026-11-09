@@ -66,10 +66,22 @@ export function IssueRow({
 }) {
   const category = issueCategory(issue, d.categories);
   const labels = issueLabels(issue, d.labelFields);
+  // One sentence for screen readers instead of every chip read out in turn.
+  const spoken = [
+    `${issue.subject}, #${issue.id}`,
+    issue.status.name,
+    `${issue.priority.name} priority`,
+    issue.assigned_to ? `assigned to ${issue.assigned_to.name}` : "unassigned",
+    ...labels.map((l) => l.value),
+    showCycle && issue.fixed_version ? issue.fixed_version.name : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
   return (
     <div
       id={`issue-row-${issue.id}`}
       role="option"
+      aria-label={spoken}
       aria-selected={focused}
       className={`issue-row${focused ? " focused" : ""}`}
       onClick={onOpen}
@@ -154,6 +166,10 @@ export function IssueList() {
       }
       if (next === null) return;
       e.preventDefault();
+      // Screen readers follow aria-activedescendant only while the list has focus.
+      if (scrollRef.current && !scrollRef.current.contains(document.activeElement)) {
+        scrollRef.current.focus({ preventScroll: true });
+      }
       const target = issueRows[next]!;
       setFocusedId(target.id);
       virtualizer.scrollToIndex(target.index, { align: "auto" });

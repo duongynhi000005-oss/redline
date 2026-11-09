@@ -1424,3 +1424,54 @@ h2 {
 .chip-dot-empty {
   border: 1px solid var(--border-strong);
 }
+
+/* Accessibility preferences */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Increase contrast (macOS) and Windows contrast themes. */
+@media (prefers-contrast: more) {
+  :root {
+    --border: rgba(0, 0, 0, 0.32);
+    --border-strong: rgba(0, 0, 0, 0.5);
+    --text-secondary: #3c3d44;
+    --text-tertiary: #55565e;
+    --focus: var(--accent);
+  }
+}
+
+@media (prefers-contrast: more) and (prefers-color-scheme: dark) {
+  :root {
+    --border: rgba(255, 255, 255, 0.34);
+    --border-strong: rgba(255, 255, 255, 0.5);
+    --text-secondary: #d0d1d8;
+    --text-tertiary: #b4b5bd;
+  }
+}
+
+@media (forced-colors: active) {
+  :focus-visible,
+  .issue-row.focused {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .chip-dot,
+  .team-mark {
+    forced-color-adjust: none;
+  }
+}
+
+/* When the list itself has keyboard focus, mark the highlighted row clearly. */
+.issue-scroll:focus-visible .issue-row.focused {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
