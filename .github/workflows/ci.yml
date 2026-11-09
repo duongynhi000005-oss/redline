@@ -133,8 +133,16 @@ jobs:
         run: npx tauri build --no-bundle
 
   redmine:
-    name: Core against a real Redmine
+    name: Core against Redmine ${{ matrix.redmine }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported release and the latest major. Keep in step
+        # with "Supported Redmine versions" in the README.
+        redmine: ["6.1", "7"]
+    env:
+      REDMINE_VERSION: ${{ matrix.redmine }}
     steps:
       - uses: actions/checkout@v7
 
@@ -158,7 +166,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         if: steps.scaffold.outputs.ready == 'true'
         with:
-          key: redmine
+          key: redmine-${{ matrix.redmine }}
 
       # Only the core crate: it has no Tauri dependency, so this job needs no
       # web view libraries.

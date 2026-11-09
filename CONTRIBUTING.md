@@ -190,9 +190,16 @@ cargo test -p redline-core
 
 Without those variables the live tests are skipped. CI always runs them.
 
-The compose file runs Redmine 7. To check a change against the previous
-release, change the image to `redmine:6.1`, then run `docker compose down -v`
-and start again.
+Redline supports Redmine 6.1 and later. The compose file runs the latest
+Redmine 7 by default. To check a change against the oldest supported release,
+start from scratch with `REDMINE_VERSION=6.1`:
+
+```sh
+docker compose -f dev/redmine/compose.yaml down -v
+REDMINE_VERSION=6.1 docker compose -f dev/redmine/compose.yaml up -d
+```
+
+CI runs the core tests against both.
 
 Never commit API keys, server URLs from a real team, or screenshots that show
 someone else's data.
