@@ -65,6 +65,19 @@ describe("picking several issues", () => {
     expect(useApp.getState().selection).toEqual([idOf(rows()[0]!), idOf(rows()[1]!)]);
   });
 
+  it("lets go of picked issues that leave the list", async () => {
+    const { user, rows, idOf } = await start();
+    await user.keyboard("{Control>}a{/Control}");
+    const all = rows().map(idOf);
+    const [gone, ...kept] = all;
+    act(() => {
+      const issues = new Map(useApp.getState().issues);
+      issues.delete(gone!);
+      useApp.setState({ issues });
+    });
+    await waitFor(() => expect(useApp.getState().selection).toEqual(kept));
+  });
+
   it("changes the status of every picked issue at once", async () => {
     const { user, backend, rows, idOf } = await start();
     const issues = useApp.getState().issues;

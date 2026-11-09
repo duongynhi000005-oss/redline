@@ -291,6 +291,7 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
   const focusedId = useApp((s) => s.focusedIssueId);
   const setFocusedId = useApp((s) => s.focusIssue);
   const selection = useApp((s) => s.selection);
+  const selected = useMemo(() => new Set(selection), [selection]);
   const setSelection = useApp((s) => s.setSelection);
   const meta = useApp((s) => s.meta);
   const me = useApp((s) => s.account?.userId);
@@ -363,7 +364,10 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
   // Issues that drop out of the list (filtered, moved, closed) stop being picked.
   useEffect(() => {
     const picked = useApp.getState().selection;
-    if (picked.some((id) => !order.includes(id))) setSelection(picked.filter((id) => order.includes(id)));
+    if (!picked.length) return;
+    // A Set, because after Select all both lists hold every issue.
+    const listed = new Set(order);
+    if (picked.some((id) => !listed.has(id))) setSelection(picked.filter((id) => listed.has(id)));
   }, [order, setSelection]);
 
   // Coming back from an issue, scroll its row into view.
@@ -420,7 +424,7 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
                   focused={row.issue.id === focusedId}
                   showProject={showsProject(route, row.issue.project.id, d)}
                   showCycle={route.view !== "cycle"}
-                  selected={selection.includes(row.issue.id)}
+                  selected={selected.has(row.issue.id)}
                   selecting={selection.length > 0}
                   onOpen={(e) => {
                     const anchor = selection.length ? selection[selection.length - 1]! : focusedId;

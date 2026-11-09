@@ -160,6 +160,7 @@ function Column({
   onFocus: (id: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const selected = useMemo(() => new Set(selection), [selection]);
   // TanStack Virtual returns fresh functions each render, so the React
   // Compiler skips this component; that's expected.
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -211,7 +212,7 @@ function Column({
                   dragging={drag?.issue.id === issue.id}
                   showProject={showProject(issue)}
                   onPointerDown={(e) => onCardPointerDown(e, issue, column)}
-                  selected={selection.includes(issue.id)}
+                  selected={selected.has(issue.id)}
                   selecting={selection.length > 0}
                   onOpen={(e) => onOpen(issue.id, e)}
                   onFocus={() => issue.id !== focusedId && onFocus(issue.id)}
