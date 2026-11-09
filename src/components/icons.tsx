@@ -229,6 +229,13 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M2 3.5h5.5M4.5 7h6M7 10.5h5" {...stroke} strokeWidth={2.2} />
         </Svg>
       );
+    case "calendar":
+      return (
+        <Svg {...props}>
+          <rect x="2" y="2.8" width="10" height="9" rx="1.6" {...stroke} />
+          <path d="M2 5.8h10M4.8 1.6v2.2M9.2 1.6v2.2" {...stroke} />
+        </Svg>
+      );
     case "plus":
       return (
         <Svg {...props}>
@@ -276,6 +283,7 @@ export type IconName =
   | "list"
   | "board"
   | "timeline"
+  | "calendar"
   | "display"
   | "inbox"
   | "my-issues"
