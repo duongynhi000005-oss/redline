@@ -545,13 +545,25 @@ export function IssueDetail({ id }: { id: number }) {
   const details = loaded?.id === id ? (loaded.details ?? null) : null;
   const error = loaded?.id === id ? (loaded.error ?? null) : null;
 
+  // A change made here comes back with Redmine's read of the issue; show it.
+  const fresh = useApp((s) => s.freshDetails);
+  const [freshSeen, setFreshSeen] = useState<IssueDetails | null>(null);
+  if (fresh !== freshSeen) {
+    setFreshSeen(fresh);
+    if (fresh?.issue.id === id) setLoaded({ id, details: fresh });
+  }
+
   // Show the cached issue at once, then load its activity from the server.
   useEffect(() => {
     let live = true;
+    const before = useApp.getState().freshDetails;
     backend
       ?.getIssueDetails(id, true)
       .then((result) => {
         if (!live) return;
+        // A change landed while this read was out; its answer is newer.
+        const now = useApp.getState().freshDetails;
+        if (now !== before && now?.issue.id === id) return;
         setLoaded({ id, details: result });
         // Redmine doesn't touch updated_on for relations or watchers; take the fresh ones.
         useApp.getState().takeDetails(result);
