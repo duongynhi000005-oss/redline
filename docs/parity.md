@@ -18,7 +18,7 @@ browser, because Redmine has no API for it
 | Redmine | API with a user key | Redline | Where it lives |
 | --- | --- | --- | --- |
 | Issue list | `GET /issues.json`, 100 per page | ✅ | Every list, from the local cache |
-| Issue views (list, board, Gantt, calendar) | No API for Gantt or calendar; both are built from issue dates | 🟡 list and board | View switcher on every list: List, Board (Kanban), Timeline, Calendar. #34, #36, #37 |
+| Issue views (list, board, Gantt, calendar) | No API for Gantt or calendar; both are built from issue dates | 🟡 list, board and timeline | View switcher on every list: List, Board (Kanban), Timeline, Calendar. #34, #36, #37 |
 | Issue details | `GET /issues/:id.json` | ✅ | Issue view |
 | Subject, description, status, priority, assignee, cycle (version) | `PUT /issues/:id.json` | ✅ | Issue view and pickers |
 | Tracker, category, start date, due date, estimate, % done, private, parent | `PUT /issues/:id.json` | 🟡 shown, not all editable | Properties panel, editable. #42 |
@@ -45,7 +45,7 @@ browser, because Redmine has no API for it
 | --- | --- | --- | --- |
 | Versions | `GET/POST/PUT/DELETE /projects/:id/versions.json` (writes need Manage versions) | 🟡 as cycles | Cycles, plus a version's details, notes and status; create and edit when allowed. #41 |
 | Roadmap | No API; built from versions and their issues | ⬜ | Team > Roadmap: open versions with progress, then closed ones. #41 |
-| Gantt | No API; built from start and due dates, parents and precedes/blocks relations | ⬜ | Timeline view. #36 |
+| Gantt | No API; built from start and due dates, parents and precedes/blocks relations | ✅ | Timeline view: bars from start to due date, drag to move or resize, arrows for precedes and blocks, three zoom levels. #36 |
 | Calendar | No API; built from start and due dates | ⬜ | Calendar view. #37 |
 | Issue categories | `GET/POST/PUT/DELETE /projects/:id/issue_categories.json` | 🟡 cached, not shown | Category property, filter and grouping ("Component"). #42 |
 | Saved queries | `GET /queries.json`, run with `query_id` | ⬜ | Sidebar > Views: each Redmine query as a list Redline fetches. #44 |

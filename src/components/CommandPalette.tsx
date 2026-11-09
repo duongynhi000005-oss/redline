@@ -96,8 +96,8 @@ function PaletteContent() {
           label: `Show as ${l.label.toLowerCase()}`,
           group: "View",
           shortcut: l.shortcut,
-          keywords: l.value === "board" ? "kanban columns" : "rows",
-          icon: <Icon name={l.value === "board" ? "board" : "list"} />,
+          keywords: l.value === "board" ? "kanban columns" : l.value === "timeline" ? "gantt roadmap schedule dates" : "rows",
+          icon: <Icon name={l.value} />,
           run: () => updateView(routeKey(route), { layout: l.value }),
         });
       }

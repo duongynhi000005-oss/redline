@@ -8,8 +8,10 @@ import type { Issue, Metadata } from "./types";
 
 export type Grouping = "status" | "assignee" | "priority" | "cycle" | "none";
 export type Ordering = "priority" | "updated" | "created";
-/** How a list is laid out: rows, or a board of columns. */
-export type Layout = "list" | "board";
+/** How a list is laid out: rows, a board of columns, or bars on a timeline. */
+export type Layout = "list" | "board" | "timeline";
+/** How much time a timeline shows at once. */
+export type Zoom = "week" | "month" | "quarter";
 
 export interface ViewOptions {
   filters: Filter[];
@@ -18,6 +20,8 @@ export interface ViewOptions {
   layout: Layout;
   /** On a board, show columns that have no issues, so issues can be dropped there. */
   showEmptyColumns: boolean;
+  /** On a timeline, the scale. */
+  zoom: Zoom;
 }
 
 export const DEFAULT_VIEW: ViewOptions = {
@@ -26,11 +30,19 @@ export const DEFAULT_VIEW: ViewOptions = {
   ordering: "priority",
   layout: "list",
   showEmptyColumns: true,
+  zoom: "month",
 };
 
 export const LAYOUTS: { value: Layout; label: string; shortcut: string }[] = [
   { value: "list", label: "List", shortcut: "mod+1" },
   { value: "board", label: "Board", shortcut: "mod+2" },
+  { value: "timeline", label: "Timeline", shortcut: "mod+3" },
+];
+
+export const ZOOMS: { value: Zoom; label: string }[] = [
+  { value: "week", label: "Weeks" },
+  { value: "month", label: "Months" },
+  { value: "quarter", label: "Quarters" },
 ];
 
 export const GROUPINGS: { value: Grouping; label: string }[] = [
@@ -53,7 +65,8 @@ export function isDefaultView(v: ViewOptions): boolean {
     v.grouping === DEFAULT_VIEW.grouping &&
     v.ordering === DEFAULT_VIEW.ordering &&
     v.layout === DEFAULT_VIEW.layout &&
-    v.showEmptyColumns === DEFAULT_VIEW.showEmptyColumns
+    v.showEmptyColumns === DEFAULT_VIEW.showEmptyColumns &&
+    v.zoom === DEFAULT_VIEW.zoom
   );
 }
 
@@ -64,6 +77,7 @@ function storageKey(serverUrl: string, userId: number) {
 const GROUPING_VALUES = new Set(GROUPINGS.map((g) => g.value));
 const ORDERING_VALUES = new Set(ORDERINGS.map((o) => o.value));
 const LAYOUT_VALUES = new Set(LAYOUTS.map((l) => l.value));
+const ZOOM_VALUES = new Set(ZOOMS.map((z) => z.value));
 
 export function loadViews(serverUrl: string, userId: number): Record<string, ViewOptions> {
   try {
@@ -78,6 +92,7 @@ export function loadViews(serverUrl: string, userId: number): Record<string, Vie
         ordering: v.ordering && ORDERING_VALUES.has(v.ordering) ? v.ordering : DEFAULT_VIEW.ordering,
         layout: v.layout && LAYOUT_VALUES.has(v.layout) ? v.layout : DEFAULT_VIEW.layout,
         showEmptyColumns: typeof v.showEmptyColumns === "boolean" ? v.showEmptyColumns : DEFAULT_VIEW.showEmptyColumns,
+        zoom: v.zoom && ZOOM_VALUES.has(v.zoom) ? v.zoom : DEFAULT_VIEW.zoom,
       };
     }
     return out;

@@ -137,12 +137,20 @@ function buildMetadata(): Metadata {
   };
 }
 
+/** A date this many days from the demo's today. */
+function day(offset: number): string {
+  return new Date(Date.UTC(2026, 10, 9) + offset * 86_400_000).toISOString().slice(0, 10);
+}
+
 function buildIssues(meta: Metadata): Issue[] {
   const areas = [["UI"], ["Sync"], ["UI", "Performance"], ["API"], [], ["Docs"]];
   return subjects.map((subject, i) => {
     const id = i + 1;
     const status = meta.statuses[[0, 1, 1, 2, 3, 0, 4, 5, 0, 1][i % 10]!]!;
     const project = i % 7 === 6 ? meta.projects[2]! : i % 5 === 4 ? meta.projects[1]! : meta.projects[0]!;
+    // Most issues are scheduled around today; some have only a due date, some none.
+    const start = -12 + i * 2;
+    const scheduled = i % 6 !== 5;
     return {
       id,
       project: { id: project.id, name: project.name },
@@ -159,6 +167,8 @@ function buildIssues(meta: Metadata): Issue[] {
           : null,
       is_private: false,
       done_ratio: 0,
+      start_date: scheduled && i % 8 !== 7 ? day(start) : null,
+      due_date: scheduled ? day(start + [4, 9, 6, 13, 3][i % 5]!) : null,
       custom_fields: [
         { id: 1, name: "Area", multiple: true, value: areas[i % areas.length]! },
         { id: 2, name: "Size", value: ["S", "M", "L", null][i % 4] ?? null },
@@ -210,6 +220,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   relate(3, 2, "blocks");
   relate(1, 13, "relates");
   relate(15, 17, "duplicates");
+  relate(2, 9, "precedes");
   for (const child of [11, 12]) {
     const issue = issues.get(child)!;
     issues.set(child, { ...issue, parent: { id: 1 } });

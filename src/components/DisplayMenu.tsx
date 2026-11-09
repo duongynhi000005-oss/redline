@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
-import type { Grouping, Ordering } from "../lib/views";
-import { GROUPINGS, ORDERINGS } from "../lib/views";
+import type { Grouping, Ordering, Zoom } from "../lib/views";
+import { GROUPINGS, ORDERINGS, ZOOMS } from "../lib/views";
 import type { Route } from "../state/app";
 import { routeKey, useApp, viewFor } from "../state/app";
 import { Icon } from "./icons";
@@ -86,6 +86,18 @@ export function DisplayMenu({ route }: { route: Route }) {
               ))}
             </select>
           </label>
+          {view.layout === "timeline" && (
+            <label className="display-row">
+              <span>Zoom</span>
+              <select value={view.zoom} onChange={(e) => updateView(key, { zoom: e.target.value as Zoom })}>
+                {ZOOMS.map((z) => (
+                  <option key={z.value} value={z.value}>
+                    {z.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           {view.layout === "board" && (
             <label className="display-row">
               <span>Show empty columns</span>
