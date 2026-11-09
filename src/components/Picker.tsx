@@ -484,7 +484,15 @@ function RelationPickerContent({ issueId, choice }: { issueId: number; choice: R
         <Command.List>
           <Command.Empty>No matches.</Command.Empty>
           {visible.map((c) => (
-            <Command.Item key={c.choice} value={c.choice} onSelect={() => openPicker("relation", issueId, c.choice)}>
+            <Command.Item
+              key={c.choice}
+              value={c.choice}
+              onSelect={() => {
+                // The words that found the kind of link aren't an issue search.
+                setQuery("");
+                openPicker("relation", issueId, c.choice);
+              }}
+            >
               <Icon name={c.choice === "sub-issue" || c.choice === "parent" ? "sub-issue" : "relation"} />
               <span className="palette-label">{c.label}</span>
             </Command.Item>
@@ -504,7 +512,8 @@ function RelationPickerContent({ issueId, choice }: { issueId: number; choice: R
       <div className="picker-context">
         #{issue.id} {issue.subject}
       </div>
-      <Command.Input value={query} onValueChange={setQuery} placeholder={placeholder} />
+      {/* A new input, so focus is in it again after a click picked the kind of link. */}
+      <Command.Input key={choice} autoFocus value={query} onValueChange={setQuery} placeholder={placeholder} />
       <Command.List>
         <Command.Empty>No matching issues. Type an issue number to use one Redline hasn't synced.</Command.Empty>
         {choice === "parent" && issue.parent && !query.trim() && (
