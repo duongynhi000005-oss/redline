@@ -364,9 +364,10 @@ export const useApp = create<AppState>()((set, get) => {
           issues.set(i.id, known ? { ...i, attachments: i.attachments ?? known.attachments, watchers } : i);
         });
         set({ issues });
-        if (removed.includes(get().openIssueId ?? -1)) set({ openIssueId: null });
-        if (removed.length && get().selection.some((id) => removed.includes(id)))
-          set({ selection: get().selection.filter((id) => !removed.includes(id)) });
+        const gone = new Set(removed);
+        if (gone.has(get().openIssueId ?? -1)) set({ openIssueId: null });
+        if (gone.size && get().selection.some((id) => gone.has(id)))
+          set({ selection: get().selection.filter((id) => !gone.has(id)) });
         void collectInbox(backend, fresh);
       }),
       backend.onMetadataChanged(async () => set({ meta: await backend.getMetadata() })),
