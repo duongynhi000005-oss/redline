@@ -14,7 +14,7 @@ pub mod sync;
 pub use client::{Client, IssueQuery, Page, TimeQuery};
 pub use error::{Error, Result};
 pub use store::{Metadata, Store};
-pub use sync::{IssueDetails, NewFile, SyncReport, Syncer};
+pub use sync::{IssueDetails, NewFile, SyncProgress, SyncReport, Syncer};
 
 /// The Redline version, shared by the core and the app.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

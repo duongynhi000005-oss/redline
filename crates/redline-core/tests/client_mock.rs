@@ -1326,3 +1326,145 @@ async fn searches_one_project_for_some_kinds() {
     assert!(none.items.is_empty());
     assert_eq!(none.total_count, 0);
 }
+
+/// A Redmine issue list sorted by `updated_on`, as the sync reads it, served
+/// a page at a time from `offset` and `limit`.
+fn issue_list(ids: &[u64], request: &wiremock::Request) -> ResponseTemplate {
+    let param = |name: &str| {
+        request
+            .url
+            .query_pairs()
+            .find(|(k, _)| k == name)
+            .and_then(|(_, v)| v.parse::<usize>().ok())
+    };
+    let offset = param("offset").unwrap_or(0);
+    let limit = param("limit").unwrap_or(25);
+    let page: Vec<_> = ids
+        .iter()
+        .enumerate()
+        .skip(offset)
+        .take(limit)
+        .map(|(position, &id)| {
+            let mut i = issue(id);
+            // Each place in the list a second later than the one before.
+            i["updated_on"] = json!(format!(
+                "2026-11-02T{:02}:{:02}:{:02}Z",
+                position / 3600,
+                position / 60 % 60,
+                position % 60
+            ));
+            i
+        })
+        .collect();
+    ResponseTemplate::new(200).set_body_json(json!({
+        "issues": page, "total_count": ids.len(), "offset": offset, "limit": limit
+    }))
+}
+
+#[tokio::test]
+async fn first_sync_reads_pages_in_parallel_and_reports_each() {
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    let ids: Vec<u64> = (1..=450).collect();
+    let served = ids.clone();
+    Mock::given(path("/issues.json"))
+        .respond_with(move |r: &wiremock::Request| issue_list(&served, r))
+        .mount(&server)
+        .await;
+
+    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
+    let mut progress = Vec::new();
+    let report = syncer
+        .sync_issues_with(|p| progress.push((p.fetched, p.total, p.changed.len())))
+        .await
+        .unwrap();
+
+    assert!(report.initial);
+    assert_eq!(report.changed, ids, "each issue once, in order");
+    assert_eq!(syncer.store().count_issues().unwrap(), 450);
+    // Pages of 100 overlapping by 10: 0, 90, 180, 270, 360.
+    assert_eq!(
+        progress,
+        vec![
+            (100, 450, 100),
+            (190, 450, 90),
+            (280, 450, 90),
+            (370, 450, 90),
+            (450, 450, 80)
+        ]
+    );
+}
+
+#[tokio::test]
+async fn an_issue_edited_during_the_first_sync_skips_no_other_issue() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    let edited = Arc::new(AtomicBool::new(false));
+    let seen = edited.clone();
+    Mock::given(path("/issues.json"))
+        .respond_with(move |r: &wiremock::Request| {
+            // Issue 5 is edited right after the first page is read: it moves
+            // to the end, and every issue after it moves back one place.
+            let mut ids: Vec<u64> = (1..=300).collect();
+            if seen.swap(true, Ordering::SeqCst) {
+                ids.retain(|&id| id != 5);
+                ids.push(5);
+            }
+            issue_list(&ids, r)
+        })
+        .mount(&server)
+        .await;
+
+    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
+    syncer.sync_issues().await.unwrap();
+    assert!(edited.load(Ordering::SeqCst));
+    let mut cached = syncer.store().issue_ids().unwrap();
+    cached.sort_unstable();
+    assert_eq!(cached, (1..=300).collect::<Vec<u64>>());
+}
+
+#[tokio::test]
+async fn a_sync_that_fails_part_way_resumes_from_what_it_read() {
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    let ids: Vec<u64> = (1..=300).collect();
+    let served = ids.clone();
+    Mock::given(path("/issues.json"))
+        .and(query_param("offset", "180"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    Mock::given(path("/issues.json"))
+        .respond_with(move |r: &wiremock::Request| issue_list(&served, r))
+        .mount(&server)
+        .await;
+
+    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
+    let mut landed = 0;
+    let err = syncer.sync_issues_with(|p| landed = p.fetched).await;
+    assert!(err.is_err());
+    assert!(landed >= 100, "the first page is cached before the failure");
+
+    // The next sync is a delta from where the first one got to, not a
+    // second full pull.
+    server.reset().await;
+    Mock::given(path("/issues.json"))
+        .and(wiremock::matchers::query_param_contains(
+            "updated_on",
+            ">=2026-11-02T00:",
+        ))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [], "total_count": 0, "offset": 0, "limit": 100
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let report = syncer.sync_issues().await.unwrap();
+    assert!(!report.initial);
+}

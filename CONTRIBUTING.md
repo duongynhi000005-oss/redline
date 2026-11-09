@@ -190,6 +190,15 @@ cargo test -p redline-core
 
 Without those variables the live tests are skipped. CI always runs them.
 
+To check how Redline copes with a big team, add a "Load" team with thousands
+of issues (sprints, categories, labels, sub-issues and relations included).
+It takes a few minutes and is safe to run again:
+
+```sh
+dev/redmine/seed-large.sh                      # 5,000 issues
+LARGE_ISSUES=20000 dev/redmine/seed-large.sh   # or more
+```
+
 Redline supports Redmine 6.1 and later. The compose file runs the latest
 Redmine 7 by default. To check a change against the oldest supported release,
 start from scratch with `REDMINE_VERSION=6.1`:
