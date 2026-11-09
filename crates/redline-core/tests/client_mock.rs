@@ -927,3 +927,71 @@ async fn reads_another_user_and_what_redmine_shows_of_them() {
     assert_eq!(sam.login, "");
     assert!(matches!(c.user(9).await, Err(Error::NotFound)));
 }
+
+#[tokio::test]
+async fn creates_closes_reopens_and_deletes_projects() {
+    use redline_core::models::ProjectChanges;
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/projects.json"))
+        .and(body_json(json!({"project": {
+            "name": "Design", "identifier": "web-design", "parent_id": 1, "inherit_members": true
+        }})))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "project": {"id": 3, "name": "Design", "identifier": "web-design", "parent": {"id": 1, "name": "Web"}, "status": 1}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/projects/3.json"))
+        .and(body_json(
+            json!({"project": {"description": "", "is_public": false}}),
+        ))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    for action in ["close", "reopen"] {
+        Mock::given(method("PUT"))
+            .and(path(format!("/projects/3/{action}.json")))
+            .respond_with(ResponseTemplate::new(204))
+            .expect(1)
+            .mount(&server)
+            .await;
+    }
+    Mock::given(method("DELETE"))
+        .and(path("/projects/3.json"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let c = client(&server);
+    let made = c
+        .create_project(&ProjectChanges {
+            name: Some("Design".into()),
+            identifier: Some("web-design".into()),
+            parent_id: Some(1),
+            inherit_members: Some(true),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(made.id, 3);
+    assert_eq!(made.parent.unwrap().id, 1);
+    c.update_project(
+        3,
+        &ProjectChanges {
+            description: Some(String::new()),
+            is_public: Some(false),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    c.set_project_closed(3, true).await.unwrap();
+    c.set_project_closed(3, false).await.unwrap();
+    c.delete_project(3).await.unwrap();
+}

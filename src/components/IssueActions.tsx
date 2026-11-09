@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { allowed } from "../lib/permissions";
 import { formatHours } from "../lib/time";
 import type { Issue } from "../lib/types";
 import { useApp } from "../state/app";
-import { Icon } from "./icons";
+import { MenuButton, type MenuItem } from "./Menu";
 import { useDialogFocus } from "./useDialogFocus";
 
 /** Ids of an issue's sub-issues, their sub-issues and so on, as far as the cache knows. */
@@ -35,86 +35,11 @@ export function IssueMenu({ issue }: { issue: Issue }) {
   const meta = useApp((s) => s.meta);
   const duplicateIssue = useApp((s) => s.duplicateIssue);
   const openDeleteDialog = useApp((s) => s.openDeleteDialog);
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const id = useId();
   const can = issueActions(meta, issue);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      const t = e.target as Node;
-      if (!menuRef.current?.contains(t) && !buttonRef.current?.contains(t)) setOpen(false);
-    }
-    window.addEventListener("mousedown", onDown);
-    menuRef.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
-    return () => window.removeEventListener("mousedown", onDown);
-  }, [open]);
-
-  if (!can.duplicate && !can.delete) return null;
-
-  const close = () => {
-    setOpen(false);
-    buttonRef.current?.focus();
-  };
-  const choose = (action: () => void) => {
-    setOpen(false);
-    action();
-  };
-
-  return (
-    <div className="issue-menu">
-      <button
-        ref={buttonRef}
-        type="button"
-        className="icon-button"
-        aria-label="More actions"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? `${id}-menu` : undefined}
-        title={open ? undefined : "More actions"}
-        onClick={() => setOpen((o) => !o)}
-      >
-        <Icon name="more" />
-      </button>
-      {open && (
-        <div
-          ref={menuRef}
-          id={`${id}-menu`}
-          role="menu"
-          aria-label="Issue actions"
-          className="issue-menu-panel"
-          onKeyDown={(e) => {
-            const items = [...(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
-            const at = items.indexOf(document.activeElement as HTMLElement);
-            if (e.key === "Escape") {
-              e.preventDefault();
-              e.stopPropagation();
-              close();
-            } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-              e.preventDefault();
-              const next = (at + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
-              items[next]?.focus();
-            }
-          }}
-        >
-          {can.duplicate && (
-            <button type="button" role="menuitem" onClick={() => choose(() => void duplicateIssue(issue.id))}>
-              <Icon name="copy" />
-              Duplicate
-            </button>
-          )}
-          {can.delete && (
-            <button type="button" role="menuitem" className="is-danger" onClick={() => choose(() => openDeleteDialog(issue.id))}>
-              <Icon name="trash" />
-              Delete issue…
-            </button>
-          )}
-        </div>
-      )}
-    </div>
-  );
+  const items: MenuItem[] = [];
+  if (can.duplicate) items.push({ label: "Duplicate", icon: "copy", run: () => void duplicateIssue(issue.id) });
+  if (can.delete) items.push({ label: "Delete issue…", icon: "trash", danger: true, run: () => openDeleteDialog(issue.id) });
+  return <MenuButton label="More actions" menuLabel="Issue actions" items={items} />;
 }
 
 /** Asks before deleting an issue, saying what goes with it. */

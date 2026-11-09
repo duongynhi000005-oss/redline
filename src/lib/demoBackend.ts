@@ -11,6 +11,7 @@ import type {
   Journal,
   Metadata,
   Named,
+  Project,
   Relation,
   SyncState,
   TimeEntry,
@@ -218,6 +219,10 @@ function buildMetadata(): Metadata {
           "log_time",
           "edit_time_entries",
           "manage_versions",
+          "add_subprojects",
+          "edit_project",
+          "close_project",
+          "delete_project",
           "delete_issues",
           "edit_issue_notes",
           "manage_issue_relations",
@@ -363,6 +368,24 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   const manageable = (projectId: number) => {
     if (!may(projectId, "manage_versions"))
       throw { code: "forbidden", message: "You don't have permission to do that in Redmine." };
+  };
+  let nextProject = 100;
+  const setProjects = (projects: Project[]) => {
+    meta = { ...meta, projects };
+    metaHandlers.forEach((h) => h());
+  };
+  const forbidden = () => ({ code: "forbidden", message: "You don't have permission to do that in Redmine." });
+  const tree = (rootId: number) => {
+    const ids = new Set([rootId]);
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const p of meta.projects)
+        if (p.parent && ids.has(p.parent.id) && !ids.has(p.id)) {
+          ids.add(p.id);
+          grew = true;
+        }
+    }
+    return ids;
   };
   let lastSyncedAt = Date.now();
 
@@ -603,6 +626,69 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     },
     async openInRedmine() {},
     async openHomepage() {},
+    async createProject(fields) {
+      await wait(null);
+      if (fields.parent_id && !may(fields.parent_id, "add_subprojects")) throw forbidden();
+      if (!fields.name?.trim()) throw { code: "validation", message: "Name cannot be blank" };
+      if (!fields.identifier || !/^[a-z][a-z0-9_-]{0,99}$/.test(fields.identifier))
+        throw { code: "validation", message: "Identifier is invalid" };
+      if (meta.projects.some((p) => p.identifier === fields.identifier))
+        throw { code: "validation", message: "Identifier has already been taken" };
+      const parent = meta.projects.find((p) => p.id === fields.parent_id);
+      const project: Project = {
+        id: nextProject++,
+        name: fields.name.trim(),
+        identifier: fields.identifier,
+        description: fields.description ?? "",
+        homepage: fields.homepage ?? "",
+        parent: parent ? { id: parent.id, name: parent.name } : null,
+        status: 1,
+        is_public: fields.is_public ?? true,
+        created_on: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+        trackers: parent?.trackers ?? [],
+        issue_categories: [],
+        enabled_modules: parent?.enabled_modules ?? [{ id: 1, name: "issue_tracking" }],
+        issue_custom_fields: [],
+      };
+      if (parent && fields.inherit_members) {
+        const inherited = meta.memberships
+          .filter((m) => m.project.id === parent.id)
+          .map((m, i) => ({ ...m, id: project.id * 100 + i, project: { id: project.id, name: project.name } }));
+        meta = { ...meta, memberships: [...meta.memberships, ...inherited] };
+      }
+      setProjects([...meta.projects, project]);
+      return project;
+    },
+    async updateProject(id, changes) {
+      await wait(null);
+      const project = meta.projects.find((p) => p.id === id);
+      if (!project) throw { code: "not_found", message: "Not found" };
+      if (!may(id, "edit_project")) throw forbidden();
+      if (changes.name !== undefined && !changes.name.trim()) throw { code: "validation", message: "Name cannot be blank" };
+      setProjects(meta.projects.map((p) => (p.id === id ? { ...p, ...changes, name: changes.name?.trim() ?? p.name } : p)));
+    },
+    async setProjectClosed(id, closed) {
+      await wait(null);
+      if (!meta.projects.some((p) => p.id === id)) throw { code: "not_found", message: "Not found" };
+      if (!may(id, "close_project")) throw forbidden();
+      const ids = tree(id);
+      setProjects(meta.projects.map((p) => (ids.has(p.id) ? { ...p, status: closed ? 5 : 1 } : p)));
+    },
+    async deleteProject(id) {
+      await wait(null);
+      if (!meta.projects.some((p) => p.id === id)) throw { code: "not_found", message: "Not found" };
+      if (!may(id, "delete_project")) throw forbidden();
+      const ids = tree(id);
+      const removed = [...issues.values()].filter((i) => ids.has(i.project.id)).map((i) => i.id);
+      for (const r of removed) issues.delete(r);
+      meta = {
+        ...meta,
+        memberships: meta.memberships.filter((m) => !ids.has(m.project.id)),
+        versions: meta.versions.filter((v) => !ids.has(v.project.id)),
+      };
+      setProjects(meta.projects.filter((p) => !ids.has(p.id)));
+      changeHandlers.forEach((h) => h({ changed: [], removed }));
+    },
     async getUser(id) {
       await wait(null);
       const user = demoUsers.find((u) => u.id === id);

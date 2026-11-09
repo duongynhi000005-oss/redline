@@ -17,6 +17,8 @@ import type {
   TimeQuery,
   Version,
   VersionChanges,
+  Project,
+  ProjectChanges,
   User,
 } from "./types";
 
@@ -65,6 +67,13 @@ export interface Backend {
   openInRedmine(path: string): Promise<void>;
   /** Opens a team's homepage, as Redmine gives it, in the browser. */
   openHomepage(projectId: number): Promise<void>;
+  /** Creates a project, such as a sub-team. */
+  createProject(fields: ProjectChanges): Promise<Project>;
+  updateProject(id: number, changes: ProjectChanges): Promise<void>;
+  /** Closes a project and its sub-projects, or reopens them. */
+  setProjectClosed(id: number, closed: boolean): Promise<void>;
+  /** Deletes a project with everything in it. */
+  deleteProject(id: number): Promise<void>;
   /** Another user, as Redmine shows them to the signed-in user. */
   getUser(id: number): Promise<User>;
   /** An attachment's content, for previews. Cached once read. */

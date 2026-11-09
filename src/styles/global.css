@@ -3984,3 +3984,40 @@ button.team-member:focus-visible {
   padding-top: 8px;
   border-top: 1px solid var(--border);
 }
+
+/* Team dialogs */
+.team-dialog .time-dialog-comment {
+  width: 100%;
+}
+
+textarea.team-description {
+  height: auto;
+  min-height: 72px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.team-identifier-field input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.team-homepage-field {
+  flex: 1;
+}
+
+.team-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+}
+
+.delete-team-confirm {
+  margin-top: 12px;
+}
+
+.delete-team-confirm strong {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

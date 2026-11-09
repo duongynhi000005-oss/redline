@@ -24,8 +24,8 @@ use crate::client::{Client, IssueQuery, PAGE_SIZE};
 use crate::error::{Error, Result};
 use crate::mentions;
 use crate::models::{
-    Found, Issue, IssueChanges, IssueStatusRef, Journal, NewRelation, Relation, SearchResult,
-    TimeEntry, TimeEntryChanges, Upload, User, Version, VersionChanges,
+    Found, Issue, IssueChanges, IssueStatusRef, Journal, NewRelation, Project, ProjectChanges,
+    Relation, SearchResult, TimeEntry, TimeEntryChanges, Upload, User, Version, VersionChanges,
 };
 use crate::store::{Metadata, Store};
 
@@ -374,6 +374,42 @@ impl Syncer {
 
     /// One version as Redmine shows it on its own page, with the spent and
     /// estimated hours that the project's list of versions leaves out.
+    /// Creates a project (a sub-team) and refreshes the metadata, so the new
+    /// team has its trackers, modules and members.
+    pub async fn create_project(&self, fields: &ProjectChanges) -> Result<Project> {
+        let project = self.client.create_project(fields).await?;
+        let meta = self.sync_metadata().await?;
+        Ok(meta
+            .projects
+            .into_iter()
+            .find(|p| p.id == project.id)
+            .unwrap_or(project))
+    }
+
+    /// Changes a project and refreshes the metadata.
+    pub async fn update_project(&self, id: u64, changes: &ProjectChanges) -> Result<Metadata> {
+        self.client.update_project(id, changes).await?;
+        self.sync_metadata().await
+    }
+
+    /// Closes or reopens a project (and its sub-projects) and refreshes the
+    /// metadata.
+    pub async fn set_project_closed(&self, id: u64, closed: bool) -> Result<Metadata> {
+        self.client.set_project_closed(id, closed).await?;
+        self.sync_metadata().await
+    }
+
+    /// Deletes a project, refreshes the metadata and drops its issues from
+    /// the cache. Returns the issue ids dropped.
+    pub async fn delete_project(&self, id: u64) -> Result<Vec<u64>> {
+        match self.client.delete_project(id).await {
+            Ok(()) | Err(Error::NotFound) => {}
+            Err(e) => return Err(e),
+        }
+        self.sync_metadata().await?;
+        self.prune_deleted().await
+    }
+
     /// Another user, as Redmine shows them to this user.
     pub async fn user(&self, id: u64) -> Result<User> {
         self.client.user(id).await

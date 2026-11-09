@@ -71,6 +71,19 @@ export interface Project {
   issue_custom_fields: Named[];
 }
 
+/** Fields to set when creating or changing a project (a team); "" clears a text field. */
+export interface ProjectChanges {
+  name?: string;
+  /** Set once, when the project is created. */
+  identifier?: string;
+  description?: string;
+  homepage?: string;
+  is_public?: boolean;
+  parent_id?: number;
+  /** Whether a new sub-project takes its parent's members. */
+  inherit_members?: boolean;
+}
+
 export interface Membership {
   id: number;
   project: Named;

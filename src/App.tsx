@@ -15,6 +15,7 @@ import { TimeView } from "./components/TimeView";
 import { SearchView } from "./components/SearchView";
 import { TeamOverview } from "./components/TeamOverview";
 import { PersonCard } from "./components/PersonCard";
+import { DeleteTeamDialog, TeamDialog } from "./components/TeamDialogs";
 import { useIssueShortcuts } from "./components/useIssueShortcuts";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
@@ -89,6 +90,8 @@ export function App({ backend }: { backend?: Backend }) {
       <VersionDialog />
       <DeleteIssueDialog />
       <PersonCard />
+      <TeamDialog />
+      <DeleteTeamDialog />
       <Toast />
     </div>
   );

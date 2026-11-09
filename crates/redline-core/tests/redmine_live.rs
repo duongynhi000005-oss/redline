@@ -670,3 +670,33 @@ async fn reads_a_team_and_its_members() {
     // Admin-only fields stay hidden from a regular user.
     assert!(!them.admin);
 }
+
+#[tokio::test]
+async fn a_developer_cannot_create_close_or_delete_teams() {
+    use redline_core::models::ProjectChanges;
+
+    let client = live!();
+    let projects = client.projects().await.unwrap();
+    let web = projects
+        .iter()
+        .find(|p| p.identifier == "web")
+        .expect("web");
+    let sub = client
+        .create_project(&ProjectChanges {
+            name: Some("Never made".into()),
+            identifier: Some("never-made".into()),
+            parent_id: Some(web.id),
+            ..Default::default()
+        })
+        .await;
+    assert!(matches!(sub, Err(Error::Forbidden)), "{sub:?}");
+    let closed = client.set_project_closed(web.id, true).await;
+    assert!(matches!(closed, Err(Error::Forbidden)), "{closed:?}");
+    let deleted = client.delete_project(web.id).await;
+    assert!(matches!(deleted, Err(Error::Forbidden)), "{deleted:?}");
+    let after = client.projects().await.unwrap();
+    assert_eq!(
+        after.iter().find(|p| p.id == web.id).and_then(|p| p.status),
+        Some(1)
+    );
+}

@@ -7,6 +7,8 @@ import type {
   IssueChanges,
   IssueDetails,
   Metadata,
+  Project,
+  ProjectChanges,
   Relation,
   SyncState,
   TimeEntry,
@@ -17,6 +19,7 @@ import type {
 import type { RelationChoice } from "../lib/relations";
 import { newRelation } from "../lib/relations";
 import { errorMessage, isBackendError } from "../lib/types";
+import { projectTree } from "../lib/model";
 import { allowed } from "../lib/permissions";
 import { applyChanges, copyFields } from "../lib/edit";
 import type { ServerSettings } from "../lib/settings";
@@ -157,6 +160,10 @@ export interface AppState {
   deleteDialog: number | null;
   /** A person's card, next to the avatar or name it was opened from. */
   personCard: PersonCardState | null;
+  /** Creating a sub-team under a team, or changing a team's details. */
+  teamDialog: { parentId: number } | { projectId: number } | null;
+  /** The team whose deletion is being confirmed. */
+  deleteTeamDialog: number | null;
   /** Bumped when time is logged, changed or deleted, so lists of time reload. */
   timeVersion: number;
 
@@ -220,6 +227,16 @@ export interface AppState {
   deleteIssue(id: number): Promise<boolean>;
   openDeleteDialog(id: number): void;
   closeDeleteDialog(): void;
+  openTeamDialog(dialog: NonNullable<AppState["teamDialog"]>): void;
+  closeTeamDialog(): void;
+  openDeleteTeamDialog(projectId: number): void;
+  closeDeleteTeamDialog(): void;
+  /** Creates a sub-team or changes a team. The new or changed team, or null when Redmine refused. */
+  saveProject(target: { parentId: number } | { id: number }, changes: ProjectChanges): Promise<Project | null>;
+  /** Closes or reopens a team and its sub-teams. True when Redmine did it. */
+  setProjectClosed(id: number, closed: boolean): Promise<boolean>;
+  /** Deletes a team with everything in it. True when Redmine did it. */
+  deleteProject(id: number): Promise<boolean>;
   /** Shows who someone is, next to the element that was clicked. */
   openPersonCard(userId: number, name: string, anchor: Element): void;
   closePersonCard(): void;
@@ -257,6 +274,8 @@ function initial() {
     versionDialog: null as AppState["versionDialog"],
     deleteDialog: null as AppState["deleteDialog"],
     personCard: null as AppState["personCard"],
+    teamDialog: null as AppState["teamDialog"],
+    deleteTeamDialog: null as AppState["deleteTeamDialog"],
     timeVersion: 0,
     composerOpen: false,
     settingsOpen: false,
@@ -896,6 +915,83 @@ export const useApp = create<AppState>()((set, get) => {
       set({ deleteDialog: null });
     },
 
+    openTeamDialog(dialog) {
+      set({ teamDialog: dialog, paletteOpen: false, picker: null, personCard: null });
+    },
+
+    closeTeamDialog() {
+      set({ teamDialog: null });
+    },
+
+    openDeleteTeamDialog(projectId) {
+      set({ deleteTeamDialog: projectId, paletteOpen: false, picker: null, personCard: null });
+    },
+
+    closeDeleteTeamDialog() {
+      set({ deleteTeamDialog: null });
+    },
+
+    async saveProject(target, changes) {
+      const { backend } = get();
+      if (!backend) return null;
+      const creating = "parentId" in target;
+      try {
+        let id: number;
+        if (creating) id = (await backend.createProject({ ...changes, parent_id: target.parentId })).id;
+        else {
+          await backend.updateProject(target.id, changes);
+          id = target.id;
+        }
+        const meta = await backend.getMetadata();
+        set({ meta });
+        return meta.projects.find((p) => p.id === id) ?? null;
+      } catch (e) {
+        set({ toast: `Couldn't ${creating ? "create the sub-team" : "change the team"}: ${errorMessage(e)}` });
+        return null;
+      }
+    },
+
+    async setProjectClosed(id, closed) {
+      const { backend, meta } = get();
+      if (!backend) return false;
+      const name = meta?.projects.find((p) => p.id === id)?.name ?? "the team";
+      try {
+        await backend.setProjectClosed(id, closed);
+        set({
+          meta: await backend.getMetadata(),
+          toast: closed ? `Closed ${name}. Its issues are read-only in Redmine until it's reopened.` : `Reopened ${name}`,
+        });
+        return true;
+      } catch (e) {
+        set({ toast: `Couldn't ${closed ? "close" : "reopen"} ${name}: ${errorMessage(e)}` });
+        return false;
+      }
+    },
+
+    async deleteProject(id) {
+      const { backend, meta, route } = get();
+      if (!backend || !meta) return false;
+      const name = meta.projects.find((p) => p.id === id)?.name ?? "the team";
+      const gone = projectTree(id, meta.projects);
+      try {
+        await backend.deleteProject(id);
+      } catch (e) {
+        set({ toast: `Couldn't delete ${name}: ${errorMessage(e)}` });
+        return false;
+      }
+      const issues = new Map(get().issues);
+      for (const i of get().issues.values()) if (gone.has(i.project.id)) issues.delete(i.id);
+      const shown =
+        route.view === "overview" || route.view === "project"
+          ? route.projectId
+          : route.view === "team" || route.view === "cycles" || route.view === "time" || route.view === "cycle"
+            ? route.teamId
+            : null;
+      set({ meta: await backend.getMetadata(), issues, deleteTeamDialog: null, toast: `Deleted ${name}` });
+      if (shown !== null && gone.has(shown)) get().navigate({ view: "my-issues", tab: "assigned" });
+      return true;
+    },
+
     openPersonCard(userId, name, anchor) {
       const r = anchor.getBoundingClientRect();
       set({
@@ -949,6 +1045,8 @@ export function overlayOpen(
     | "versionDialog"
     | "deleteDialog"
     | "personCard"
+    | "teamDialog"
+    | "deleteTeamDialog"
   >,
 ): boolean {
   return (
@@ -960,7 +1058,9 @@ export function overlayOpen(
     s.timeDialog !== null ||
     s.versionDialog !== null ||
     s.deleteDialog !== null ||
-    s.personCard !== null
+    s.personCard !== null ||
+    s.teamDialog !== null ||
+    s.deleteTeamDialog !== null
   );
 }
 

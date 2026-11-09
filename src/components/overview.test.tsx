@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 import { createDemoBackend } from "../lib/demoBackend";
 import { useApp } from "../state/app";
+import { suggestIdentifier, validIdentifier } from "./TeamDialogs";
 import { areasOf, membersByRole } from "./TeamOverview";
 
 // In the demo, Web has a sub-team, Design, and four members: Dana manages
@@ -180,5 +181,117 @@ describe("areas and roles", () => {
       ["Manager", ["Sam"]],
       ["Developer", ["QA", "Sam"]],
     ]);
+  });
+});
+
+describe("team actions", () => {
+  it("creates a sub-team with an identifier under its parent's and opens it", async () => {
+    const { user } = await start();
+    const page = await openOverview(1);
+    await user.click(within(page).getByRole("button", { name: "Team actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "New sub-team…" }));
+    const dialog = await screen.findByRole("dialog", { name: "New sub-team in Web" });
+    await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "Docs Site");
+    expect(within(dialog).getByRole("textbox", { name: "Identifier" })).toHaveValue("web-docs-site");
+    await user.click(within(dialog).getByRole("button", { name: /Create sub-team/ }));
+    const made = await screen.findByRole("region", { name: "Docs Site overview" });
+    const project = useApp.getState().meta!.projects.find((p) => p.identifier === "web-docs-site")!;
+    expect(project.parent?.id).toBe(1);
+    expect(useApp.getState().route).toEqual({ view: "overview", projectId: project.id });
+    // It took Web's members.
+    expect(within(within(made).getByRole("region", { name: "Members" })).getAllByRole("button", { name: /^About / })).toHaveLength(4);
+  });
+
+  it("won't take an identifier Redmine would refuse", async () => {
+    const { user } = await start();
+    const page = await openOverview(1);
+    await user.click(within(page).getByRole("button", { name: "Team actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "New sub-team…" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "QA");
+    const id = within(dialog).getByRole("textbox", { name: "Identifier" });
+    await user.clear(id);
+    await user.type(id, "9lives");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("lowercase letter");
+    expect(within(dialog).getByRole("button", { name: /Create sub-team/ })).toBeDisabled();
+  });
+
+  it("edits a team's details, sending only what changed", async () => {
+    const { user, backend } = await start();
+    const sent: unknown[] = [];
+    const update = backend.updateProject.bind(backend);
+    backend.updateProject = async (id, changes) => {
+      sent.push(changes);
+      return update(id, changes);
+    };
+    const page = await openOverview(1);
+    await user.click(within(page).getByRole("button", { name: "Team actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Edit team…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Edit Web" });
+    const name = within(dialog).getByRole("textbox", { name: "Name" });
+    await user.clear(name);
+    await user.type(name, "Web app");
+    await user.click(within(dialog).getByRole("button", { name: /Save/ }));
+    expect(await screen.findByRole("heading", { name: "Web app" })).toBeInTheDocument();
+    expect(sent).toEqual([{ name: "Web app" }]);
+  });
+
+  it("closes and reopens a team with its sub-teams", async () => {
+    const { user } = await start();
+    const page = await openOverview(1);
+    await user.click(within(page).getByRole("button", { name: "Team actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Close team" }));
+    const props = within(page).getByRole("complementary", { name: "Properties" });
+    await waitFor(() => expect(props).toHaveTextContent("StatusClosed"));
+    expect(useApp.getState().meta!.projects.find((p) => p.id === 3)?.status).toBe(5);
+    // A closed team can only be reopened or deleted.
+    await user.click(within(page).getByRole("button", { name: "Team actions" }));
+    expect(screen.queryByRole("menuitem", { name: "Edit team…" })).toBeNull();
+    await user.click(screen.getByRole("menuitem", { name: "Reopen team" }));
+    await waitFor(() => expect(useApp.getState().meta!.projects.find((p) => p.id === 1)?.status).toBe(1));
+  });
+
+  it("deletes a team and its sub-teams only once its identifier is typed", async () => {
+    const { user } = await start();
+    const page = await openOverview(1);
+    await user.click(within(page).getByRole("button", { name: "Team actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete team…" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Delete Web?" });
+    expect(dialog).toHaveTextContent(/with its sub-team, \d+ issues and its wiki, files and logged time/);
+    const button = within(dialog).getByRole("button", { name: "Delete team" });
+    const box = within(dialog).getByRole("textbox", { name: "Identifier to confirm" });
+    await user.type(box, "Web");
+    expect(button).toBeDisabled();
+    await user.clear(box);
+    await user.type(box, "web");
+    await user.click(button);
+    await waitFor(() => expect(useApp.getState().meta!.projects.map((p) => p.id)).toEqual([2]));
+    expect(useApp.getState().route).toEqual({ view: "my-issues", tab: "assigned" });
+    expect([...useApp.getState().issues.values()].every((i) => i.project.id === 2)).toBe(true);
+  });
+
+  it("offers only what the role allows", async () => {
+    const { user } = await start();
+    // Dana is a Developer in Mobile.
+    const page = await openOverview(2);
+    expect(within(page).queryByRole("button", { name: "Team actions" })).toBeNull();
+    await user.click(within(page).getByRole("button", { name: "Open in Redmine" }));
+  });
+});
+
+describe("identifiers", () => {
+  it("suggests one from the name, under the parent's", () => {
+    expect(suggestIdentifier("Docs Site", "web")).toBe("web-docs-site");
+    expect(suggestIdentifier("Café & Crème")).toBe("cafe-creme");
+    expect(suggestIdentifier("2027 plan")).toBe("team-2027-plan");
+    expect(suggestIdentifier("!!!")).toBe("");
+  });
+
+  it("follows Redmine's rule", () => {
+    expect(validIdentifier("web-design_2")).toBe(true);
+    expect(validIdentifier("Web")).toBe(false);
+    expect(validIdentifier("9lives")).toBe(false);
+    expect(validIdentifier("new")).toBe(false);
+    expect(validIdentifier("a".repeat(101))).toBe(false);
   });
 });

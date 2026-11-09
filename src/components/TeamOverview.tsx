@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { projectTree, teamOf } from "../lib/model";
+import { allowed } from "../lib/permissions";
 import type { Layout } from "../lib/views";
 import type { Membership, Metadata, Project } from "../lib/types";
 import type { Route } from "../state/app";
@@ -7,6 +8,7 @@ import { useApp } from "../state/app";
 import { Avatar } from "./Avatar";
 import { Icon, type IconName } from "./icons";
 import { Markdown } from "./Markdown";
+import { MenuButton, type MenuItem } from "./Menu";
 import { PersonButton } from "./PersonCard";
 import { Property } from "./Properties";
 
@@ -78,6 +80,40 @@ export function membersByRole(memberships: Membership[], meta: Metadata): { role
   return [...groups.entries()]
     .sort(([a, x], [b, y]) => (order.get(a) ?? 1e9) - (order.get(b) ?? 1e9) || x.role.localeCompare(y.role))
     .map(([, g]) => ({ ...g, members: [...g.members].sort((a, b) => name(a).localeCompare(name(b))) }));
+}
+
+/** What the user may do to a team, as far as Redline knows. A closed team is read-only: it can only be reopened or deleted. */
+export function teamActions(meta: Metadata, project: Project) {
+  const may = (permission: string) => allowed(meta, project.id, permission) !== false;
+  const closed = project.status === 5;
+  const parentClosed = project.parent ? meta.projects.find((p) => p.id === project.parent!.id)?.status === 5 : false;
+  return {
+    edit: !closed && may("edit_project"),
+    newSubTeam: !closed && may("add_subprojects"),
+    // Redmine reopens a sub-project only while its parent is open.
+    close: may("close_project") && !(closed && parentClosed),
+    delete: may("delete_project"),
+  };
+}
+
+function TeamMenu({ project }: { project: Project }) {
+  const meta = useApp((s) => s.meta)!;
+  const openTeamDialog = useApp((s) => s.openTeamDialog);
+  const openDeleteTeamDialog = useApp((s) => s.openDeleteTeamDialog);
+  const setProjectClosed = useApp((s) => s.setProjectClosed);
+  const can = teamActions(meta, project);
+  const closed = project.status === 5;
+  const items: MenuItem[] = [];
+  if (can.edit) items.push({ label: "Edit team…", icon: "edit", run: () => openTeamDialog({ projectId: project.id }) });
+  if (can.newSubTeam) items.push({ label: "New sub-team…", icon: "plus", run: () => openTeamDialog({ parentId: project.id }) });
+  if (can.close)
+    items.push({
+      label: closed ? "Reopen team" : "Close team",
+      icon: closed ? "project" : "lock",
+      run: () => void setProjectClosed(project.id, !closed),
+    });
+  if (can.delete) items.push({ label: "Delete team…", icon: "trash", danger: true, run: () => openDeleteTeamDialog(project.id) });
+  return <MenuButton label="Team actions" menuLabel="Team actions" items={items} />;
 }
 
 function projectStatus(status: number | null | undefined) {
@@ -174,6 +210,7 @@ export function TeamOverview({ projectId }: { projectId: number }) {
         >
           <Icon name="external" />
         </button>
+        <TeamMenu project={project} />
       </header>
       <div className="detail-body">
         <div className="detail-content">
