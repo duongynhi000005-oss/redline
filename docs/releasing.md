@@ -22,7 +22,9 @@ A maintainer reviews the draft and publishes it.
 3. Wait for both installer jobs, then open the draft release on GitHub, write
    the notes and publish it.
 
-A tag with a hyphen, like `v0.2.0-beta.1`, is marked as a pre-release. To
+Every 0.x release, and any tag with a hyphen like `v1.1.0-beta.1`, is marked
+as a pre-release. The draft's notes already explain how to open an unsigned
+build; take that part out once Redline is signed. To
 rebuild an existing tag, run the workflow by hand from the Actions tab and
 give it the tag.
 
