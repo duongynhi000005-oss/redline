@@ -11,6 +11,7 @@ import type {
   NewRelation,
   Relation,
   SearchResult,
+  SearchScope,
   SyncState,
   TimeEntry,
   TimeEntryChanges,
@@ -67,8 +68,8 @@ export interface Backend {
   findMentions(id: number): Promise<number[]>;
   /** Runs a saved query: its issues' ids in its order (up to 500), and how many it finds in all. */
   runQuery(queryId: number, projectId?: number | null): Promise<Found<number>>;
-  /** One page (25) of what Redmine search finds, newest first. */
-  search(text: string, offset: number): Promise<Found<SearchResult>>;
+  /** One page (25) of what Redmine search finds, newest first, everywhere or within a scope. */
+  search(text: string, offset: number, scope?: SearchScope): Promise<Found<SearchResult>>;
   /** Adds or removes a watcher, then returns the issue as Redmine has it. */
   setWatcher(issueId: number, userId: number, watching: boolean): Promise<IssueDetails>;
   /** Opens a page of the Redmine server in the browser, such as "issues/12". */

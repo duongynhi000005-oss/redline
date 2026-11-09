@@ -7,10 +7,12 @@ import { routeKey, targetIssueId, useApp } from "../state/app";
 import { LAYOUTS } from "../lib/views";
 import { RELATION_CHOICES } from "../lib/relations";
 import { canManageVersions, cycleProjects } from "./Cycle";
+import { openViewInRedmine } from "./OpenInRedmine";
 import { ISSUE_SHORTCUTS, bulkCommand, issueCommandAvailable, runIssueCommand, runIssueCommandOn } from "./useIssueShortcuts";
 import { useDerived } from "../state/derived";
 import type { IconName } from "./icons";
 import { issueActions } from "./IssueActions";
+import { redminePathOf } from "../lib/redmineLinks";
 import { Icon, StatusIcon } from "./icons";
 import { fieldEnabled, moveTargets } from "../lib/edit";
 
@@ -94,8 +96,9 @@ function PaletteContent() {
     const list: Action[] = [
       { id: "new-issue", label: "Create new issue", group: "Issues", shortcut: "c", run: () => setComposerOpen(true) },
     ];
-    // Lists of issues can be filtered; the inbox, cycle overview and search can't.
-    if (route.view !== "inbox" && route.view !== "cycles" && route.view !== "time" && route.view !== "search" && route.view !== "overview" && route.view !== "wiki" && route.view !== "news" && route.view !== "files" && route.view !== "activity" && !detailOpen) {
+    // Lists of issues can be filtered; other views can't.
+    const issueList = route.view === "my-issues" || route.view === "team" || route.view === "project" || route.view === "cycle" || route.view === "query";
+    if (issueList && !detailOpen) {
       list.push({
         id: "filter",
         label: "Filter…",
@@ -175,6 +178,16 @@ function PaletteContent() {
         icon: <Icon name="close" />,
         keywords: "deselect unselect",
         run: () => useApp.getState().setSelection([]),
+      });
+    } else if (target === null && redminePathOf(route, meta)) {
+      list.push({
+        id: "open-view-in-redmine",
+        label: "Open in Redmine",
+        group: "View",
+        icon: <Icon name="external" />,
+        keywords: "browser web page",
+        shortcut: "mod+shift+o",
+        run: openViewInRedmine,
       });
     } else if (target !== null) {
       for (const s of ISSUE_SHORTCUTS) {
@@ -349,8 +362,26 @@ function PaletteContent() {
           label: `Go to ${team.name} files`,
           group: "Navigation",
           icon: <Icon name="file" />,
-          keywords: `${team.identifier} downloads uploads documents`,
+          keywords: `${team.identifier} downloads uploads`,
           run: go({ view: "files", projectId: team.id }),
+        });
+      if (d.documents.has(team.id))
+        list.push({
+          id: `go-documents-${team.id}`,
+          label: `Go to ${team.name} documents`,
+          group: "Navigation",
+          icon: <Icon name="file" />,
+          keywords: `${team.identifier} docs specs`,
+          run: go({ view: "documents", projectId: team.id }),
+        });
+      if (d.forums.has(team.id))
+        list.push({
+          id: `go-forums-${team.id}`,
+          label: `Go to ${team.name} forums`,
+          group: "Navigation",
+          icon: <Icon name="forum" />,
+          keywords: `${team.identifier} boards messages discussions topics`,
+          run: go({ view: "forums", projectId: team.id }),
         });
       list.push({
         id: `go-cycles-${team.id}`,
@@ -417,8 +448,26 @@ function PaletteContent() {
             label: `Go to ${p.name} files`,
             group: "Navigation",
             icon: <Icon name="file" />,
-            keywords: `${team.name} ${p.identifier} downloads uploads documents`,
+            keywords: `${team.name} ${p.identifier} downloads uploads`,
             run: go({ view: "files", projectId: p.id }),
+          });
+        if (d.documents.has(p.id))
+          list.push({
+            id: `go-documents-${p.id}`,
+            label: `Go to ${p.name} documents`,
+            group: "Navigation",
+            icon: <Icon name="file" />,
+            keywords: `${team.name} ${p.identifier} docs specs`,
+            run: go({ view: "documents", projectId: p.id }),
+          });
+        if (d.forums.has(p.id))
+          list.push({
+            id: `go-forums-${p.id}`,
+            label: `Go to ${p.name} forums`,
+            group: "Navigation",
+            icon: <Icon name="forum" />,
+            keywords: `${team.name} ${p.identifier} boards messages discussions topics`,
+            run: go({ view: "forums", projectId: p.id }),
           });
       }
     }

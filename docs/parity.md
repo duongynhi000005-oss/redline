@@ -70,11 +70,11 @@ browser, because Redmine has no API for it
 | Wiki | `GET /projects/:id/wiki/index.json`, `GET/PUT/DELETE /projects/:id/wiki/:title.json`, `GET /projects/:id/wiki/:title/:version.json` | ✅ | Team > Wiki: page tree, reader with `[[wiki links]]` (pages not written yet look it), attachments, sub-pages. Editor with preview, a comment for the history and the parent page (Rename wiki pages), refusing a save over someone else's. History of the last 10 versions, reading and restoring an older one. New page and sub-page, delete with or without sub-pages. Wiki search results open here. Uploading files to a page, protecting pages, watchers and renaming a title stay in Redmine (the API has no rename). #46 |
 | News | `GET /news.json`, `GET /projects/:id/news.json`, `GET/PUT/DELETE /news/:id.json`, `POST /projects/:id/news.json` (writes need Manage news); comments are read-only in the API | ✅ | Updates in the sidebar lists every team's news; Team > News lists one team's. A post shows its summary, text, attachments and comments. New post (with a team picker in Updates), edit (also the E key) and delete where the role has Manage news. Comments are read here and added in Redmine, which has no API to add them. News search results open here. #47 |
 | Files | `GET/POST /projects/:id/files.json`, `POST /uploads.json`, `DELETE /attachments/:id.json` | ✅ | Team > Files: the team's own files first, then each version's, with description, size, downloads and who added them. Save any file; add files under a version or the whole team, with a description, and delete them where the role has Manage files. #47 |
-| Documents | No API (search finds them) | 🌐 | Team > Documents lists what search finds; opening one goes to the browser. #49 |
-| Forums (boards and messages) | No API (search finds messages) | 🌐 | Team > Forums lists what search finds; opening one goes to the browser. #49 |
+| Documents | No API; `GET /projects/:id/search.json?documents=1` finds them | 🟡 found, opened in the browser | Team > Documents (overview and command menu) searches the team's documents as you type: title, description excerpt and date. Each opens in Redmine, and "Browse in Redmine" lists them all, since no API lists them. #49 |
+| Forums (boards and messages) | No API; `GET /projects/:id/search.json?messages=1` finds posts and replies | 🟡 found, opened in the browser | Team > Forums searches the team's forum posts and replies, showing each one's forum. Each opens the thread in Redmine; "Browse in Redmine" opens the forums. #49 |
 | Repository browser | No API, except linking issues to revisions | 🌐 | Commits show on issues (#48); the browser opens in Redmine. Commits aren't in Activity, since only the ones linked to an issue can be read. |
 | Activity | No API (Atom feeds need the separate Atom key and reject the API key) | ✅ | Team > Activity (sidebar, overview, command menu), for a team and its sub-teams, by day, 14 days at a time with "Show earlier". Built from what the API can read: issues created, changed, commented on, closed and reopened (journals from the cache, read from Redmine only for issues changed since they were cached, at most 200 per window); time by the day it was spent; wiki pages by their latest edit (the API has no page history feed); news; files. Filters by kind and "Only mine". Commits, forums and documents aren't included. #48 |
-| Search | `GET /search.json` across issues, wiki, news, documents, messages, changesets | ✅ | Command menu "Search Redmine for …" and a search view; issues, wiki pages and news open in Redline, the rest in the browser until their own views land. #44 |
+| Search | `GET /search.json` across issues, wiki, news, documents, messages, changesets | ✅ | Command menu "Search Redmine for …" and a search view; issues, wiki pages and news open in Redline, documents, forum posts and commits in the browser (no API reads them). #44 |
 
 ## Everything else
 
@@ -85,5 +85,8 @@ browser, because Redmine has no API for it
 | Imports (CSV) | No API. |
 | Two-factor and OAuth application setup | Belong in Redmine's own account pages. |
 
-Anything with 🌐 has an "Open in Redmine" action (Cmd/Ctrl+Shift+O) so it is
-never a dead end. Issues have it now, in the header and the command palette.
+Every view has an "Open in Redmine" action (Cmd/Ctrl+Shift+O, a header button
+and the command menu) that opens the matching Redmine page, so nothing is a
+dead end: an issue, a team's issues, overview, roadmap, a version, time, a
+wiki page, news, files, activity, documents, forums, a saved query and a
+search. With an issue open or highlighted, it opens that issue. #49

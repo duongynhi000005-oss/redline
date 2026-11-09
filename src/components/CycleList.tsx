@@ -3,6 +3,7 @@ import { useApp } from "../state/app";
 import { routeTitle, teamCycles, useDerived } from "../state/derived";
 import { canManageVersions, cycleProjects } from "./Cycle";
 import { Icon } from "./icons";
+import { OpenInRedmineButton } from "./OpenInRedmine";
 
 function dateLabel(iso: string | null | undefined) {
   if (!iso) return "No due date";
@@ -81,6 +82,7 @@ export function CycleList({ teamId }: { teamId: number }) {
             <span>New cycle</span>
           </button>
         )}
+        <OpenInRedmineButton />
       </header>
       <div className="cycle-scroll">
         {cycles.length === 0 ? (

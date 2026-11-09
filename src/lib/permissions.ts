@@ -81,6 +81,17 @@ export function newsAccess(meta: Metadata | null, projectId: number) {
   return { view: may("view_news"), manage: open && may("manage_news") };
 }
 
+/** Whether the user can read a project's documents and its forums. Redmine's API offers neither, so Redline only finds them. */
+export function documentsAccess(meta: Metadata | null, projectId: number) {
+  const on = moduleEnabled(meta, projectId, "documents") === true;
+  return { view: on && allowed(meta, projectId, "view_documents") !== false };
+}
+
+export function forumsAccess(meta: Metadata | null, projectId: number) {
+  const on = moduleEnabled(meta, projectId, "boards") === true;
+  return { view: on && allowed(meta, projectId, "view_messages") !== false };
+}
+
 /** What the user can do with a project's Files. A closed project's files are read-only. */
 export function filesAccess(meta: Metadata | null, projectId: number) {
   const on = moduleEnabled(meta, projectId, "files") === true;

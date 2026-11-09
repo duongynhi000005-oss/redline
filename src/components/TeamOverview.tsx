@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 import { projectTree, teamOf } from "../lib/model";
-import { allowed, filesAccess, newsAccess, wikiAccess } from "../lib/permissions";
+import { allowed, documentsAccess, filesAccess, forumsAccess, newsAccess, wikiAccess } from "../lib/permissions";
 import type { Layout } from "../lib/views";
 import type { Membership, Metadata, Project } from "../lib/types";
 import type { Route } from "../state/app";
 import { useApp } from "../state/app";
 import { Avatar } from "./Avatar";
 import { Icon, type IconName } from "./icons";
+import { OpenInRedmineButton } from "./OpenInRedmine";
 import { Markdown } from "./Markdown";
 import { MenuButton, type MenuItem } from "./Menu";
 import { PersonButton } from "./PersonCard";
@@ -63,6 +64,10 @@ export function areasOf(project: Project, meta: Metadata): Area[] {
       out.push({ module: name, label, icon, route: { view: "news", projectId: project.id, newsId: null } });
     } else if (name === "files" && filesAccess(meta, project.id).view) {
       out.push({ module: name, label, icon, route: { view: "files", projectId: project.id } });
+    } else if (name === "documents" && documentsAccess(meta, project.id).view) {
+      out.push({ module: name, label, icon, route: { view: "documents", projectId: project.id } });
+    } else if (name === "boards" && forumsAccess(meta, project.id).view) {
+      out.push({ module: name, label, icon, route: { view: "forums", projectId: project.id } });
     } else if (name === "calendar" || name === "gantt") {
       out.push({ module: name, label, icon, route: issuesRoute(project), layout: name === "calendar" ? "calendar" : "timeline" });
     } else {
@@ -208,15 +213,7 @@ export function TeamOverview({ projectId }: { projectId: number }) {
           {project.name}
         </span>
         <span className="header-spacer" data-tauri-drag-region />
-        <button
-          type="button"
-          className="icon-button"
-          onClick={() => openInRedmine(`projects/${project.identifier}`)}
-          aria-label="Open in Redmine"
-          title="Open in Redmine"
-        >
-          <Icon name="external" />
-        </button>
+        <OpenInRedmineButton />
         <TeamMenu project={project} />
       </header>
       <div className="detail-body">

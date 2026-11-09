@@ -22,6 +22,7 @@ import { CycleHeader } from "./Cycle";
 import { FilterBar, useRouteIssues } from "./Filters";
 import { SelectionBar } from "./SelectionBar";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
+import { OpenInRedmineButton } from "./OpenInRedmine";
 
 type Row = { kind: "group"; group: Group; count: number } | { kind: "issue"; issue: Issue };
 
@@ -232,6 +233,7 @@ export function IssueList() {
           <span>Filter</span>
         </button>
         <DisplayMenu route={route} />
+        <OpenInRedmineButton />
       </header>
       {route.view === "cycle" && <CycleHeader teamId={route.teamId} versionId={route.versionId} />}
       <FilterBar route={route} shown={total} total={base.length} />

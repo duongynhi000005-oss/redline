@@ -74,8 +74,8 @@ describe("team overview", () => {
     backend.openInRedmine = async (path) => void opened.push(path);
     const page = await openOverview(1);
     const areas = within(page).getByRole("region", { name: "Areas" });
-    await user.click(within(areas).getByRole("button", { name: "Forums" }));
-    expect(opened).toEqual(["projects/web/boards"]);
+    await user.click(within(areas).getByRole("button", { name: "Repository" }));
+    expect(opened).toEqual(["projects/web/repository"]);
     await user.click(within(areas).getByRole("button", { name: "Wiki" }));
     expect(useApp.getState().route).toEqual({ view: "wiki", projectId: 1, title: null });
     const again = within(await openOverview(1)).getByRole("region", { name: "Areas" });

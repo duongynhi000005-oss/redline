@@ -9,6 +9,7 @@ import { useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
 import type { IconName } from "./icons";
 import { Icon } from "./icons";
+import { OpenInRedmineButton } from "./OpenInRedmine";
 
 /** Days read at a time; "Show earlier" reads the days before. */
 export const ACTIVITY_DAYS = 14;
@@ -43,7 +44,6 @@ export function ActivityView({ projectId }: { projectId: number }) {
   const me = useApp((s) => s.account?.userId);
   const navigate = useApp((s) => s.navigate);
   const openIssue = useApp((s) => s.openIssue);
-  const openInRedmine = useApp((s) => s.openInRedmine);
   const d = useDerived();
   const project = d.projects.get(projectId);
   const today = useMemo(() => new Date(), []);
@@ -153,15 +153,7 @@ export function ActivityView({ projectId }: { projectId: number }) {
           <Icon name="my-issues" />
           <span>Only mine</span>
         </button>
-        <button
-          type="button"
-          className="icon-button"
-          onClick={() => openInRedmine(`projects/${project.identifier}/activity`)}
-          aria-label="Open in Redmine"
-          title="Open in Redmine"
-        >
-          <Icon name="external" />
-        </button>
+        <OpenInRedmineButton />
       </header>
       <div className="detail-body">
         <div className="detail-content activity-content">

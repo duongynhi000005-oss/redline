@@ -4755,3 +4755,31 @@ textarea.team-description {
   flex: none;
   font-size: 12px;
 }
+
+/* Documents and forums: found through search, opened in Redmine. */
+.found-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-width: 440px;
+  margin-inline: auto;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.found-empty p {
+  margin: 0;
+}
+
+.found-empty p:first-of-type {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.found-empty .button-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}

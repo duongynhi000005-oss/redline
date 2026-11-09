@@ -25,8 +25,8 @@ use crate::error::{Error, Result};
 use crate::mentions;
 use crate::models::{
     Found, Issue, IssueChanges, IssueJournals, IssueStatusRef, Journal, NewRelation, Project,
-    ProjectChanges, Relation, SearchResult, TimeEntry, TimeEntryChanges, Upload, User, Version,
-    VersionChanges,
+    ProjectChanges, Relation, SearchResult, SearchScope, TimeEntry, TimeEntryChanges, Upload, User,
+    Version, VersionChanges,
 };
 use crate::store::{Metadata, Store};
 
@@ -614,8 +614,13 @@ impl Syncer {
     }
 
     /// One page of what Redmine search finds, newest first.
-    pub async fn search(&self, text: &str, offset: u64) -> Result<Found<SearchResult>> {
-        let page = self.client.search(text, offset, SEARCH_PAGE).await?;
+    pub async fn search(
+        &self,
+        text: &str,
+        offset: u64,
+        scope: &SearchScope,
+    ) -> Result<Found<SearchResult>> {
+        let page = self.client.search(text, offset, SEARCH_PAGE, scope).await?;
         Ok(Found {
             items: page.items,
             total: page.total_count,

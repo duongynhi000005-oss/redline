@@ -18,6 +18,7 @@ import { WikiView } from "./components/WikiView";
 import { NewsView } from "./components/NewsView";
 import { FilesView } from "./components/FilesView";
 import { ActivityView } from "./components/ActivityView";
+import { FoundView } from "./components/FoundView";
 import { PersonCard } from "./components/PersonCard";
 import { DeleteTeamDialog, TeamDialog } from "./components/TeamDialogs";
 import { useIssueShortcuts } from "./components/useIssueShortcuts";
@@ -88,6 +89,8 @@ export function App({ backend }: { backend?: Backend }) {
         <FilesView projectId={route.projectId} />
       ) : route.view === "activity" ? (
         <ActivityView key={route.projectId} projectId={route.projectId} />
+      ) : route.view === "documents" || route.view === "forums" ? (
+        <FoundView key={`${route.view}:${route.projectId}`} projectId={route.projectId} kind={route.view} />
       ) : route.view === "search" ? (
         <SearchView key={route.text} text={route.text} />
       ) : (

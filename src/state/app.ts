@@ -51,6 +51,9 @@ export type Route =
   | { view: "files"; projectId: number }
   /** What happened in a team and its sub-teams, by day. */
   | { view: "activity"; projectId: number }
+  /** A team's documents or forum messages, as Redmine search finds them. */
+  | { view: "documents"; projectId: number }
+  | { view: "forums"; projectId: number }
   /** A saved Redmine query, run on the server. */
   | { view: "query"; queryId: number }
   /** Redmine search, across issues, wiki, news, documents, forums and commits. */
@@ -90,6 +93,9 @@ export function routeKey(route: Route): string {
       return `files:${route.projectId}`;
     case "activity":
       return `activity:${route.projectId}`;
+    case "documents":
+    case "forums":
+      return `${route.view}:${route.projectId}`;
     case "cycle":
       return `cycle:${route.versionId}`;
     case "query":
@@ -998,7 +1004,7 @@ export const useApp = create<AppState>()((set, get) => {
       const issues = new Map(get().issues);
       for (const i of get().issues.values()) if (gone.has(i.project.id)) issues.delete(i.id);
       const shown =
-        route.view === "overview" || route.view === "project" || route.view === "wiki" || route.view === "files" || route.view === "news" || route.view === "activity"
+        route.view === "overview" || route.view === "project" || route.view === "wiki" || route.view === "files" || route.view === "news" || route.view === "activity" || route.view === "documents" || route.view === "forums"
           ? route.projectId
           : route.view === "team" || route.view === "cycles" || route.view === "time" || route.view === "cycle"
             ? route.teamId

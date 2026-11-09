@@ -259,6 +259,15 @@ export interface Found<T> {
 }
 
 /** Something Redmine search found. `type` is Redmine's: issue, issue-closed, wiki-page, news, document, message, changeset, project. */
+/** What Redmine search can look for. */
+export type SearchKind = "issues" | "news" | "documents" | "changesets" | "wiki_pages" | "messages" | "projects";
+
+/** Where a search looks: one project (not its sub-projects) and some kinds, or everywhere. */
+export interface SearchScope {
+  projectId?: number;
+  kinds?: SearchKind[];
+}
+
 export interface SearchResult {
   id: number;
   title: string;

@@ -541,6 +541,57 @@ pub struct SearchResult {
     pub datetime: Option<String>,
 }
 
+/// What Redmine search can look for. Each is a flag on `/search.json`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SearchKind {
+    Issues,
+    News,
+    Documents,
+    Changesets,
+    WikiPages,
+    Messages,
+    Projects,
+}
+
+impl SearchKind {
+    /// The flag Redmine reads.
+    pub fn param(self) -> &'static str {
+        match self {
+            SearchKind::Issues => "issues",
+            SearchKind::News => "news",
+            SearchKind::Documents => "documents",
+            SearchKind::Changesets => "changesets",
+            SearchKind::WikiPages => "wiki_pages",
+            SearchKind::Messages => "messages",
+            SearchKind::Projects => "projects",
+        }
+    }
+
+    /// Whether a hit's `type` is of this kind.
+    pub fn matches(self, kind: &str) -> bool {
+        match self {
+            SearchKind::Issues => kind.starts_with("issue"),
+            SearchKind::News => kind == "news",
+            SearchKind::Documents => kind == "document",
+            SearchKind::Changesets => kind == "changeset",
+            SearchKind::WikiPages => kind == "wiki-page",
+            SearchKind::Messages => matches!(kind, "message" | "reply" | "reply-message"),
+            SearchKind::Projects => kind == "project",
+        }
+    }
+}
+
+/// Where a search looks: one project (not its sub-projects) or everywhere,
+/// and some kinds or all.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct SearchScope {
+    #[serde(default)]
+    pub project_id: Option<u64>,
+    #[serde(default)]
+    pub kinds: Vec<SearchKind>,
+}
+
 /// A saved issue query (Redmine calls them custom queries) that the user can
 /// see: their own, and public ones. A query that belongs to a project runs
 /// in that project.

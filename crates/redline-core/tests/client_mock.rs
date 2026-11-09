@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use redline_core::models::IssueChanges;
+use redline_core::models::{IssueChanges, SearchKind, SearchScope};
 use redline_core::{Client, Error, IssueQuery};
 use serde_json::json;
 use wiremock::matchers::{body_bytes, body_json, header, method, path, query_param};
@@ -899,7 +899,7 @@ async fn searches_everything_a_page_at_a_time() {
         .mount(&server)
         .await;
     let page = client(&server)
-        .search("release notes", 25, 25)
+        .search("release notes", 25, 25, &SearchScope::default())
         .await
         .unwrap();
     assert_eq!(page.total_count, 27);
@@ -1288,4 +1288,41 @@ async fn reads_the_commits_linked_to_an_issue() {
     let commits = found.changesets.unwrap();
     assert_eq!(commits[0].revision, "4f1c2a9");
     assert_eq!(commits[0].user.as_ref().unwrap().name, "Dana Lee");
+}
+
+#[tokio::test]
+async fn searches_one_project_for_some_kinds() {
+    let server = MockServer::start().await;
+    Mock::given(path("/projects/1/search.json"))
+        .and(query_param("q", "board"))
+        .and(query_param("documents", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "results": [
+                {"id": 3, "title": "Document: Board view spec", "type": "document", "url": "http://x/documents/3"}
+            ],
+            "total_count": 1, "offset": 0, "limit": 25
+        })))
+        .mount(&server)
+        .await;
+    // Where documents aren't open to the user, Redmine searches everything.
+    Mock::given(path("/projects/2/search.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "results": [
+                {"id": 9, "title": "Bug #9 (New): Board flickers", "type": "issue", "url": "http://x/issues/9"}
+            ],
+            "total_count": 40, "offset": 0, "limit": 25
+        })))
+        .mount(&server)
+        .await;
+    let c = client(&server);
+    let scope = |id| SearchScope {
+        project_id: Some(id),
+        kinds: vec![SearchKind::Documents],
+    };
+    let found = c.search("board", 0, 25, &scope(1)).await.unwrap();
+    assert_eq!(found.items[0].kind, "document");
+    assert_eq!(found.total_count, 1);
+    let none = c.search("board", 0, 25, &scope(2)).await.unwrap();
+    assert!(none.items.is_empty());
+    assert_eq!(none.total_count, 0);
 }

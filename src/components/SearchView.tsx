@@ -5,6 +5,7 @@ import { errorMessage } from "../lib/types";
 import { useApp } from "../state/app";
 import { useDerived } from "../state/derived";
 import { Icon, StatusIcon } from "./icons";
+import { OpenInRedmineButton } from "./OpenInRedmine";
 
 const KINDS: Record<string, string> = {
   issue: "Issue",
@@ -16,6 +17,7 @@ const KINDS: Record<string, string> = {
   document: "Document",
   message: "Forum",
   "reply-message": "Forum",
+  reply: "Forum",
   changeset: "Commit",
   project: "Project",
 };
@@ -126,6 +128,8 @@ export function SearchView({ text }: { text: string }) {
       <header className="main-header" data-tauri-drag-region>
         <h1>Search</h1>
         {searched && !loading && <span className="count">{total}</span>}
+        <span className="header-spacer" data-tauri-drag-region />
+        <OpenInRedmineButton />
       </header>
       <form
         className="search-form"

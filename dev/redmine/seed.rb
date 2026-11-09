@@ -339,6 +339,28 @@ if web && (drag = web.issues.find_by(subject: "Drag cards between columns"))
   end
 end
 
+# A document and a forum thread in Web, which Redline finds through search.
+if web
+  web.enabled_module_names = (web.enabled_module_names | %w[documents boards])
+  category = DocumentCategory.first || DocumentCategory.create!(name: "Technical documentation")
+  {
+    "Board view spec" => "How the board groups issues, and what dragging a card changes.",
+    "Keyboard shortcuts" => "Every shortcut on the board and in lists, for macOS and Windows."
+  }.each do |title, description|
+    next if Document.exists?(project: web, title: title)
+    Document.create!(project: web, category: category, title: title, description: description)
+    say "added the document #{title}"
+  end
+  board = web.boards.first || Board.create!(project: web, name: "General", description: "Questions and ideas")
+  unless Message.exists?(board: board, subject: "Syncing on a slow connection")
+    topic = Message.create!(board: board, author: user, subject: "Syncing on a slow connection",
+                            content: "Sync takes a minute on hotel Wi-Fi. Is there a way to sync only my issues?")
+    Message.create!(board: board, parent: topic, author: admin, subject: "RE: Syncing on a slow connection",
+                    content: "Not yet. A board view of just your issues is planned.")
+    say "started a forum thread"
+  end
+end
+
 # What the team overview shows: a description and a homepage for Web.
 web = Project.find_by(identifier: "web")
 if web && web.homepage.blank?

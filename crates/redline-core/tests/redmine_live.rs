@@ -11,7 +11,7 @@
 //! The key belongs to a regular, non-admin user, which is what Redline must
 //! work with.
 
-use redline_core::models::IssueChanges;
+use redline_core::models::{IssueChanges, SearchKind, SearchScope};
 use redline_core::{Client, Error, IssueQuery};
 
 fn live_client() -> Option<Client> {
@@ -638,7 +638,10 @@ async fn runs_saved_queries_and_searches_everything() {
         assert_eq!(issue.assigned_to.as_ref().map(|a| a.id), Some(me));
     }
 
-    let results = syncer.search("board", 0).await.unwrap();
+    let results = syncer
+        .search("board", 0, &SearchScope::default())
+        .await
+        .unwrap();
     assert!(results.items.iter().any(|r| r.kind.starts_with("issue")));
     assert!(results.total >= results.items.len() as u64);
 }
@@ -868,4 +871,40 @@ async fn reads_an_issues_commits_and_journals_for_the_feed() {
     let found = syncer.issue_journals(&[id, 999_999]).await.unwrap();
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].journals, details.journals);
+}
+
+#[tokio::test]
+async fn finds_a_teams_documents_and_forum_messages() {
+    let client = live!();
+    let web = client
+        .projects()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|p| p.identifier == "web")
+        .expect("web");
+    let docs = SearchScope {
+        project_id: Some(web.id),
+        kinds: vec![SearchKind::Documents],
+    };
+    let found = client.search("board", 0, 25, &docs).await.unwrap();
+    assert!(
+        found
+            .items
+            .iter()
+            .any(|r| r.kind == "document" && r.title.ends_with("Board view spec"))
+    );
+    assert!(found.items.iter().all(|r| r.kind == "document"));
+
+    let forums = SearchScope {
+        project_id: Some(web.id),
+        kinds: vec![SearchKind::Messages],
+    };
+    let found = client
+        .search("slow connection", 0, 25, &forums)
+        .await
+        .unwrap();
+    let kinds: Vec<&str> = found.items.iter().map(|r| r.kind.as_str()).collect();
+    assert!(kinds.contains(&"message"), "{kinds:?}");
+    assert!(kinds.contains(&"reply"), "{kinds:?}");
 }
