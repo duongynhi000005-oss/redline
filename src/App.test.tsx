@@ -89,7 +89,7 @@ describe("App", () => {
     render(<App backend={createDemoBackend({ signedIn: true })} />);
     await screen.findByRole("heading", { name: "My issues" });
 
-    await act(async () => screen.getByRole("button", { name: /Search or run a command/ }).click());
+    await act(async () => screen.getByRole("button", { name: /^Search/ }).click());
     await user.type(await screen.findByPlaceholderText("Type a command or search issues…"), "go mobile");
     await user.keyboard("{Enter}");
     await waitFor(() => expect(screen.getByRole("heading", { name: "Mobile" })).toBeInTheDocument());

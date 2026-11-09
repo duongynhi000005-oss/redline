@@ -84,7 +84,7 @@ export function Sidebar() {
         </div>
         <button type="button" className="search-button" onClick={() => setPaletteOpen(true)}>
           <Icon name="search" />
-          <span>Search or run a command</span>
+          <span>Search</span>
           <kbd>{shortcutLabel("mod+k")}</kbd>
         </button>
       </div>

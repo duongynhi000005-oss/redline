@@ -11,7 +11,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 
 use crate::account::{self, Account};
-use crate::session::{EVENT_ISSUES_CHANGED, IssuesChanged, Session};
+use crate::session::{EVENT_ISSUES_CHANGED, IssuesChanged, Session, SyncState};
 
 #[derive(Default)]
 pub struct AppState {
@@ -218,6 +218,11 @@ pub async fn get_issue_details(
         },
         Err(e) => Err(e.into()),
     }
+}
+
+#[tauri::command]
+pub async fn get_sync_state(state: State<'_, AppState>) -> CmdResult<Option<SyncState>> {
+    Ok(state.session.read().await.as_ref().map(|s| s.sync_state()))
 }
 
 #[tauri::command]

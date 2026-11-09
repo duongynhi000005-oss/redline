@@ -25,6 +25,8 @@ export interface Backend {
   listIssues(): Promise<Issue[]>;
   getIssues(ids: number[]): Promise<Issue[]>;
   getIssueDetails(id: number, refresh?: boolean): Promise<IssueDetails>;
+  /** The latest sync state, or null when signed out. */
+  getSyncState(): Promise<SyncState | null>;
   syncNow(): Promise<void>;
   updateIssue(id: number, changes: IssueChanges): Promise<IssueDetails>;
   createIssue(fields: IssueChanges): Promise<Issue>;

@@ -62,6 +62,7 @@ pub fn run() {
             commands::list_issues,
             commands::get_issues,
             commands::get_issue_details,
+            commands::get_sync_state,
             commands::sync_now,
             commands::update_issue,
             commands::create_issue,

@@ -12,6 +12,7 @@ export const tauriBackend: Backend = {
   listIssues: () => invoke("list_issues"),
   getIssues: (ids) => invoke("get_issues", { ids }),
   getIssueDetails: (id, refresh) => invoke("get_issue_details", { id, refresh: refresh ?? false }),
+  getSyncState: () => invoke("get_sync_state"),
   syncNow: () => invoke("sync_now"),
   updateIssue: (id, changes) => invoke("update_issue", { id, changes }),
   createIssue: (fields) => invoke("create_issue", { fields }),

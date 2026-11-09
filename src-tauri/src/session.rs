@@ -1,8 +1,8 @@
 //! A signed-in session: the account, its cache, and the background sync loop
 //! that keeps the cache fresh and tells the UI what changed.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use redline_core::{Error, Syncer};
@@ -46,6 +46,7 @@ pub struct Session {
     pub account: Account,
     pub syncer: Syncer,
     wake: Arc<Notify>,
+    latest: Arc<Mutex<SyncState>>,
     task: tauri::async_runtime::JoinHandle<()>,
 }
 
@@ -57,14 +58,33 @@ impl Session {
         focused: Arc<AtomicBool>,
     ) -> Self {
         let wake = Arc::new(Notify::new());
-        let task =
-            tauri::async_runtime::spawn(sync_loop(app, syncer.clone(), wake.clone(), focused));
+        let latest = Arc::new(Mutex::new(SyncState {
+            state: "syncing",
+            last_synced_at: None,
+            message: None,
+        }));
+        let task = tauri::async_runtime::spawn(sync_loop(
+            app,
+            syncer.clone(),
+            wake.clone(),
+            latest.clone(),
+            focused,
+        ));
         Self {
             account,
             syncer,
             wake,
+            latest,
             task,
         }
+    }
+
+    /// The last sync state sent to the UI, for a window that just opened.
+    pub fn sync_state(&self) -> SyncState {
+        self.latest
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_else(|e| e.into_inner().clone())
     }
 
     /// Runs a sync now instead of waiting for the next tick.
@@ -90,14 +110,29 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-async fn sync_loop(app: AppHandle, syncer: Syncer, wake: Arc<Notify>, focused: Arc<AtomicBool>) {
+/// Tells the UI the sync state and remembers it.
+fn publish(app: &AppHandle, latest: &Mutex<SyncState>, state: SyncState) {
+    if let Ok(mut slot) = latest.lock() {
+        *slot = state.clone();
+    }
+    let _ = app.emit(EVENT_SYNC_STATE, state);
+}
+
+async fn sync_loop(
+    app: AppHandle,
+    syncer: Syncer,
+    wake: Arc<Notify>,
+    latest: Arc<Mutex<SyncState>>,
+    focused: Arc<AtomicBool>,
+) {
     let mut last_metadata: Option<Instant> = None;
     let mut last_prune = Instant::now();
     let mut last_synced_at: Option<u64> = None;
 
     loop {
-        let _ = app.emit(
-            EVENT_SYNC_STATE,
+        publish(
+            &app,
+            &latest,
             SyncState {
                 state: "syncing",
                 last_synced_at,
@@ -150,7 +185,7 @@ async fn sync_loop(app: AppHandle, syncer: Syncer, wake: Arc<Notify>, focused: A
                 message: Some(e.to_string()),
             },
         };
-        let _ = app.emit(EVENT_SYNC_STATE, state);
+        publish(&app, &latest, state);
 
         let wait = if focused.load(Ordering::Relaxed) {
             FOCUSED_INTERVAL

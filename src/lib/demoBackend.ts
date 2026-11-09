@@ -231,6 +231,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     listIssues: () => wait([...issues.values()].sort((a, b) => b.updated_on.localeCompare(a.updated_on))),
     getIssues: (ids) => wait(ids.flatMap((id) => (issues.has(id) ? [issues.get(id)!] : []))),
     getIssueDetails: (id) => wait(details(id)),
+    getSyncState: () => wait(account ? { state: "idle" as const, lastSyncedAt, message: null } : null),
     async syncNow() {
       lastSyncedAt = Date.now();
       syncHandlers.forEach((h) => h({ state: "idle", lastSyncedAt, message: null }));

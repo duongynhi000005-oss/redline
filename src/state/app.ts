@@ -99,8 +99,14 @@ export const useApp = create<AppState>()((set, get) => {
       }),
       backend.onMetadataChanged(async () => set({ meta: await backend.getMetadata() })),
     ]);
-    if (gen !== generation) subscriptions.forEach((u) => u());
-    else unlisten = subscriptions;
+    if (gen !== generation) {
+      subscriptions.forEach((u) => u());
+      return;
+    }
+    unlisten = subscriptions;
+    // The shell may have synced before we started listening.
+    const sync = await backend.getSyncState();
+    if (sync && gen === generation) set({ sync });
   }
 
   return {
