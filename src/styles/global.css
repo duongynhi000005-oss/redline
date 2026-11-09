@@ -1958,6 +1958,177 @@ button.time-row-issue:hover {
   font-variant-numeric: tabular-nums;
 }
 
+.cycle-row-actions {
+  opacity: 0;
+}
+
+.cycle-list li {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+
+.cycle-list li .cycle-row {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0;
+}
+
+.cycle-list li:hover .cycle-row-actions,
+.cycle-row-actions:focus-within {
+  opacity: 1;
+}
+
+.cycle-row-actions {
+  flex: none;
+  width: 36px;
+  padding-right: 8px;
+}
+
+.cycle-list li:hover {
+  background: var(--bg-hover);
+}
+
+.cycle-list li:hover .cycle-row {
+  background: transparent;
+}
+
+.cycle-row-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.cycle-row-description {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cycle-row {
+  height: auto;
+  min-height: 44px;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.cycle-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 16px 12px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.cycle-facts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+
+.cycle-fact {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cycle-due.late {
+  color: var(--danger);
+}
+
+.cycle-status-open {
+  color: var(--status-started);
+  border-color: color-mix(in srgb, var(--status-started) 40%, transparent);
+}
+
+.cycle-status-locked {
+  color: var(--text-secondary);
+}
+
+.cycle-status-closed {
+  color: var(--status-completed);
+  border-color: color-mix(in srgb, var(--status-completed) 40%, transparent);
+}
+
+.cycle-description {
+  margin: 0;
+  max-width: 72ch;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.cycle-meter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.cycle-meter .cycle-progress {
+  width: 200px;
+}
+
+.cycle-meter .cycle-count {
+  width: auto;
+  text-align: left;
+}
+
+.link-button {
+  padding: 0;
+  color: var(--accent);
+  font-size: inherit;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.version-name {
+  margin-top: 0;
+  font-size: 16px;
+}
+
+.version-dialog .time-dialog-comment {
+  width: 100%;
+}
+
+.version-fields {
+  flex-wrap: wrap;
+}
+
+.version-wiki {
+  flex: 1;
+  min-width: 140px;
+}
+
+.version-delete-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+.button-danger {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  background: var(--danger);
+  color: #fff;
+  font-weight: 500;
+}
+
+.button-danger:disabled {
+  opacity: 0.55;
+}
+
 /* Inbox */
 
 .header-action {

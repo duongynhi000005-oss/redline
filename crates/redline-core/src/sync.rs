@@ -25,7 +25,7 @@ use crate::error::{Error, Result};
 use crate::mentions;
 use crate::models::{
     Issue, IssueChanges, IssueStatusRef, Journal, NewRelation, Relation, TimeEntry,
-    TimeEntryChanges, Upload,
+    TimeEntryChanges, Upload, Version, VersionChanges,
 };
 use crate::store::{Metadata, Store};
 
@@ -344,6 +344,50 @@ impl Syncer {
     }
 
     /// Logs time, then re-reads the issue it's on so its spent time is current.
+    /// Creates a version and adds it to the cached metadata.
+    pub async fn create_version(
+        &self,
+        project_id: u64,
+        changes: &VersionChanges,
+    ) -> Result<Version> {
+        let version = self.client.create_version(project_id, changes).await?;
+        self.cache_version(Some(version.clone()), version.id)?;
+        Ok(version)
+    }
+
+    /// Changes a version and refreshes the cached copy.
+    pub async fn update_version(&self, id: u64, changes: &VersionChanges) -> Result<Version> {
+        self.client.update_version(id, changes).await?;
+        let version = self.client.version(id).await?;
+        self.cache_version(Some(version.clone()), id)?;
+        Ok(version)
+    }
+
+    /// One version as Redmine shows it on its own page, with the spent and
+    /// estimated hours that the project's list of versions leaves out.
+    pub async fn version(&self, id: u64) -> Result<Version> {
+        self.client.version(id).await
+    }
+
+    /// Deletes a version and drops it from the cached metadata.
+    pub async fn delete_version(&self, id: u64) -> Result<()> {
+        match self.client.delete_version(id).await {
+            Ok(()) | Err(Error::NotFound) => {}
+            Err(e) => return Err(e),
+        }
+        self.cache_version(None, id)
+    }
+
+    fn cache_version(&self, version: Option<Version>, id: u64) -> Result<()> {
+        let mut meta = self.store.metadata()?;
+        meta.versions.retain(|v| v.id != id);
+        if let Some(version) = version {
+            meta.versions.push(version);
+        }
+        meta.versions.sort_by_key(|v| v.id);
+        self.store.replace_metadata(&meta)
+    }
+
     pub async fn log_time(&self, entry: &TimeEntryChanges) -> Result<TimeEntry> {
         let created = self.client.create_time_entry(entry).await?;
         self.refresh_spent(created.issue.iter().map(|i| i.id)).await;

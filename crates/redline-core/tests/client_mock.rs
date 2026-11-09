@@ -656,3 +656,80 @@ async fn lists_logs_changes_and_deletes_time() {
     assert_eq!(changed.hours, 2.0);
     assert_eq!(syncer.delete_time_entry(40).await.unwrap(), Some(3));
 }
+
+#[tokio::test]
+async fn creates_changes_and_deletes_versions() {
+    use redline_core::models::VersionChanges;
+    use redline_core::{Store, Syncer};
+
+    let version = |status: &str| {
+        json!({"version": {
+            "id": 7, "project": {"id": 1, "name": "Web"}, "name": "Sprint 3", "description": "Board polish",
+            "status": status, "due_date": "2026-11-30", "sharing": "none", "wiki_page_title": "Sprint_3",
+            "estimated_hours": 20.0, "spent_hours": 4.5
+        }})
+    };
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/projects/1/versions.json"))
+        .and(body_json(json!({"version": {
+            "name": "Sprint 3", "description": "Board polish", "due_date": "2026-11-30", "sharing": "none"
+        }})))
+        .respond_with(ResponseTemplate::new(201).set_body_json(version("open")))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/versions/7.json"))
+        .and(body_json(json!({"version": {"status": "closed"}})))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/versions/7.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(version("closed")))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/versions/7.json"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let store = Store::in_memory().unwrap();
+    let syncer = Syncer::new(client(&server), store.clone());
+    let created = syncer
+        .create_version(
+            1,
+            &VersionChanges {
+                name: Some("Sprint 3".into()),
+                description: Some("Board polish".into()),
+                due_date: Some("2026-11-30".into()),
+                sharing: Some("none".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(created.wiki_page_title.as_deref(), Some("Sprint_3"));
+    assert_eq!(created.spent_hours, Some(4.5));
+    assert_eq!(store.metadata().unwrap().versions.len(), 1);
+
+    let closed = syncer
+        .update_version(
+            7,
+            &VersionChanges {
+                status: Some("closed".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(closed.status, "closed");
+    assert_eq!(store.metadata().unwrap().versions[0].status, "closed");
+
+    syncer.delete_version(7).await.unwrap();
+    assert!(store.metadata().unwrap().versions.is_empty());
+}

@@ -98,6 +98,8 @@ end
 today = Date.today
 past = version_for(web, "Sprint 1", today - 14)
 current = version_for(web, "Sprint 2", today + 7)
+# A description and wiki page, so the cycle page has something to show.
+current.update!(description: "Board and timeline views, keyboard moves", wiki_page_title: "Sprint_2") if current.description.blank?
 version_for(web, "Sprint 3", today + 21)
 
 if web.issues.count.zero?

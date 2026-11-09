@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useApp } from "../state/app";
 import { routeTitle, teamCycles, useDerived } from "../state/derived";
+import { canManageVersions, cycleProjects } from "./Cycle";
 import { Icon } from "./icons";
 
 function dateLabel(iso: string | null | undefined) {
@@ -13,23 +14,25 @@ export function CycleList({ teamId }: { teamId: number }) {
   const meta = useApp((s) => s.meta);
   const route = useApp((s) => s.route);
   const navigate = useApp((s) => s.navigate);
+  const openVersionDialog = useApp((s) => s.openVersionDialog);
   const d = useDerived();
   const cycles = useMemo(() => (meta ? teamCycles(teamId, issues.values(), d, meta) : []), [teamId, issues, d, meta]);
   const open = cycles.filter((c) => c.version.status !== "closed");
   const closed = cycles.filter((c) => c.version.status === "closed").reverse();
+  const canCreate = useMemo(() => cycleProjects(meta, teamId).length > 0, [meta, teamId]);
 
   const row = (c: (typeof cycles)[number]) => {
     const pct = c.total ? Math.round((c.done / c.total) * 100) : 0;
     return (
       <li key={c.version.id}>
-        <button
-          type="button"
-          className="cycle-row"
-          onClick={() => navigate({ view: "cycle", teamId, versionId: c.version.id })}
-        >
+        <button type="button" className="cycle-row" onClick={() => navigate({ view: "cycle", teamId, versionId: c.version.id })}>
           <Icon name="cycle" />
-          <span className="cycle-name">{c.version.name}</span>
+          <span className="cycle-row-meta">
+            <span className="cycle-name">{c.version.name}</span>
+            {c.version.description && <span className="cycle-row-description">{c.version.description}</span>}
+          </span>
           {c.current && <span className="chip chip-current">Current</span>}
+          {c.version.status === "locked" && <span className="chip cycle-status-locked">Locked</span>}
           <span className="cycle-dates">{dateLabel(c.version.due_date)}</span>
           <span
             className="cycle-progress"
@@ -49,6 +52,19 @@ export function CycleList({ teamId }: { teamId: number }) {
             {c.done} of {c.total} done
           </span>
         </button>
+        {canManageVersions(meta, c.version.project.id) && (
+          <span className="cycle-row-actions">
+            <button
+              type="button"
+              className="icon-button"
+              aria-label={`Edit ${c.version.name}`}
+              title="Edit cycle"
+              onClick={() => openVersionDialog(teamId, c.version)}
+            >
+              <Icon name="edit" size={14} />
+            </button>
+          </span>
+        )}
       </li>
     );
   };
@@ -58,6 +74,13 @@ export function CycleList({ teamId }: { teamId: number }) {
       <header className="main-header" data-tauri-drag-region>
         <h1>{routeTitle(route, d)}</h1>
         <span className="count">{cycles.length}</span>
+        <span className="header-spacer" />
+        {canCreate && (
+          <button type="button" className="header-button" onClick={() => openVersionDialog(teamId)}>
+            <Icon name="plus" size={12} />
+            <span>New cycle</span>
+          </button>
+        )}
       </header>
       <div className="cycle-scroll">
         {cycles.length === 0 ? (

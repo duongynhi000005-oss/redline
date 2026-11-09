@@ -17,6 +17,7 @@ import { CalendarView } from "./CalendarView";
 import { TimelineView } from "./TimelineView";
 import { DisplayMenu } from "./DisplayMenu";
 import { Avatar } from "./Avatar";
+import { CycleHeader } from "./Cycle";
 import { FilterBar, useRouteIssues } from "./Filters";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
 
@@ -217,6 +218,7 @@ export function IssueList() {
         </button>
         <DisplayMenu route={route} />
       </header>
+      {route.view === "cycle" && <CycleHeader teamId={route.teamId} versionId={route.versionId} />}
       <FilterBar route={route} shown={total} total={base.length} />
       {total === 0 && filters.length ? (
         <div className="empty-state">
