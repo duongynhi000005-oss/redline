@@ -7,9 +7,13 @@
 pub mod client;
 pub mod error;
 pub mod models;
+pub mod store;
+pub mod sync;
 
 pub use client::{Client, IssueQuery, Page};
 pub use error::{Error, Result};
+pub use store::{Metadata, Store};
+pub use sync::{IssueDetails, SyncReport, Syncer};
 
 /// The Redline version, shared by the core and the app.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
