@@ -326,12 +326,13 @@ pub async fn open_in_redmine(
         let session = guard.as_ref().ok_or_else(UiError::signed_out)?;
         session.account.server_url.clone()
     };
-    app.opener()
-        .open_url(
-            format!("{base}{}", path.trim_start_matches('/')),
-            None::<&str>,
+    let url = format!("{base}{}", path.trim_start_matches('/'));
+    app.opener().open_url(&url, None::<&str>).map_err(|_| {
+        UiError::new(
+            "browser",
+            format!("Couldn't open your browser. The page is {url}"),
         )
-        .map_err(|e| UiError::new("browser", format!("Couldn't open the browser: {e}")))
+    })
 }
 
 /// Relates two issues in Redmine and refreshes both in the cache.
