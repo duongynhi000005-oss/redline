@@ -428,9 +428,9 @@ export const useApp = create<AppState>()((set, get) => {
       const id = details.issue.id;
       const known = issues.get(id);
       const patch: Partial<Issue> = {};
-      // Redmine doesn't touch updated_on when relations, watchers or logged time change;
-      // attachments only come with details.
-      for (const key of ["relations", "watchers", "attachments", "spent_hours", "total_spent_hours"] as const) {
+      // Redmine doesn't touch updated_on when relations, watchers or logged time change,
+      // or when an admin adds a custom field; attachments only come with details.
+      for (const key of ["relations", "watchers", "attachments", "spent_hours", "total_spent_hours", "custom_fields"] as const) {
         // Watchers missing from details means the role can't see them (any more).
         const fresh = key === "watchers" ? (details.issue.watchers ?? null) : details.issue[key];
         if (known && fresh !== undefined && JSON.stringify(known[key] ?? null) !== JSON.stringify(fresh)) patch[key] = fresh as never;

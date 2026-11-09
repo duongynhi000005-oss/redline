@@ -135,6 +135,15 @@ describe("custom fields", () => {
     expect(nextFieldValue(["a"], true, "a")).toEqual([""]);
   });
 
+  it("picks up a field added after the issue was synced", async () => {
+    const { backend } = await start();
+    const details = await backend.getIssueDetails(1, false);
+    const stale = { ...details.issue, custom_fields: details.issue.custom_fields.filter((f) => f.name !== "Review by") };
+    act(() => useApp.setState((s) => ({ issues: new Map(s.issues).set(1, stale) })));
+    act(() => useApp.getState().takeDetails(details));
+    expect(useApp.getState().issues.get(1)?.custom_fields.some((f) => f.name === "Review by")).toBe(true);
+  });
+
   it("edits a field that holds days as a date", async () => {
     const { user, backend } = await start();
     await openIssue(1);
