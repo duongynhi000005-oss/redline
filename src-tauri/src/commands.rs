@@ -303,7 +303,10 @@ pub async fn get_sync_state(state: State<'_, AppState>) -> CmdResult<Option<Sync
 #[tauri::command]
 pub async fn sync_now(state: State<'_, AppState>) -> CmdResult<()> {
     let guard = state.session.read().await;
-    guard.as_ref().ok_or_else(UiError::signed_out)?.sync_now();
+    guard
+        .as_ref()
+        .ok_or_else(UiError::signed_out)?
+        .sync_now(true);
     Ok(())
 }
 

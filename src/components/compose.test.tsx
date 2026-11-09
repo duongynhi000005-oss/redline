@@ -30,6 +30,24 @@ describe("comments", () => {
     await waitFor(() => expect(seen).toEqual([{ id: 3, changes: { notes: "Shipping this today" } }]));
     await waitFor(() => expect(screen.getByLabelText("Comment")).toHaveValue(""));
   });
+
+  it("shows the comment as soon as Redmine has it, within the same second", async () => {
+    const { user, backend } = await start();
+    // Redmine stamps changes to the second, as the app does when it shows a
+    // change at once; the activity must not wait for the stamp to move.
+    const read = backend.getIssueDetails.bind(backend);
+    let reads = 0;
+    backend.getIssueDetails = async (id, refresh) => {
+      reads++;
+      return read(id, refresh);
+    };
+    useApp.getState().openIssue(3);
+    await waitFor(() => expect(reads).toBe(1));
+    await user.type(await screen.findByLabelText("Comment"), "Posted from Redline");
+    await user.keyboard(`{${mod}>}{Enter}{/${mod}}`);
+    await waitFor(() => expect(screen.getByLabelText("Comment")).toHaveValue(""));
+    expect(await screen.findByText("Posted from Redline")).toBeInTheDocument();
+  });
 });
 
 describe("new issue", () => {

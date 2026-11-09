@@ -2,6 +2,7 @@ import { Command } from "cmdk";
 import { useEffect, useMemo, useState } from "react";
 import { issueCategory } from "../lib/model";
 import { matchesShortcut, shortcutLabel } from "../lib/platform";
+import type { Issue } from "../lib/types";
 import type { PickerKind, Route } from "../state/app";
 import { routeKey, targetIssueId, useApp } from "../state/app";
 import { LAYOUTS } from "../lib/views";
@@ -36,6 +37,43 @@ export function matchesQuery(text: string, query: string): boolean {
     .split(/\s+/)
     .filter(Boolean)
     .every((word) => hay.includes(word));
+}
+
+/**
+ * The issues that match a palette search, best first: the issue with that
+ * number, then numbers that start with it (#1 brings #12 before #1999), then
+ * subjects that start with the words, then any match. Open issues come
+ * before closed ones, and recent changes first.
+ */
+export function rankIssues(issues: Iterable<Issue>, query: string, max: number): Issue[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const digits = /^#?(\d+)$/.exec(q)?.[1];
+  const words = q.split(/\s+/).filter(Boolean);
+  const ranked: { issue: Issue; tier: number }[] = [];
+  for (const issue of issues) {
+    const id = String(issue.id);
+    let tier: number;
+    if (digits !== undefined && id === digits) tier = 0;
+    else if (digits !== undefined && id.startsWith(digits)) tier = 1;
+    else {
+      const subject = issue.subject.toLowerCase();
+      const hay = `${subject} #${id}`;
+      if (!words.every((w) => hay.includes(w))) continue;
+      const starts = (w: string) => subject.startsWith(w) || subject.includes(` ${w}`);
+      tier = subject.startsWith(q) ? 2 : words.every(starts) ? 3 : 4;
+    }
+    ranked.push({ issue, tier });
+  }
+  const open = (i: Issue) => (i.status.is_closed ? 1 : 0);
+  ranked.sort(
+    (a, b) =>
+      a.tier - b.tier ||
+      (a.tier === 1 ? a.issue.id - b.issue.id : 0) ||
+      open(a.issue) - open(b.issue) ||
+      b.issue.updated_on.localeCompare(a.issue.updated_on),
+  );
+  return ranked.slice(0, max).map((r) => r.issue);
 }
 
 export function CommandPalette() {
@@ -498,18 +536,7 @@ function PaletteContent() {
   const visibleActions = q ? actions.filter((a) => matchesQuery(`${a.label} ${a.keywords ?? ""}`, q)) : actions;
   const issueMatches = useMemo(() => {
     if (!q) return [];
-    const byId = q.replace(/^#/, "");
-    const out = [];
-    if (/^\d+$/.test(byId)) {
-      const exact = issues.get(Number(byId));
-      if (exact) out.push(exact);
-    }
-    for (const issue of issues.values()) {
-      if (out.length >= MAX_ISSUES) break;
-      if (out[0]?.id === issue.id) continue;
-      if (matchesQuery(`${issue.subject} #${issue.id}`, q)) out.push(issue);
-    }
-    return out;
+    return rankIssues(issues.values(), q, MAX_ISSUES);
   }, [q, issues]);
 
   const groups = [...new Set(visibleActions.map((a) => a.group))];
