@@ -15,7 +15,7 @@ use crate::error::{Error, Result};
 use crate::models::*;
 
 /// Bump when the schema changes, and add a step to [`migrate`].
-const SCHEMA_VERSION: i32 = 1;
+const SCHEMA_VERSION: i32 = 2;
 
 /// Everything about the server that changes rarely.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -177,8 +177,12 @@ impl Store {
 
     // ----- Issues --------------------------------------------------------
 
-    /// Inserts or updates issues. Returns the ids that are new or changed
-    /// (a different `updated_on` than the cached copy).
+    /// Inserts or updates issues. Returns the ids that are new or changed.
+    ///
+    /// An issue counts as changed when anything Redline keeps differs, not
+    /// only `updated_on`: Redmine doesn't touch `updated_on` when a relation
+    /// is added or removed. Extras a list doesn't carry (watchers, children,
+    /// attachments) are kept from the cached copy until a fresh copy has them.
     pub fn upsert_issues(&self, issues: &[Issue]) -> Result<Vec<u64>> {
         let mut changed = Vec::new();
         let mut conn = self.conn();
@@ -186,19 +190,28 @@ impl Store {
         for issue in issues {
             let previous: Option<String> = tx
                 .query_row(
-                    "SELECT updated_on FROM issues WHERE id = ?1",
+                    "SELECT json FROM issues WHERE id = ?1",
                     [issue.id as i64],
                     |r| r.get(0),
                 )
                 .optional()
                 .map_err(storage)?;
-            if previous.as_deref() == Some(issue.updated_on.as_str()) {
-                continue;
-            }
-            // List responses carry no journals; keep the ones we have.
             let mut stored = issue.clone();
+            // Journals live in their own table; allowed statuses go stale.
             stored.journals = None;
             stored.allowed_statuses = None;
+            if let Some(previous) = previous.as_deref().and_then(|p| from_json::<Issue>(p).ok()) {
+                if issue.updated_on < previous.updated_on {
+                    continue;
+                }
+                stored.watchers = stored.watchers.or_else(|| previous.watchers.clone());
+                stored.children = stored.children.or_else(|| previous.children.clone());
+                stored.attachments = stored.attachments.or_else(|| previous.attachments.clone());
+                stored.relations = stored.relations.or_else(|| previous.relations.clone());
+                if stored == previous {
+                    continue;
+                }
+            }
             tx.execute(
                 "INSERT INTO issues (id, project_id, updated_on, json) VALUES (?1, ?2, ?3, ?4)
                  ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id,
@@ -340,6 +353,17 @@ fn migrate(conn: &Connection) -> Result<()> {
         )
         .map_err(storage)?;
     }
+    if version < 2 {
+        // Version 2 keeps each issue's relations. Forget the sync cursor so
+        // the next sync pulls every issue again, this time with them.
+        conn.execute_batch(
+            "BEGIN;
+             DELETE FROM kv WHERE key = 'issues_cursor';
+             PRAGMA user_version = 2;
+             COMMIT;",
+        )
+        .map_err(storage)?;
+    }
     Ok(())
 }
 
@@ -466,5 +490,74 @@ mod tests {
         store.remove_issues(&[1]).unwrap();
         assert!(store.issue(1).unwrap().is_none());
         assert!(store.journals(1).unwrap().is_none());
+    }
+
+    #[test]
+    fn notices_relation_changes_without_a_new_updated_on() {
+        let store = Store::in_memory().unwrap();
+        let plain = issue(1, "2026-11-02T00:00:00Z");
+        assert_eq!(
+            store.upsert_issues(std::slice::from_ref(&plain)).unwrap(),
+            vec![1]
+        );
+
+        let mut related = plain.clone();
+        related.relations = Some(vec![crate::models::Relation {
+            id: 9,
+            issue_id: 1,
+            issue_to_id: 2,
+            relation_type: "blocks".into(),
+            delay: None,
+        }]);
+        assert_eq!(
+            store.upsert_issues(std::slice::from_ref(&related)).unwrap(),
+            vec![1]
+        );
+        assert_eq!(
+            store.upsert_issues(std::slice::from_ref(&related)).unwrap(),
+            Vec::<u64>::new()
+        );
+
+        let mut unrelated = plain.clone();
+        unrelated.relations = Some(vec![]);
+        assert_eq!(store.upsert_issues(&[unrelated]).unwrap(), vec![1]);
+        assert_eq!(store.issue(1).unwrap().unwrap().relations, Some(vec![]));
+    }
+
+    #[test]
+    fn keeps_details_a_list_does_not_carry() {
+        let store = Store::in_memory().unwrap();
+        let mut detailed = issue(1, "2026-11-02T00:00:00Z");
+        detailed.watchers = Some(vec![crate::models::Named {
+            id: 3,
+            name: "Sam".into(),
+        }]);
+        store.upsert_issues(&[detailed]).unwrap();
+
+        // The same issue from a list: no watchers key, nothing changed.
+        let listed = issue(1, "2026-11-02T00:00:00Z");
+        assert!(store.upsert_issues(&[listed]).unwrap().is_empty());
+        assert_eq!(store.issue(1).unwrap().unwrap().watchers.unwrap().len(), 1);
+
+        // An older copy never replaces a newer one.
+        let older = issue(1, "2026-11-01T00:00:00Z");
+        assert!(store.upsert_issues(&[older]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn upgrading_to_version_2_pulls_every_issue_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cache.sqlite");
+        {
+            let store = Store::open(&path).unwrap();
+            store
+                .set_value("issues_cursor", &"2026-11-02T00:00:00Z")
+                .unwrap();
+            store.set_value("other", &1).unwrap();
+            store.conn().pragma_update(None, "user_version", 1).unwrap();
+        }
+        let store = Store::open(&path).unwrap();
+        assert_eq!(store.get_value::<String>("issues_cursor").unwrap(), None);
+        assert_eq!(store.get_value::<i32>("other").unwrap(), Some(1));
     }
 }

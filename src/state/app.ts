@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { Backend } from "../lib/backend";
-import type { Account, Issue, IssueChanges, IssueDetails, Metadata, SyncState } from "../lib/types";
+import type { Account, Issue, IssueChanges, IssueDetails, Metadata, Relation, SyncState } from "../lib/types";
+import type { RelationChoice } from "../lib/relations";
+import { newRelation } from "../lib/relations";
 import { errorMessage } from "../lib/types";
 import { applyChanges } from "../lib/edit";
 import type { ServerSettings } from "../lib/settings";
@@ -41,11 +43,13 @@ export function routeKey(route: Route): string {
 
 export type Phase = "starting" | "signed-out" | "ready";
 
-export type PickerKind = "status" | "priority" | "assignee" | "cycle" | "labels";
+export type PickerKind = "status" | "priority" | "assignee" | "cycle" | "labels" | "relation";
 
 export interface PickerState {
   kind: PickerKind;
   issueId: number;
+  /** For the relation picker: how to connect, once chosen. */
+  relation?: RelationChoice;
 }
 
 export interface AppState {
@@ -82,10 +86,13 @@ export interface AppState {
   openIssue(id: number | null): void;
   focusIssue(id: number | null): void;
   setPaletteOpen(open: boolean): void;
-  openPicker(kind: PickerKind, issueId: number): void;
+  openPicker(kind: PickerKind, issueId: number, relation?: RelationChoice): void;
   closePicker(): void;
   syncNow(): Promise<void>;
   updateIssue(id: number, changes: IssueChanges): Promise<IssueDetails | null>;
+  /** Connects another issue to this one: a Redmine relation, a parent or a sub-issue. */
+  relateIssue(issueId: number, choice: RelationChoice, otherId: number): Promise<boolean>;
+  removeRelation(relation: Relation): Promise<boolean>;
   showToast(message: string | null): void;
   setComposerOpen(open: boolean): void;
   setSettingsOpen(open: boolean): void;
@@ -129,6 +136,14 @@ function initial() {
 }
 
 export const useApp = create<AppState>()((set, get) => {
+  /** Reads issues again from the backend's cache, after a change that touched them. */
+  async function refreshIssues(backend: Backend, ids: number[]) {
+    const fresh = await backend.getIssues(ids);
+    const issues = new Map(get().issues);
+    fresh.forEach((i) => issues.set(i.id, i));
+    set({ issues });
+  }
+
   /** Loads the cache and listens for the shell's sync events. */
   async function load(backend: Backend) {
     const gen = ++generation;
@@ -270,8 +285,8 @@ export const useApp = create<AppState>()((set, get) => {
       set({ paletteOpen: open });
     },
 
-    openPicker(kind, issueId) {
-      set({ picker: { kind, issueId }, paletteOpen: false });
+    openPicker(kind, issueId, relation) {
+      set({ picker: { kind, issueId, relation }, paletteOpen: false });
     },
 
     closePicker() {
@@ -306,6 +321,34 @@ export const useApp = create<AppState>()((set, get) => {
         }
         set({ toast: `Couldn't update #${id}: ${errorMessage(e)}` });
         return null;
+      }
+    },
+
+    async relateIssue(issueId, choice, otherId) {
+      const { backend } = get();
+      if (!backend) return false;
+      if (choice === "parent") return (await get().updateIssue(issueId, { parent_issue_id: otherId })) !== null;
+      if (choice === "sub-issue") return (await get().updateIssue(otherId, { parent_issue_id: issueId })) !== null;
+      try {
+        await backend.addRelation(issueId, newRelation(choice, otherId));
+        await refreshIssues(backend, [issueId, otherId]);
+        return true;
+      } catch (e) {
+        set({ toast: `Couldn't relate #${issueId} to #${otherId}: ${errorMessage(e)}` });
+        return false;
+      }
+    },
+
+    async removeRelation(relation) {
+      const { backend } = get();
+      if (!backend) return false;
+      try {
+        await backend.removeRelation(relation);
+        await refreshIssues(backend, [relation.issue_id, relation.issue_to_id]);
+        return true;
+      } catch (e) {
+        set({ toast: `Couldn't remove the relation: ${errorMessage(e)}` });
+        return false;
       }
     },
 

@@ -6,6 +6,8 @@ import type {
   IssueDetails,
   IssuesChanged,
   Metadata,
+  NewRelation,
+  Relation,
   SyncState,
 } from "./types";
 
@@ -30,6 +32,11 @@ export interface Backend {
   syncNow(): Promise<void>;
   updateIssue(id: number, changes: IssueChanges): Promise<IssueDetails>;
   createIssue(fields: IssueChanges): Promise<Issue>;
+  /** Relates an issue to another. Both issues arrive again through onIssuesChanged. */
+  addRelation(issueId: number, relation: NewRelation): Promise<Relation>;
+  removeRelation(relation: Relation): Promise<void>;
+  /** Ids of issues whose description or comments mention #id. */
+  findMentions(id: number): Promise<number[]>;
   onSyncState(handler: (state: SyncState) => void): Promise<Unlisten>;
   onIssuesChanged(handler: (change: IssuesChanged) => void): Promise<Unlisten>;
   onMetadataChanged(handler: () => void): Promise<Unlisten>;

@@ -94,6 +94,9 @@ pub fn run() {
             commands::sync_now,
             commands::update_issue,
             commands::create_issue,
+            commands::add_relation,
+            commands::remove_relation,
+            commands::find_mentions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Redline");

@@ -45,6 +45,7 @@ export function applyChanges(issue: Issue, c: IssueChanges, meta: Metadata): Iss
     const p = meta.projects.find((x) => x.id === c.project_id);
     if (p) next.project = { id: p.id, name: p.name };
   }
+  if (c.parent_issue_id !== undefined) next.parent = c.parent_issue_id === null ? null : { id: c.parent_issue_id };
   if (c.due_date !== undefined) next.due_date = c.due_date;
   if (c.start_date !== undefined) next.start_date = c.start_date;
   if (c.custom_fields) {

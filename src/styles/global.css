@@ -570,6 +570,130 @@ h2 {
   background: var(--bg-hover);
 }
 
+/* Sub-issues, relations and mentions */
+.parent-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-bottom: 6px;
+  padding: 2px 6px 2px 4px;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.parent-link:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.parent-link-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+.blocked-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -8px 0 16px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.connections {
+  margin-top: 28px;
+}
+
+.connections-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.connections-header h2 {
+  font-size: 13px;
+}
+
+.connections-header .icon-button {
+  margin-left: auto;
+}
+
+.connection-group h3 {
+  margin: 10px 0 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.connections-empty {
+  font-size: 12px;
+}
+
+.linked-issues {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.linked-issue {
+  display: flex;
+  align-items: center;
+  border-radius: 6px;
+}
+
+.linked-issue:hover,
+.linked-issue:focus-within {
+  background: var(--bg-hover);
+}
+
+.linked-issue-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 6px;
+  text-align: left;
+}
+
+.linked-issue-id {
+  flex: none;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.linked-issue-subject {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.linked-issue-remove,
+.linked-issue-remove-space {
+  flex: none;
+  visibility: hidden;
+  width: 26px;
+  margin-right: 2px;
+}
+
+.linked-issue:hover .linked-issue-remove,
+.linked-issue:focus-within .linked-issue-remove {
+  visibility: visible;
+}
+
+.blocked-mark {
+  flex: none;
+  color: var(--danger);
+}
+
 .activity-title {
   margin: 40px 0 12px;
   padding-top: 20px;

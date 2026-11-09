@@ -18,7 +18,7 @@ browser, because Redmine has no API for it
 | Redmine | API with a user key | Redline | Where it lives |
 | --- | --- | --- | --- |
 | Issue list | `GET /issues.json`, 100 per page | ✅ | Every list, from the local cache |
-| Issue views (list, board, Gantt, calendar) | No API for Gantt or calendar; both are built from issue dates | ⬜ | View switcher on every list: List, Board (Kanban), Timeline, Calendar. #34, #36, #37 |
+| Issue views (list, board, Gantt, calendar) | No API for Gantt or calendar; both are built from issue dates | 🟡 list and board | View switcher on every list: List, Board (Kanban), Timeline, Calendar. #34, #36, #37 |
 | Issue details | `GET /issues/:id.json` | ✅ | Issue view |
 | Subject, description, status, priority, assignee, cycle (version) | `PUT /issues/:id.json` | ✅ | Issue view and pickers |
 | Tracker, category, start date, due date, estimate, % done, private, parent | `PUT /issues/:id.json` | 🟡 shown, not all editable | Properties panel, editable. #42 |
@@ -27,9 +27,9 @@ browser, because Redmine has no API for it
 | Comments (notes), private notes | `PUT /issues/:id.json` with `notes` | ✅ | Activity |
 | Edit a comment | `PUT /journals/:id.json` | ⬜ | Comment menu. #42 |
 | History (journal details) | `include=journals` | ✅ | Activity |
-| Related issues (relates, duplicates, blocks, precedes, follows, copied) | `GET/POST /issues/:id/relations.json`, `DELETE /relations/:id.json`; `include=relations` on lists | ⬜ | Related section on the issue, add and remove. #35 |
-| Mentions of other issues (`#123`) | Text in descriptions and notes; `GET /search.json` finds notes that mention an issue | ⬜ | Related section: "Mentions" and "Mentioned in". #35 |
-| Sub-issues and parent | `include=children`, `parent_issue_id` | 🟡 parent only | Sub-issues list and parent link. #35 |
+| Related issues (relates, duplicates, blocks, precedes, follows, copied) | `GET/POST /issues/:id/relations.json`, `DELETE /relations/:id.json`; `include=relations` on lists | ✅ | Related section on the issue, add and remove; blocked mark on rows and cards. Redmine doesn't change `updated_on` for relation changes, so other people's relation edits arrive when the issue is opened or on the six-hourly re-check. #35 |
+| Mentions of other issues (`#123`) | Text in descriptions and notes; `GET /search.json` finds notes that mention an issue | ✅ | Related section: "Mentions" and "Mentioned in". #35 |
+| Sub-issues and parent | `include=children`, `parent_issue_id` | ✅ | Sub-issues list with progress, parent link, set parent and add sub-issue. #35 |
 | Watchers | `include=watchers`, `POST/DELETE /issues/:id/watchers.json` | ⬜ | Subscribe button and subscriber list. #38 |
 | Attachments | `include=attachments`, `POST /uploads.json`, `GET /attachments/download/:id`, `DELETE /attachments/:id.json` | ⬜ | Attachments on the issue: preview, save, drop to upload. #39 |
 | Associated revisions | `include=changesets` | ⬜ | Commits on the issue. #48 |

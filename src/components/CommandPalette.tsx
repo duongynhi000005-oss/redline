@@ -5,6 +5,7 @@ import { matchesShortcut, shortcutLabel } from "../lib/platform";
 import type { Route } from "../state/app";
 import { routeKey, targetIssueId, useApp } from "../state/app";
 import { LAYOUTS } from "../lib/views";
+import { RELATION_CHOICES } from "../lib/relations";
 import { ISSUE_SHORTCUTS, runIssueCommand } from "./useIssueShortcuts";
 import { useDerived } from "../state/derived";
 import { Icon, StatusIcon } from "./icons";
@@ -109,6 +110,16 @@ function PaletteContent() {
           group: `Issue #${target}`,
           shortcut: s.shortcut,
           run: () => runIssueCommand(s.kind, target),
+        });
+      }
+      for (const c of RELATION_CHOICES) {
+        list.push({
+          id: `issue-relate-${c.choice}`,
+          label: c.label,
+          group: `Issue #${target}`,
+          icon: <Icon name={c.choice === "sub-issue" || c.choice === "parent" ? "sub-issue" : "relation"} />,
+          keywords: "relation link connect",
+          run: () => useApp.getState().openPicker("relation", target, c.choice),
         });
       }
     }

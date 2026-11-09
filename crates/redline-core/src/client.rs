@@ -236,6 +236,41 @@ impl Client {
         take(body, "issue")
     }
 
+    /// Relates `issue_id` to another issue and returns the relation.
+    pub async fn create_relation(&self, issue_id: u64, relation: &NewRelation) -> Result<Relation> {
+        let body = self
+            .send_json(
+                Method::POST,
+                &format!("issues/{issue_id}/relations.json"),
+                &json!({ "relation": relation }),
+            )
+            .await?;
+        take(body, "relation")
+    }
+
+    /// Removes a relation (from both issues).
+    pub async fn delete_relation(&self, relation_id: u64) -> Result<()> {
+        let url = self.url(&format!("relations/{relation_id}.json"))?;
+        self.send(|| self.http.delete(url.clone())).await?;
+        Ok(())
+    }
+
+    /// Searches issue subjects, descriptions and comments, newest first.
+    /// Returns at most one page (100 hits).
+    pub async fn search_issues(&self, query: &str) -> Result<Vec<SearchResult>> {
+        let body: Value = self
+            .get(
+                "search.json",
+                &[
+                    ("q", query.to_string()),
+                    ("issues", "1".into()),
+                    ("limit", PAGE_SIZE.to_string()),
+                ],
+            )
+            .await?;
+        Ok(page(body, "results")?.items)
+    }
+
     // ----- Plumbing ------------------------------------------------------
 
     fn url(&self, path: &str) -> Result<Url> {

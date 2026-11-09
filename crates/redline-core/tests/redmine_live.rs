@@ -213,3 +213,80 @@ async fn syncs_into_a_local_cache() {
 
     assert!(syncer.prune_deleted().await.unwrap().is_empty());
 }
+
+async fn issue_id(client: &Client, subject: &str) -> u64 {
+    let page = client
+        .issues(&IssueQuery {
+            limit: Some(100),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    page.items
+        .iter()
+        .find(|i| i.subject == subject)
+        .unwrap_or_else(|| panic!("seeded issue {subject:?}"))
+        .id
+}
+
+#[tokio::test]
+async fn adds_and_removes_a_relation() {
+    use redline_core::models::NewRelation;
+    use redline_core::{Store, Syncer};
+
+    let client = live!();
+    let from = issue_id(&client, "Empty columns can be hidden").await;
+    let to = issue_id(&client, "Show blocked issues on cards").await;
+    let syncer = Syncer::new(client, Store::in_memory().unwrap());
+    let (relation, _) = syncer
+        .add_relation(
+            from,
+            &NewRelation {
+                issue_to_id: to,
+                relation_type: "blocked".into(),
+                delay: None,
+            },
+        )
+        .await
+        .unwrap();
+    // Redmine stores an inverse type the other way round.
+    assert_eq!(
+        (
+            relation.issue_id,
+            relation.issue_to_id,
+            relation.relation_type.as_str()
+        ),
+        (to, from, "blocks")
+    );
+    let on = |id: u64| {
+        syncer
+            .store()
+            .issue(id)
+            .unwrap()
+            .unwrap()
+            .relations
+            .unwrap()
+            .iter()
+            .any(|r| r.id == relation.id)
+    };
+    assert!(on(from) && on(to));
+
+    syncer.remove_relation(&relation).await.unwrap();
+    assert!(!on(from) && !on(to));
+}
+
+#[tokio::test]
+async fn finds_mentions_in_descriptions_and_comments() {
+    use redline_core::{Store, Syncer};
+
+    let client = live!();
+    let drag = issue_id(&client, "Drag cards between columns").await;
+    let keys = issue_id(&client, "Move cards with the keyboard").await;
+    let overlap = issue_id(&client, "Fix overlapping cards on narrow windows").await;
+    let syncer = Syncer::new(client, Store::in_memory().unwrap());
+
+    // A description says "Seen while testing #drag".
+    assert!(syncer.mentions_of(drag).await.unwrap().contains(&overlap));
+    // A comment on the drag issue mentions the keyboard one.
+    assert!(syncer.mentions_of(keys).await.unwrap().contains(&drag));
+}

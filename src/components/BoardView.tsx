@@ -11,7 +11,7 @@ import { overlayOpen, useApp } from "../state/app";
 import type { Derived } from "../state/derived";
 import { useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
-import { GroupIcon, spokenIssue } from "./IssueList";
+import { BlockedMark, GroupIcon, spokenIssue } from "./IssueList";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
 
 const CARD_ESTIMATE = 92;
@@ -91,6 +91,7 @@ function Card({
       <div className="board-card-top">
         <span className="issue-id">#{issue.id}</span>
         {showProject && <span className="board-card-project">{issue.project.name}</span>}
+        <BlockedMark issue={issue} />
         <span className="header-spacer" />
         {grouping !== "assignee" && <Avatar name={issue.assigned_to?.name} size={18} />}
       </div>

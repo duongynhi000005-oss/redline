@@ -6,6 +6,7 @@
 
 pub mod client;
 pub mod error;
+pub mod mentions;
 pub mod models;
 pub mod store;
 pub mod sync;

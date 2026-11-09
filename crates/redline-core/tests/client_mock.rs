@@ -254,3 +254,126 @@ async fn sync_pages_and_moves_the_cursor_forward() {
     assert!(!report.initial);
     assert!(report.changed.is_empty());
 }
+
+#[tokio::test]
+async fn adds_and_removes_relations_and_refreshes_both_issues() {
+    use redline_core::models::NewRelation;
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/issues/1/relations.json"))
+        .and(body_json(json!({"relation": {"issue_to_id": 2, "relation_type": "blocks"}})))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "relation": {"id": 7, "issue_id": 1, "issue_to_id": 2, "relation_type": "blocks", "delay": null}
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let relation =
+        json!({"id": 7, "issue_id": 1, "issue_to_id": 2, "relation_type": "blocks", "delay": null});
+    let mut one = issue(1);
+    one["relations"] = json!([relation]);
+    let mut two = issue(2);
+    two["relations"] = json!([relation]);
+    Mock::given(method("GET"))
+        .and(path("/issues.json"))
+        .and(query_param("issue_id", "1,2"))
+        .and(query_param("include", "relations"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [one, two], "total_count": 2, "offset": 0, "limit": 100
+        })))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+
+    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
+    let (created, changed) = syncer
+        .add_relation(
+            1,
+            &NewRelation {
+                issue_to_id: 2,
+                relation_type: "blocks".into(),
+                delay: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(created.id, 7);
+    assert_eq!(changed, vec![1, 2]);
+    assert_eq!(
+        syncer
+            .store()
+            .issue(2)
+            .unwrap()
+            .unwrap()
+            .relations
+            .unwrap()
+            .len(),
+        1
+    );
+
+    Mock::given(method("DELETE"))
+        .and(path("/relations/7.json"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let mut one = issue(1);
+    one["relations"] = json!([]);
+    let mut two = issue(2);
+    two["relations"] = json!([]);
+    Mock::given(method("GET"))
+        .and(path("/issues.json"))
+        .and(query_param("issue_id", "1,2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [one, two], "total_count": 2, "offset": 0, "limit": 100
+        })))
+        .mount(&server)
+        .await;
+    let changed = syncer.remove_relation(&created).await.unwrap();
+    assert_eq!(changed, vec![1, 2]);
+    assert_eq!(
+        syncer.store().issue(1).unwrap().unwrap().relations,
+        Some(vec![])
+    );
+}
+
+#[tokio::test]
+async fn finds_mentions_in_descriptions_and_comments_but_not_lookalikes() {
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    // Search matches loosely: #12 also finds #123.
+    Mock::given(path("/search.json"))
+        .and(query_param("q", "#12"))
+        .and(query_param("issues", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "results": [
+                {"id": 20, "title": "Bug #20 (New): A", "type": "issue", "description": "Seen while testing #12."},
+                {"id": 21, "title": "Bug #21 (New): B", "type": "issue", "description": "Nothing here"},
+                {"id": 22, "title": "Bug #22 (New): C", "type": "issue-closed", "description": "Duplicate of #123"}
+            ],
+            "total_count": 3, "offset": 0, "limit": 100
+        })))
+        .mount(&server)
+        .await;
+    for (id, note) in [(21, "Blocked by #12, see there."), (22, "Moved to #1234")] {
+        let mut detailed = issue(id);
+        detailed["journals"] = json!([{"id": id * 10, "notes": note, "created_on": "2026-11-02T00:00:00Z", "details": []}]);
+        Mock::given(path(format!("/issues/{id}.json")))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({"issue": detailed})))
+            .mount(&server)
+            .await;
+    }
+    let store = Store::in_memory().unwrap();
+    // A cached issue search didn't return still counts.
+    let mut cached: redline_core::models::Issue = serde_json::from_value(issue(30)).unwrap();
+    cached.description = Some("Follow-up to ##12".into());
+    store.upsert_issues(&[cached]).unwrap();
+
+    let syncer = Syncer::new(client(&server), store);
+    let mut found = syncer.mentions_of(12).await.unwrap();
+    found.sort();
+    assert_eq!(found, vec![20, 21, 30]);
+}

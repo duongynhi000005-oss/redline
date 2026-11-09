@@ -21,4 +21,15 @@ describe("describeDetail", () => {
       "updated the description",
     );
   });
+
+  it("describes relations and sub-issues", async () => {
+    const meta = await createDemoBackend().getMetadata();
+    const say = (property: string, name: string, old_value: string | null, new_value: string | null) =>
+      describeDetail({ property, name, old_value, new_value }, meta);
+    expect(say("relation", "blocks", null, "13")).toBe("marked as blocking #13");
+    expect(say("relation", "blocked", "12", null)).toBe("no longer blocked by #12");
+    expect(say("attr", "child_id", null, "11")).toBe("added sub-issue #11");
+    expect(say("attr", "parent_id", null, "10")).toBe("set parent to #10");
+    expect(say("attr", "parent_id", "10", "9")).toBe("moved from parent #10 to #9");
+  });
 });

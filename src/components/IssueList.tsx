@@ -2,6 +2,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
 import { matchesFilters } from "../lib/filters";
+import { blockingIssues } from "../lib/relations";
 import { isTyping } from "../lib/platform";
 import type { Issue } from "../lib/types";
 import type { MyIssuesTab, Route, TeamTab } from "../state/app";
@@ -103,6 +104,19 @@ export function LayoutSwitcher({ layout, onChange }: { layout: Layout; onChange:
   );
 }
 
+/** A small mark on issues blocked by another open issue. */
+export function BlockedMark({ issue }: { issue: Issue }) {
+  const issues = useApp((s) => s.issues);
+  const blockers = issue.relations?.length ? blockingIssues(issue, issues) : [];
+  if (!blockers.length) return null;
+  const text = `Blocked by ${blockers.map((b) => `#${b}`).join(", ")}`;
+  return (
+    <span className="blocked-mark" role="img" aria-label={text} title={text}>
+      <Icon name="blocked" size={12} />
+    </span>
+  );
+}
+
 export function IssueRow({
   issue,
   d,
@@ -137,6 +151,7 @@ export function IssueRow({
       <span className="issue-id">#{issue.id}</span>
       <StatusIcon category={category} title={issue.status.name} />
       <span className="issue-subject">{issue.subject}</span>
+      <BlockedMark issue={issue} />
       <span className="issue-meta">
         {labels.slice(0, 3).map((l) => (
           <span key={`${l.field}:${l.value}`} className="chip" title={l.field}>
