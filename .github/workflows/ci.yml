@@ -52,9 +52,6 @@ jobs:
         if: steps.scaffold.outputs.ready == 'true'
         run: npm ci
 
-      # TODO: these script names must exist in package.json. Adjust them to
-      # the front-end library's tooling once it's chosen (for example
-      # "ng lint" for Angular, or eslint + tsc --noEmit + vitest for React).
       - name: Lint
         if: steps.scaffold.outputs.ready == 'true'
         run: npm run lint
@@ -105,8 +102,6 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         if: steps.scaffold.outputs.ready == 'true'
-        with:
-          workspaces: src-tauri -> target
 
       - name: Install dependencies
         if: steps.scaffold.outputs.ready == 'true'
@@ -114,25 +109,21 @@ jobs:
 
       # Tauri embeds the built UI at compile time, so the UI must be built
       # before clippy and cargo test can compile the Rust side.
-      # TODO: match this to the front-end build script once it's chosen.
       - name: Build UI
         if: steps.scaffold.outputs.ready == 'true'
         run: npm run build
 
       - name: Check Rust formatting
         if: steps.scaffold.outputs.ready == 'true' && runner.os == 'macOS'
-        working-directory: src-tauri
         run: cargo fmt --all -- --check
 
       - name: Clippy
         if: steps.scaffold.outputs.ready == 'true'
-        working-directory: src-tauri
-        run: cargo clippy --all-targets --locked -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Rust tests
         if: steps.scaffold.outputs.ready == 'true'
-        working-directory: src-tauri
-        run: cargo test --locked
+        run: cargo test --workspace --locked
 
       # Compiles the full app for this platform without making installers,
       # which keeps PR builds fast. Signed installers belong in a separate
