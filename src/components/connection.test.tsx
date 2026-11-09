@@ -79,4 +79,18 @@ describe("server username and custom headers", () => {
     await user.click(within(section).getByRole("button", { name: "Save" }));
     await waitFor(() => expect(update).toHaveBeenLastCalledWith({ username: "dana", headers: [] }));
   });
+
+  it("keeps the username and headers when signing in again with a new key", async () => {
+    const backend = createDemoBackend({ signedIn: true });
+    render(<App backend={backend} />);
+    await screen.findByRole("heading", { name: "My issues" });
+    await backend.updateConnection({ username: "dana", headers: [{ name: "X-Gateway-Token", value: "tok" }] });
+
+    await useApp.getState().signInAgain();
+
+    await screen.findByRole("heading", { name: "Sign in to Redmine" });
+    expect(screen.getByRole("button", { name: "Advanced" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("Username")).toHaveValue("dana");
+    expect(screen.getByLabelText("Header 1 name")).toHaveValue("X-Gateway-Token");
+  });
 });

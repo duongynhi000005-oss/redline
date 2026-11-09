@@ -1,4 +1,5 @@
 import type { ConnectionOptions } from "../lib/connection";
+import { NO_CONNECTION } from "../lib/connection";
 import { create } from "zustand";
 import type { Backend } from "../lib/backend";
 import type {
@@ -197,6 +198,8 @@ export interface AppState {
   signInAgain(): Promise<void>;
   /** The server the sign-in form starts with, after "Sign in again". */
   signInServer: string;
+  /** The username and headers the sign-in form starts with, after "Sign in again". */
+  signInConnection: ConnectionOptions;
   navigate(route: Route): void;
   openIssue(id: number | null): void;
   focusIssue(id: number | null): void;
@@ -286,6 +289,7 @@ function initial() {
   return {
     phase: "starting" as Phase,
     signInServer: "",
+    signInConnection: NO_CONNECTION,
     backend: null,
     account: null,
     meta: null,
@@ -317,13 +321,13 @@ function initial() {
 }
 
 export const useApp = create<AppState>()((set, get) => {
-  async function leave(signInServer: string) {
+  async function leave(signInServer: string, signInConnection: ConnectionOptions = NO_CONNECTION) {
     const backend = get().backend;
     generation++;
     unlisten.forEach((u) => u());
     unlisten = [];
     await backend?.signOut();
-    set({ ...initial(), backend, phase: "signed-out", signInServer });
+    set({ ...initial(), backend, phase: "signed-out", signInServer, signInConnection });
   }
 
   /** Reads issues again from the backend's cache, after a change that touched them. */
@@ -462,8 +466,10 @@ export const useApp = create<AppState>()((set, get) => {
     },
 
     async signInAgain() {
-      // One update, so the sign-in form starts with the server filled in.
-      await leave(get().account?.serverUrl ?? "");
+      // One update, so the sign-in form starts with the server and any
+      // proxy headers filled in. Only the key is new.
+      const connection = (await get().backend?.getConnection().catch(() => NO_CONNECTION)) ?? NO_CONNECTION;
+      await leave(get().account?.serverUrl ?? "", connection);
     },
 
     navigate(route) {

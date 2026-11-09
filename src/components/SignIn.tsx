@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useApp } from "../state/app";
 import { errorMessage, isBackendError } from "../lib/types";
 import type { ConnectionOptions } from "../lib/connection";
-import { NO_CONNECTION, connectionProblem, isEmptyConnection, mightNeedHeaders, normalizeConnection } from "../lib/connection";
+import { connectionProblem, isEmptyConnection, mightNeedHeaders, normalizeConnection } from "../lib/connection";
 import { ConnectionFields } from "./ConnectionFields";
 
 export function SignIn() {
@@ -11,8 +11,9 @@ export function SignIn() {
   const again = useApp((s) => s.signInServer);
   const [server, setServer] = useState(again);
   const [apiKey, setApiKey] = useState("");
-  const [connection, setConnection] = useState<ConnectionOptions>(NO_CONNECTION);
-  const [advanced, setAdvanced] = useState(false);
+  const againConnection = useApp((s) => s.signInConnection);
+  const [connection, setConnection] = useState<ConnectionOptions>(againConnection);
+  const [advanced, setAdvanced] = useState(() => !isEmptyConnection(againConnection));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
 
