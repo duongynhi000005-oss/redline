@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 import { createDemoBackend } from "../lib/demoBackend";
+import { loadViews } from "../lib/views";
 
 describe("filtering a list", () => {
   it("narrows a team's issues with F and shows the filter as a chip", async () => {
@@ -55,5 +56,30 @@ describe("filtering a list", () => {
     expect(within(screen.getByLabelText("Filters")).getByRole("button", { name: /^Status is/, hidden: true })).toBeInTheDocument();
     await user.keyboard("{Backspace}");
     expect(await screen.findByPlaceholderText("Filter by…")).toHaveFocus();
+  });
+
+  it("groups and orders from the Display menu and remembers it for this server", async () => {
+    const user = userEvent.setup();
+    render(<App backend={createDemoBackend({ signedIn: true })} />);
+    await screen.findByRole("heading", { name: "My issues" });
+
+    await user.click(screen.getByRole("button", { name: "Display" }));
+    const panel = screen.getByRole("dialog", { name: "Display options" });
+    expect(within(panel).getByLabelText("Grouping")).toHaveFocus();
+    await user.selectOptions(within(panel).getByLabelText("Grouping"), "priority");
+    await user.selectOptions(within(panel).getByLabelText("Ordering"), "created");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog", { name: "Display options" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Display" })).toHaveFocus();
+
+    const list = screen.getByRole("listbox", { name: "Issues" });
+    expect(within(list).queryByText("In progress")).not.toBeInTheDocument();
+    const headings = [...list.querySelectorAll(".group-header")].map((h) => h.textContent);
+    expect(headings.length).toBeGreaterThan(0);
+    expect(headings.some((h) => /High|Normal|Urgent|Low/.test(h ?? ""))).toBe(true);
+    expect(loadViews("https://redmine.example.com/", 1)["my-issues"]).toMatchObject({
+      grouping: "priority",
+      ordering: "created",
+    });
   });
 });

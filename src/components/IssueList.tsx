@@ -1,19 +1,36 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { StatusCategory } from "../lib/model";
-import { CATEGORY_LABEL, issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
+import { issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
 import { matchesFilters } from "../lib/filters";
 import { isTyping } from "../lib/platform";
 import type { Issue } from "../lib/types";
 import type { MyIssuesTab, Route, TeamTab } from "../state/app";
-import { overlayOpen, routeKey, useApp } from "../state/app";
+import { overlayOpen, routeKey, useApp, viewFor } from "../state/app";
 import type { Derived } from "../state/derived";
-import { groupByCategory, routeTitle, useDerived } from "../state/derived";
+import { routeTitle, useDerived } from "../state/derived";
+import type { Group } from "../lib/views";
+import { groupIssues } from "../lib/views";
+import { DisplayMenu } from "./DisplayMenu";
 import { Avatar } from "./Avatar";
 import { FilterBar, useRouteIssues } from "./Filters";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
 
-type Row = { kind: "group"; category: StatusCategory; count: number } | { kind: "issue"; issue: Issue };
+type Row = { kind: "group"; group: Group; count: number } | { kind: "issue"; issue: Issue };
+
+function GroupIcon({ icon }: { icon: Group["icon"] }) {
+  switch (icon.kind) {
+    case "status":
+      return <StatusIcon category={icon.category} />;
+    case "priority":
+      return <PriorityIcon level={icon.level} />;
+    case "assignee":
+      return <Avatar name={icon.name} size={16} />;
+    case "cycle":
+      return <Icon name="cycle" />;
+    case "none":
+      return null;
+  }
+}
 
 const ROW_HEIGHT = 36;
 const GROUP_HEIGHT = 36;
@@ -112,26 +129,40 @@ export function IssueList() {
   const openIssue = useApp((s) => s.openIssue);
   const overlay = useApp(overlayOpen);
   const d = useDerived();
-  const [collapsed, setCollapsed] = useState<Set<StatusCategory>>(new Set(["canceled"]));
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set(["status:canceled"]));
   const focusedId = useApp((s) => s.focusedIssueId);
   const setFocusedId = useApp((s) => s.focusIssue);
   const openFilterMenu = useApp((s) => s.openFilterMenu);
-  const filters = useApp((s) => s.filters[routeKey(s.route)]);
+  const view = useApp((s) => viewFor(s, routeKey(s.route)));
+  const filters = view.filters;
+  const meta = useApp((s) => s.meta);
+  const me = useApp((s) => s.account?.userId);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const base = useRouteIssues(route);
   const groups = useMemo(
-    () => groupByCategory(filters?.length ? base.filter((i) => matchesFilters(i, filters, d)) : base, d),
-    [base, filters, d],
+    () =>
+      meta
+        ? groupIssues(
+            filters.length ? base.filter((i) => matchesFilters(i, filters, d)) : base,
+            view.grouping,
+            view.ordering,
+            d,
+            meta,
+            me,
+          )
+        : [],
+    [base, filters, view.grouping, view.ordering, d, meta, me],
   );
   const rows = useMemo(() => {
     const out: Row[] = [];
     for (const g of groups) {
-      out.push({ kind: "group", category: g.category, count: g.issues.length });
-      if (!collapsed.has(g.category)) g.issues.forEach((issue) => out.push({ kind: "issue", issue }));
+      // Without grouping there's one group, and no heading for it.
+      if (view.grouping !== "none") out.push({ kind: "group", group: g, count: g.issues.length });
+      if (view.grouping === "none" || !collapsed.has(g.key)) g.issues.forEach((issue) => out.push({ kind: "issue", issue }));
     }
     return out;
-  }, [groups, collapsed]);
+  }, [groups, collapsed, view.grouping]);
   const issueRows = useMemo(() => rows.flatMap((r, i) => (r.kind === "issue" ? [{ id: r.issue.id, index: i }] : [])), [rows]);
   const total = groups.reduce((n, g) => n + g.issues.length, 0);
 
@@ -186,7 +217,7 @@ export function IssueList() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const toggleGroup = (c: StatusCategory) =>
+  const toggleGroup = (c: string) =>
     setCollapsed((prev) => {
       const next = new Set(prev);
       if (next.has(c)) next.delete(c);
@@ -200,13 +231,15 @@ export function IssueList() {
         <h1>{routeTitle(route, d)}</h1>
         <span className="count">{total}</span>
         <Tabs route={route} />
+        <span className="header-spacer" />
         <button type="button" className="header-button" title="Filter (F)" onClick={() => openFilterMenu(null)}>
           <Icon name="filter" />
           <span>Filter</span>
         </button>
+        <DisplayMenu route={route} />
       </header>
       <FilterBar route={route} shown={total} total={base.length} />
-      {total === 0 && filters?.length ? (
+      {total === 0 && filters.length ? (
         <div className="empty-state">
           <p>No issues match these filters.</p>
           <p className="muted">Remove a filter above, or press F to change them.</p>
@@ -245,11 +278,11 @@ export function IssueList() {
                       type="button"
                       role="presentation"
                       className="group-header"
-                      aria-expanded={!collapsed.has(row.category)}
-                      onClick={() => toggleGroup(row.category)}
+                      aria-expanded={!collapsed.has(row.group.key)}
+                      onClick={() => toggleGroup(row.group.key)}
                     >
-                      <StatusIcon category={row.category} />
-                      <span>{CATEGORY_LABEL[row.category]}</span>
+                      <GroupIcon icon={row.group.icon} />
+                      <span>{row.group.label}</span>
                       <span className="count">{row.count}</span>
                     </button>
                   ) : (
