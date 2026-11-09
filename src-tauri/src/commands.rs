@@ -4,7 +4,7 @@
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use redline_core::models::{Issue, IssueChanges};
+use redline_core::models::{Issue, IssueChanges, NewRelation, Relation};
 use redline_core::{Client, Error, IssueDetails, Metadata, Store, Syncer};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -270,4 +270,50 @@ pub async fn create_issue(
         },
     );
     Ok(issue)
+}
+
+fn emit_changed(app: &AppHandle, changed: Vec<u64>) {
+    if !changed.is_empty() {
+        let _ = app.emit(
+            EVENT_ISSUES_CHANGED,
+            IssuesChanged {
+                changed,
+                removed: vec![],
+            },
+        );
+    }
+}
+
+/// Relates two issues in Redmine and refreshes both in the cache.
+#[tauri::command]
+pub async fn add_relation(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    issue_id: u64,
+    relation: NewRelation,
+) -> CmdResult<Relation> {
+    let syncer = syncer(&state).await?;
+    let (created, changed) = syncer.add_relation(issue_id, &relation).await?;
+    emit_changed(&app, changed);
+    Ok(created)
+}
+
+/// Removes a relation in Redmine and refreshes both issues.
+#[tauri::command]
+pub async fn remove_relation(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    relation: Relation,
+) -> CmdResult<()> {
+    let syncer = syncer(&state).await?;
+    let changed = syncer.remove_relation(&relation).await?;
+    emit_changed(&app, changed);
+    Ok(())
+}
+
+/// Ids of issues whose description or comments mention this one.
+#[tauri::command]
+pub async fn find_mentions(state: State<'_, AppState>, id: u64) -> CmdResult<Vec<u64>> {
+    let syncer = syncer(&state).await?;
+    Ok(syncer.mentions_of(id).await?)
 }

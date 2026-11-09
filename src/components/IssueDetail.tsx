@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { describeDetail } from "../lib/journal";
 import { CATEGORY_LABEL, PRIORITY_LABEL, issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
 import { isTyping, matchesShortcut, shortcutLabel } from "../lib/platform";
-import type { IssueDetails, Journal } from "../lib/types";
+import { blockingIssues, mentionsIn, relatedGroups, subIssues } from "../lib/relations";
+import type { Issue, IssueDetails, Journal, Relation } from "../lib/types";
 import { errorMessage } from "../lib/types";
 import { overlayOpen, useApp } from "../state/app";
 import { useDerived } from "../state/derived";
@@ -76,6 +77,123 @@ function Activity({ journals }: { journals: Journal[] }) {
   );
 }
 
+/** One connected issue: opens it, and can be unlinked when it's a relation. */
+function LinkedIssue({ id, issue, onRemove }: { id: number; issue: Issue | undefined; onRemove?: () => void }) {
+  const openIssue = useApp((s) => s.openIssue);
+  const d = useDerived();
+  return (
+    <li className="linked-issue">
+      <button type="button" className="linked-issue-open" onClick={() => openIssue(id)}>
+        {issue ? <StatusIcon category={issueCategory(issue, d.categories)} /> : <Icon name="issues" />}
+        <span className="linked-issue-id">#{id}</span>
+        <span className="linked-issue-subject">{issue?.subject ?? "Not synced to Redline"}</span>
+        {issue?.assigned_to && <Avatar name={issue.assigned_to.name} size={16} />}
+      </button>
+      {onRemove ? (
+        <button type="button" className="icon-button linked-issue-remove" onClick={onRemove} aria-label={`Remove relation to #${id}`} title="Remove relation">
+          <Icon name="close" size={12} />
+        </button>
+      ) : (
+        <span className="linked-issue-remove-space" aria-hidden="true" />
+      )}
+    </li>
+  );
+}
+
+/** Sub-issues, Redmine relations and #mentions, each way. */
+function Connections({ issue, journals }: { issue: Issue; journals: Journal[] | null }) {
+  const issues = useApp((s) => s.issues);
+  const backend = useApp((s) => s.backend);
+  const openPicker = useApp((s) => s.openPicker);
+  const removeRelation = useApp((s) => s.removeRelation);
+  const [mentionedIn, setMentionedIn] = useState<{ id: number; ids: number[] } | null>(null);
+
+  // Mentions elsewhere come from Redmine's search, which also reads comments.
+  useEffect(() => {
+    let live = true;
+    backend
+      ?.findMentions(issue.id)
+      .then((ids) => live && setMentionedIn({ id: issue.id, ids }))
+      .catch(() => live && setMentionedIn({ id: issue.id, ids: [] }));
+    return () => {
+      live = false;
+    };
+  }, [backend, issue.id, issue.updated_on]);
+
+  const children = subIssues(issue, issues.values());
+  const groups = relatedGroups(issue, issues);
+  const shown = new Set<number>([...children.map((c) => c.id), ...groups.flatMap((g) => g.items.map((i) => i.otherId))]);
+  if (issue.parent) shown.add(issue.parent.id);
+  const mentions = mentionsIn(issue, journals).filter((id) => !shown.has(id));
+  const incoming = (mentionedIn?.id === issue.id ? mentionedIn.ids : []).filter((id) => !shown.has(id));
+  const done = children.filter((c) => c.status.is_closed).length;
+  const remove = (relation: Relation) => () => void removeRelation(relation);
+
+  return (
+    <>
+      <section className="connections" aria-label="Sub-issues">
+        <header className="connections-header">
+          <h2>Sub-issues</h2>
+          {children.length > 0 && (
+            <span className="muted" aria-label={`${done} of ${children.length} done`}>
+              {done}/{children.length}
+            </span>
+          )}
+          <button type="button" className="icon-button" onClick={() => openPicker("relation", issue.id, "sub-issue")} aria-label="Add sub-issue" title="Add sub-issue">
+            <Icon name="plus" />
+          </button>
+        </header>
+        {children.length > 0 && (
+          <ul className="linked-issues">
+            {children.map((c) => (
+              <LinkedIssue key={c.id} id={c.id} issue={c} />
+            ))}
+          </ul>
+        )}
+      </section>
+      <section className="connections" aria-label="Related issues">
+        <header className="connections-header">
+          <h2>Related</h2>
+          <button type="button" className="icon-button" onClick={() => openPicker("relation", issue.id)} aria-label="Add relation" title="Add relation">
+            <Icon name="plus" />
+          </button>
+        </header>
+        {groups.map((g) => (
+          <div key={g.type} className="connection-group">
+            <h3>{g.label}</h3>
+            <ul className="linked-issues">
+              {g.items.map((item) => (
+                <LinkedIssue key={item.relation.id} id={item.otherId} issue={item.other} onRemove={remove(item.relation)} />
+              ))}
+            </ul>
+          </div>
+        ))}
+        {mentions.length > 0 && (
+          <div className="connection-group">
+            <h3>Mentions</h3>
+            <ul className="linked-issues">
+              {mentions.map((id) => (
+                <LinkedIssue key={id} id={id} issue={issues.get(id)} />
+              ))}
+            </ul>
+          </div>
+        )}
+        {incoming.length > 0 && (
+          <div className="connection-group">
+            <h3>Mentioned in</h3>
+            <ul className="linked-issues">
+              {incoming.map((id) => (
+                <LinkedIssue key={id} id={id} issue={issues.get(id)} />
+              ))}
+            </ul>
+          </div>
+        )}
+        {!groups.length && !mentions.length && !incoming.length && <p className="muted connections-empty">No related issues.</p>}
+      </section>
+    </>
+  );
+}
+
 function CommentBox({ issueId }: { issueId: number }) {
   const updateIssue = useApp((s) => s.updateIssue);
   const [text, setText] = useState("");
@@ -125,6 +243,8 @@ function CommentBox({ issueId }: { issueId: number }) {
 export function IssueDetail({ id }: { id: number }) {
   const backend = useApp((s) => s.backend);
   const cached = useApp((s) => s.issues.get(id));
+  const allIssues = useApp((s) => s.issues);
+  const relationIds = (cached?.relations ?? []).map((r) => r.id).join(",");
   const openIssue = useApp((s) => s.openIssue);
   const overlay = useApp(overlayOpen);
   const openPicker = useApp((s) => s.openPicker);
@@ -138,12 +258,23 @@ export function IssueDetail({ id }: { id: number }) {
     let live = true;
     backend
       ?.getIssueDetails(id, true)
-      .then((result) => live && setLoaded({ id, details: result }))
+      .then((result) => {
+        if (!live) return;
+        setLoaded({ id, details: result });
+        // Redmine doesn't touch updated_on for relation changes; take the fresh ones.
+        const state = useApp.getState();
+        const known = state.issues.get(id);
+        const fresh = result.issue.relations;
+        if (known && fresh && JSON.stringify(known.relations ?? []) !== JSON.stringify(fresh)) {
+          useApp.setState({ issues: new Map(state.issues).set(id, { ...known, relations: fresh }) });
+        }
+      })
       .catch((e) => live && setLoaded({ id, error: errorMessage(e) }));
     return () => {
       live = false;
     };
-  }, [backend, id, cached?.updated_on]);
+    // Relation changes add a comment-less journal entry without touching updated_on.
+  }, [backend, id, cached?.updated_on, relationIds]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -164,6 +295,8 @@ export function IssueDetail({ id }: { id: number }) {
     );
   }
 
+  const parentIssue = issue.parent ? allIssues.get(issue.parent.id) : undefined;
+  const blockedBy = blockingIssues(issue, allIssues);
   const category = issueCategory(issue, d.categories);
   const level = d.priorities.get(issue.priority.id) ?? 0;
   const labels = issueLabels(issue, d.labelFields);
@@ -184,12 +317,25 @@ export function IssueDetail({ id }: { id: number }) {
       </header>
       <div className="detail-body">
         <div className="detail-content">
+          {issue.parent && (
+            <button type="button" className="parent-link" onClick={() => openIssue(issue.parent!.id)}>
+              <Icon name="sub-issue" size={12} />
+              Sub-issue of #{issue.parent.id}
+              {parentIssue && <span className="parent-link-subject">{parentIssue.subject}</span>}
+            </button>
+          )}
           <h1 className="detail-title">{issue.subject}</h1>
+          {blockedBy.length > 0 && (
+            <p className="blocked-note">
+              <Icon name="blocked" size={12} /> Blocked by {blockedBy.map((b) => `#${b}`).join(", ")}
+            </p>
+          )}
           {issue.description ? (
             <Markdown text={issue.description} />
           ) : (
             <p className="muted">No description.</p>
           )}
+          <Connections issue={issue} journals={details?.journals ?? null} />
           <h2 className="activity-title">Activity</h2>
           <div className="activity-change">
             <Avatar name={issue.author?.name} size={16} />

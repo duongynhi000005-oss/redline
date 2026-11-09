@@ -95,6 +95,33 @@ export interface Journal {
   details: JournalDetail[];
 }
 
+/** A relation between two issues, as Redmine stores it (from issue_id to issue_to_id). */
+export interface Relation {
+  id: number;
+  issue_id: number;
+  issue_to_id: number;
+  relation_type: RelationType;
+  delay?: number | null;
+}
+
+export type RelationType =
+  | "relates"
+  | "duplicates"
+  | "duplicated"
+  | "blocks"
+  | "blocked"
+  | "precedes"
+  | "follows"
+  | "copied_to"
+  | "copied_from";
+
+/** A relation to add from an issue. Redmine stores inverse types (`blocked`) the other way round. */
+export interface NewRelation {
+  issue_to_id: number;
+  relation_type: RelationType;
+  delay?: number | null;
+}
+
 export interface Issue {
   id: number;
   project: Named;
@@ -117,6 +144,8 @@ export interface Issue {
   created_on: string;
   updated_on: string;
   closed_on?: string | null;
+  /** Synced with every issue; can lag behind others' changes by a few hours. */
+  relations?: Relation[] | null;
 }
 
 export interface Metadata {

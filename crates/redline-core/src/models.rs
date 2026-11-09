@@ -254,6 +254,32 @@ pub struct Relation {
     pub delay: Option<i64>,
 }
 
+/// A relation to create. Redmine shows it on both issues, and stores an
+/// inverse type the other way round (`blocked` becomes the other's `blocks`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NewRelation {
+    pub issue_to_id: u64,
+    pub relation_type: String,
+    /// Days between the two issues, for `precedes` and `follows`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delay: Option<i64>,
+}
+
+/// One hit from Redmine's search (`/search.json`).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SearchResult {
+    pub id: u64,
+    pub title: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub datetime: Option<String>,
+}
+
 /// A Redmine issue. Lists include the core fields; a single issue can also
 /// carry journals, watchers, children and allowed statuses when asked.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

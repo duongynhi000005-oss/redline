@@ -47,12 +47,34 @@ function lookup(meta: Metadata, attribute: string, value: string | null | undefi
   }
 }
 
+/** How a relation change reads, by Redmine's relation type, from this issue's side. */
+const RELATION_PHRASE: Record<string, { added: string; removed: string }> = {
+  relates: { added: "marked as related to", removed: "removed the relation to" },
+  blocks: { added: "marked as blocking", removed: "no longer blocks" },
+  blocked: { added: "marked as blocked by", removed: "no longer blocked by" },
+  duplicates: { added: "marked as a duplicate of", removed: "no longer a duplicate of" },
+  duplicated: { added: "marked as duplicated by", removed: "no longer duplicated by" },
+  precedes: { added: "marked as preceding", removed: "no longer precedes" },
+  follows: { added: "marked as following", removed: "no longer follows" },
+  copied_to: { added: "copied to", removed: "removed the copy link to" },
+  copied_from: { added: "copied from", removed: "removed the copy link to" },
+};
+
 export function describeDetail(detail: JournalDetail, meta: Metadata): string {
   if (detail.property === "attachment") {
     return detail.new_value ? `attached ${detail.new_value}` : `removed ${detail.old_value ?? "an attachment"}`;
   }
   if (detail.property === "relation") {
-    return detail.new_value ? `linked #${detail.new_value}` : `unlinked #${detail.old_value ?? ""}`;
+    const phrase = RELATION_PHRASE[detail.name] ?? { added: "linked", removed: "unlinked" };
+    return detail.new_value ? `${phrase.added} #${detail.new_value}` : `${phrase.removed} #${detail.old_value ?? ""}`;
+  }
+  if (detail.property === "attr" && detail.name === "child_id") {
+    return detail.new_value ? `added sub-issue #${detail.new_value}` : `removed sub-issue #${detail.old_value ?? ""}`;
+  }
+  if (detail.property === "attr" && detail.name === "parent_id") {
+    if (!detail.new_value) return `removed parent #${detail.old_value ?? ""}`;
+    if (!detail.old_value) return `set parent to #${detail.new_value}`;
+    return `moved from parent #${detail.old_value} to #${detail.new_value}`;
   }
   let field: string;
   let oldValue: string | null;

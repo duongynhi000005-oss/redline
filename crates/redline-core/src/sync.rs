@@ -5,11 +5,14 @@
 //! 1. **Metadata** (projects, statuses, trackers, priorities, versions and
 //!    memberships) on sign-in and now and then after.
 //! 2. **Issue delta**: issues updated since a cursor, oldest first, in pages
-//!    of 100. The first run pulls everything the user can see.
+//!    of 100, with their relations. The first run pulls everything the user
+//!    can see.
 //! 3. **Details** (journals and allowed statuses) for one issue when it's
 //!    opened, cached until the issue changes.
 //! 4. **Pruning**: issues deleted or hidden on the server never show up in a
-//!    delta, so cached ids are re-checked in batches now and then.
+//!    delta, so cached ids are re-checked in batches now and then. Relation
+//!    changes don't touch `updated_on` either, so the same pass refreshes
+//!    relations; opening an issue refreshes its own.
 
 use std::collections::HashSet;
 
@@ -19,7 +22,8 @@ use tokio::task::JoinSet;
 
 use crate::client::{Client, IssueQuery, PAGE_SIZE};
 use crate::error::{Error, Result};
-use crate::models::{Issue, IssueStatusRef, Journal};
+use crate::mentions;
+use crate::models::{Issue, IssueStatusRef, Journal, NewRelation, Relation};
 use crate::store::{Metadata, Store};
 
 const CURSOR_KEY: &str = "issues_cursor";
@@ -28,6 +32,10 @@ const CURSOR_KEY: &str = "issues_cursor";
 /// clock differences and several edits in the same second; issues that
 /// haven't really changed are skipped by comparing `updated_on`.
 const CURSOR_OVERLAP: Duration = Duration::seconds(60);
+
+/// At most this many search hits get their comments read to confirm a
+/// mention, so one lookup can't turn into hundreds of requests.
+const MAX_MENTION_CHECKS: usize = 10;
 
 /// What one issue sync did.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -140,6 +148,7 @@ impl Syncer {
                 .client
                 .issues(&IssueQuery {
                     updated_since: since.clone(),
+                    include: vec!["relations"],
                     offset,
                     limit: Some(PAGE_SIZE),
                     ..Default::default()
@@ -179,6 +188,9 @@ impl Syncer {
                 .client
                 .issues(&IssueQuery {
                     issue_ids: batch.to_vec(),
+                    // Relation changes don't touch `updated_on`, so this pass
+                    // is also when other people's relation changes arrive.
+                    include: vec!["relations"],
                     limit: Some(PAGE_SIZE),
                     ..Default::default()
                 })
@@ -225,6 +237,132 @@ impl Syncer {
             journals,
             allowed_statuses,
         })
+    }
+
+    /// Re-reads issues (with relations) into the cache. Returns the ids that
+    /// changed. Ids the server doesn't return are left alone.
+    pub async fn refresh_issues(&self, ids: &[u64]) -> Result<Vec<u64>> {
+        let page = self
+            .client
+            .issues(&IssueQuery {
+                issue_ids: ids.to_vec(),
+                include: vec!["relations"],
+                limit: Some(PAGE_SIZE),
+                ..Default::default()
+            })
+            .await?;
+        self.store.upsert_issues(&page.items)
+    }
+
+    /// Relates two issues, then refreshes both. Returns the relation and the
+    /// ids that changed in the cache.
+    pub async fn add_relation(
+        &self,
+        issue_id: u64,
+        relation: &NewRelation,
+    ) -> Result<(Relation, Vec<u64>)> {
+        let created = self.client.create_relation(issue_id, relation).await?;
+        let changed = self
+            .refresh_issues(&[issue_id, relation.issue_to_id])
+            .await?;
+        Ok((created, changed))
+    }
+
+    /// Removes a relation, then refreshes both issues it joined.
+    pub async fn remove_relation(&self, relation: &Relation) -> Result<Vec<u64>> {
+        match self.client.delete_relation(relation.id).await {
+            // Already gone: refreshing is all that's left to do.
+            Ok(()) | Err(Error::NotFound) => {}
+            Err(e) => return Err(e),
+        }
+        self.refresh_issues(&[relation.issue_id, relation.issue_to_id])
+            .await
+    }
+
+    /// Issues whose description or comments mention `#id`, newest first.
+    ///
+    /// Uses Redmine's search (which also reads comments) and the cache.
+    /// Search matches text loosely, so `#12` also finds `#123`; each hit is
+    /// checked against its description, or its comments when the description
+    /// doesn't say. Works offline from the cache alone.
+    pub async fn mentions_of(&self, id: u64) -> Result<Vec<u64>> {
+        let mut found: Vec<u64> = Vec::new();
+        let mut unsure: Vec<u64> = Vec::new();
+        match self.client.search_issues(&format!("#{id}")).await {
+            Ok(results) => {
+                for hit in results
+                    .iter()
+                    .filter(|r| r.kind.starts_with("issue") && r.id != id)
+                {
+                    let description = match self.store.issue(hit.id)? {
+                        Some(cached) => cached.description,
+                        None => hit.description.clone(),
+                    };
+                    if description
+                        .as_deref()
+                        .is_some_and(|d| mentions::mentions(d, id))
+                    {
+                        found.push(hit.id);
+                    } else {
+                        unsure.push(hit.id);
+                    }
+                }
+            }
+            // No search permission, or offline: the cache still knows a lot.
+            Err(Error::Forbidden | Error::Network(_) | Error::NotFound) => {}
+            Err(e) => return Err(e),
+        }
+        // Hits whose description doesn't mention it matched in a comment
+        // (or matched `#123`). Read their comments to tell.
+        let mut checks = JoinSet::new();
+        for other in unsure.into_iter().take(MAX_MENTION_CHECKS) {
+            let syncer = self.clone();
+            checks.spawn(async move {
+                let journals = match syncer.cached_issue_details(other)? {
+                    Some(details) => details.journals,
+                    None => syncer.issue_details(other).await?.journals,
+                };
+                Ok::<_, Error>((other, journals))
+            });
+        }
+        while let Some(joined) = checks.join_next().await {
+            if let Ok(Ok((other, journals))) = joined
+                && journals.iter().any(|j| {
+                    j.notes
+                        .as_deref()
+                        .is_some_and(|n| mentions::mentions(n, id))
+                })
+            {
+                found.push(other);
+            }
+        }
+        // Cached descriptions and comments, for what search didn't return.
+        for issue in self.store.issues()? {
+            if issue.id == id || found.contains(&issue.id) {
+                continue;
+            }
+            let in_description = issue
+                .description
+                .as_deref()
+                .is_some_and(|d| mentions::mentions(d, id));
+            let in_comments = || -> Result<bool> {
+                Ok(self.store.journals(issue.id)?.is_some_and(|(_, journals)| {
+                    journals.iter().any(|j| {
+                        j.notes
+                            .as_deref()
+                            .is_some_and(|n| mentions::mentions(n, id))
+                    })
+                }))
+            };
+            if in_description || in_comments()? {
+                found.push(issue.id);
+            }
+        }
+        // Newest first, the way search returns them.
+        let order: Vec<u64> = self.store.issues()?.iter().map(|i| i.id).collect();
+        found.sort_by_key(|f| order.iter().position(|o| o == f).unwrap_or(usize::MAX));
+        found.dedup();
+        Ok(found)
     }
 
     /// Cached details for an issue, if its journals are as new as the issue.

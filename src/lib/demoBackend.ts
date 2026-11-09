@@ -1,5 +1,6 @@
 import type { Backend } from "./backend";
 import { applyChanges as applyEdit } from "./edit";
+import { INVERSE, mentionedIds } from "./relations";
 import type {
   Account,
   Issue,
@@ -9,6 +10,7 @@ import type {
   Journal,
   Metadata,
   Named,
+  Relation,
   SyncState,
 } from "./types";
 
@@ -195,6 +197,23 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   const wait = <T>(value: T) => new Promise<T>((r) => setTimeout(() => r(value), latency));
   const meta = buildMetadata();
   const issues = new Map(buildIssues(meta).map((i) => [i.id, i]));
+  let nextRelationId = 1;
+  const relate = (from: number, to: number, type: Relation["relation_type"]) => {
+    const relation: Relation = { id: nextRelationId++, issue_id: from, issue_to_id: to, relation_type: type, delay: null };
+    for (const id of [from, to]) {
+      const issue = issues.get(id);
+      if (issue) issues.set(id, { ...issue, relations: [...(issue.relations ?? []), relation] });
+    }
+    return relation;
+  };
+  // A few connections, so the Related section has something to show.
+  relate(3, 2, "blocks");
+  relate(1, 13, "relates");
+  relate(15, 17, "duplicates");
+  for (const child of [11, 12]) {
+    const issue = issues.get(child)!;
+    issues.set(child, { ...issue, parent: { id: 1 } });
+  }
   let account: Account | null = options.signedIn
     ? { serverUrl: DEMO_SERVER, userId: 1, login: "dev", name: "Dana Developer" }
     : null;
@@ -268,6 +287,34 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       issues.set(id, issue);
       changeHandlers.forEach((h) => h({ changed: [id], removed: [] }));
       return issue;
+    },
+    async addRelation(issueId, relation) {
+      await wait(null);
+      const other = relation.issue_to_id;
+      if (!issues.has(issueId) || !issues.has(other)) throw { code: "rejected", message: "Redmine refused the change: Related issue is invalid" };
+      if (other === issueId) throw { code: "rejected", message: "Redmine refused the change: Related issue cannot be the same issue" };
+      // Redmine stores inverse types the other way round, as here.
+      const inverse = ["blocked", "duplicated", "follows", "copied_from"].includes(relation.relation_type);
+      const created = inverse
+        ? relate(other, issueId, INVERSE[relation.relation_type])
+        : relate(issueId, other, relation.relation_type);
+      changeHandlers.forEach((h) => h({ changed: [issueId, other], removed: [] }));
+      return created;
+    },
+    async removeRelation(relation) {
+      await wait(null);
+      for (const id of [relation.issue_id, relation.issue_to_id]) {
+        const issue = issues.get(id);
+        if (issue) issues.set(id, { ...issue, relations: (issue.relations ?? []).filter((r) => r.id !== relation.id) });
+      }
+      changeHandlers.forEach((h) => h({ changed: [relation.issue_id, relation.issue_to_id], removed: [] }));
+    },
+    async findMentions(id) {
+      await wait(null);
+      return [...issues.values()]
+        .filter((i) => i.id !== id)
+        .filter((i) => [i.description ?? "", ...buildJournals(i).map((j) => j.notes ?? "")].some((t) => mentionedIds(t).includes(id)))
+        .map((i) => i.id);
     },
     async onSyncState(handler) {
       syncHandlers.add(handler);

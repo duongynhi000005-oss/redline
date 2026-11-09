@@ -4,6 +4,8 @@ import { knownLabelValues, people } from "../lib/edit";
 import type { PriorityLevel, StatusCategory } from "../lib/model";
 import { activeCycle, defaultCategory, hueFor, teamOf } from "../lib/model";
 import type { Issue, IssueChanges, IssueStatusRef, Metadata } from "../lib/types";
+import type { RelationChoice } from "../lib/relations";
+import { RELATION_CHOICES, relatedGroups, subIssues } from "../lib/relations";
 import type { PickerKind } from "../state/app";
 import { useApp } from "../state/app";
 import type { Derived } from "../state/derived";
@@ -27,6 +29,7 @@ const PLACEHOLDER: Record<PickerKind, string> = {
   assignee: "Assign to…",
   cycle: "Move to cycle…",
   labels: "Change labels…",
+  relation: "Connect an issue…",
 };
 
 /** The choices for one property of an issue. */
@@ -141,6 +144,9 @@ export function pickerOptions(
       }
       return options;
     }
+    case "relation":
+      // Issues, not values: see RelationPickerContent.
+      return [];
   }
 }
 
@@ -156,7 +162,12 @@ export function Picker() {
       overlayClassName="palette-overlay"
       contentClassName="palette picker"
     >
-      {picker && <PickerContent kind={picker.kind} issueId={picker.issueId} />}
+      {picker &&
+        (picker.kind === "relation" ? (
+          <RelationPickerContent issueId={picker.issueId} choice={picker.relation ?? null} />
+        ) : (
+          <PickerContent kind={picker.kind} issueId={picker.issueId} />
+        ))}
     </Command.Dialog>
   );
 }
@@ -220,6 +231,120 @@ function PickerContent({ kind, issueId }: { kind: PickerKind; issueId: number })
                 </Command.Item>
               ))}
           </Command.Group>
+        ))}
+      </Command.List>
+    </>
+  );
+}
+
+/** The most issues the relation picker lists at once; typing narrows it. */
+const RELATION_PICKER_LIMIT = 50;
+
+/** The issues that could be connected to `issue` in the chosen way. */
+export function relationCandidates(
+  issue: Issue,
+  choice: RelationChoice,
+  issues: Map<number, Issue>,
+  query: string,
+): { id: number; issue?: Issue }[] {
+  const taken = new Set<number>([issue.id]);
+  if (choice === "parent") {
+    if (issue.parent) taken.add(issue.parent.id);
+    // A sub-issue can't also be the parent.
+    for (const child of subIssues(issue, issues.values())) taken.add(child.id);
+  } else if (choice === "sub-issue") {
+    for (const child of subIssues(issue, issues.values())) taken.add(child.id);
+    if (issue.parent) taken.add(issue.parent.id);
+  } else {
+    for (const group of relatedGroups(issue, issues)) {
+      if (group.type === choice) group.items.forEach((i) => taken.add(i.otherId));
+    }
+  }
+  const q = query.trim().replace(/^#/, "");
+  const wanted = /^\d+$/.test(q) ? Number(q) : null;
+  const list: { id: number; issue?: Issue }[] = [...issues.values()]
+    .filter((i) => !taken.has(i.id) && (!q || matchesQuery(`#${i.id} ${i.subject}`, query)))
+    .sort((a, b) => (b.id === wanted ? 1 : 0) - (a.id === wanted ? 1 : 0) || b.updated_on.localeCompare(a.updated_on))
+    .slice(0, RELATION_PICKER_LIMIT)
+    .map((i) => ({ id: i.id, issue: i }));
+  // An issue Redline hasn't synced (another project, say) can still be named by number.
+  if (wanted !== null && wanted > 0 && !taken.has(wanted) && !issues.has(wanted)) list.unshift({ id: wanted });
+  return list;
+}
+
+function RelationPickerContent({ issueId, choice }: { issueId: number; choice: RelationChoice | null }) {
+  const issue = useApp((s) => s.issues.get(issueId));
+  const issues = useApp((s) => s.issues);
+  const openPicker = useApp((s) => s.openPicker);
+  const closePicker = useApp((s) => s.closePicker);
+  const relateIssue = useApp((s) => s.relateIssue);
+  const updateIssue = useApp((s) => s.updateIssue);
+  const d = useDerived();
+  const meta = useApp((s) => s.meta);
+  const [query, setQuery] = useState("");
+
+  const candidates = useMemo(
+    () => (issue && choice ? relationCandidates(issue, choice, issues, query) : []),
+    [issue, choice, issues, query],
+  );
+  if (!issue) return null;
+
+  if (!choice) {
+    const visible = RELATION_CHOICES.filter((c) => matchesQuery(c.label, query));
+    return (
+      <>
+        <div className="picker-context">
+          #{issue.id} {issue.subject}
+        </div>
+        <Command.Input value={query} onValueChange={setQuery} placeholder="Connect an issue…" />
+        <Command.List>
+          <Command.Empty>No matches.</Command.Empty>
+          {visible.map((c) => (
+            <Command.Item key={c.choice} value={c.choice} onSelect={() => openPicker("relation", issueId, c.choice)}>
+              <Icon name={c.choice === "sub-issue" || c.choice === "parent" ? "sub-issue" : "relation"} />
+              <span className="palette-label">{c.label}</span>
+            </Command.Item>
+          ))}
+        </Command.List>
+      </>
+    );
+  }
+
+  const placeholder = RELATION_CHOICES.find((c) => c.choice === choice)?.placeholder ?? "Choose an issue…";
+  const choose = (otherId: number) => {
+    closePicker();
+    void relateIssue(issueId, choice, otherId);
+  };
+  return (
+    <>
+      <div className="picker-context">
+        #{issue.id} {issue.subject}
+      </div>
+      <Command.Input value={query} onValueChange={setQuery} placeholder={placeholder} />
+      <Command.List>
+        <Command.Empty>No matching issues. Type an issue number to use one Redline hasn't synced.</Command.Empty>
+        {choice === "parent" && issue.parent && !query.trim() && (
+          <Command.Item
+            value="no-parent"
+            onSelect={() => {
+              closePicker();
+              void updateIssue(issueId, { parent_issue_id: null });
+            }}
+          >
+            <Icon name="sub-issue" />
+            <span className="palette-label">Remove parent (#{issue.parent.id})</span>
+          </Command.Item>
+        )}
+        {candidates.map(({ id, issue: other }) => (
+          <Command.Item key={id} value={`issue-${id}`} onSelect={() => choose(id)}>
+            {other && meta ? (
+              <StatusIcon category={d.categories.get(other.status.id) ?? defaultCategory({ ...other.status, is_closed: !!other.status.is_closed }, meta.trackers)} />
+            ) : (
+              <Icon name="issues" />
+            )}
+            <span className="palette-id">#{id}</span>
+            <span className="palette-label">{other?.subject ?? "An issue Redline hasn't synced"}</span>
+          </Command.Item>
         ))}
       </Command.List>
     </>

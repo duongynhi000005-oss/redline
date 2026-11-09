@@ -229,10 +229,41 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M7 3v8M3 7h8" {...stroke} />
         </Svg>
       );
+    case "relation":
+      return (
+        <Svg {...props}>
+          <path d="M6 8.2a2.6 2.6 0 0 0 3.7 0l1.6-1.6a2.6 2.6 0 0 0-3.7-3.7l-.7.7M8 5.8a2.6 2.6 0 0 0-3.7 0L2.7 7.4a2.6 2.6 0 0 0 3.7 3.7l.7-.7" {...stroke} />
+        </Svg>
+      );
+    case "sub-issue":
+      return (
+        <Svg {...props}>
+          <path d="M3.5 2.5v6a2 2 0 0 0 2 2h3" {...stroke} />
+          <circle cx="10.5" cy="10.5" r="1.8" {...stroke} />
+          <circle cx="3.5" cy="2.5" r="0.4" {...stroke} />
+        </Svg>
+      );
+    case "blocked":
+      return (
+        <Svg {...props}>
+          <circle cx="7" cy="7" r="5" {...stroke} />
+          <path d="m3.5 10.5 7-7" {...stroke} />
+        </Svg>
+      );
+    case "mention":
+      return (
+        <Svg {...props}>
+          <path d="M5.5 2 4.5 12M9.5 2l-1 10M2.5 5h9.5M2 9h9.5" {...stroke} />
+        </Svg>
+      );
   }
 }
 
 export type IconName =
+  | "relation"
+  | "sub-issue"
+  | "blocked"
+  | "mention"
   | "filter"
   | "close"
   | "plus"
