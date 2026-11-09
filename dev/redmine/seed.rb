@@ -67,6 +67,10 @@ size = IssueCustomField.find_by(name: "Size") || IssueCustomField.create!(
   possible_values: %w[S M L XL], tracker_ids: Tracker.pluck(:id)
 )
 
+review_by = IssueCustomField.find_by(name: "Review by") || IssueCustomField.create!(
+  name: "Review by", field_format: "date", is_for_all: true, is_filter: true, tracker_ids: Tracker.pluck(:id)
+)
+
 def project_for(identifier, name, parent: nil)
   Project.find_by(identifier: identifier) || Project.new.tap do |p|
     p.identifier = identifier
@@ -217,6 +221,16 @@ if web && web.issues.where.not(category_id: nil).none?
     issue.update_columns(category_id: categories[i % categories.size].id)
   end
   say "filed issues in categories"
+end
+
+# Give some Web issues a review date, once: a date custom field to edit.
+if web && CustomValue.where(custom_field: review_by, customized_type: "Issue").where.not(value: [nil, ""]).none?
+  web.issues.order(:id).each_with_index do |issue, i|
+    next unless i % 3 == 1
+    value = CustomValue.find_or_initialize_by(custom_field: review_by, customized: issue)
+    value.update!(value: (Date.today + (i % 10)).iso8601)
+  end
+  say "set review dates"
 end
 
 token = Token.find_by(user: user, action: "api") || Token.create!(user: user, action: "api")

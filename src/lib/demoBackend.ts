@@ -99,6 +99,7 @@ function buildMetadata(): Metadata {
         issue_custom_fields: [
           { id: 1, name: "Area" },
           { id: 2, name: "Size" },
+          { id: 3, name: "Review by" },
         ],
       },
       {
@@ -245,6 +246,7 @@ function buildIssues(meta: Metadata): Issue[] {
       custom_fields: [
         { id: 1, name: "Area", multiple: true, value: areas[i % areas.length]! },
         { id: 2, name: "Size", value: ["S", "M", "L", null][i % 4] ?? null },
+        ...(project.id === 1 ? [{ id: 3, name: "Review by", value: i % 3 === 1 ? day(start + 2) : "" }] : []),
       ],
       created_on: iso(30 - i),
       updated_on: iso(Math.floor(i / 3), i % 3),

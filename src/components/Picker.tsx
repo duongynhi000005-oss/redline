@@ -1,6 +1,6 @@
 import { Command } from "cmdk";
 import { useEffect, useMemo, useState } from "react";
-import { knownLabelValues, moveTargets, people } from "../lib/edit";
+import { fieldValues, knownLabelValues, moveTargets, nextFieldValue, people } from "../lib/edit";
 import type { PriorityLevel, StatusCategory } from "../lib/model";
 import { activeCycle, defaultCategory, hueFor, teamOf } from "../lib/model";
 import type { Issue, IssueChanges, IssueStatusRef, Metadata } from "../lib/types";
@@ -37,6 +37,7 @@ const PLACEHOLDER: Record<PickerKind, string> = {
   category: "Change category…",
   project: "Move to project…",
   done: "Change % done…",
+  field: "Set a value…",
 };
 
 /** The choices for one property of an issue. */
@@ -47,6 +48,7 @@ export function pickerOptions(
   d: Derived,
   allIssues: Iterable<Issue>,
   allowedStatuses: IssueStatusRef[] | null,
+  fieldId?: number,
 ): PickerOption[] {
   switch (kind) {
     case "status": {
@@ -223,6 +225,29 @@ export function pickerOptions(
         selected: (issue.done_ratio ?? 0) === n,
         changes: { done_ratio: n },
       }));
+    case "field": {
+      const field = issue.custom_fields.find((f) => f.id === fieldId);
+      if (!field) return [];
+      const current = fieldValues(field.value);
+      const values = new Set([...(knownLabelValues(allIssues).get(field.id)?.values ?? []), ...current]);
+      const options: PickerOption[] = [...values]
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+        .map((value) => ({
+          key: `field-${field.id}-${value}`,
+          label: value,
+          selected: current.includes(value),
+          changes: { custom_fields: [{ id: field.id, value: nextFieldValue(current, !!field.multiple, value) }] },
+        }));
+      if (current.length && !field.multiple) {
+        options.unshift({
+          key: `field-${field.id}-clear`,
+          label: `Clear ${field.name}`,
+          selected: false,
+          changes: { custom_fields: [{ id: field.id, value: "" }] },
+        });
+      }
+      return options;
+    }
     case "relation":
       // Issues, not values: see RelationPickerContent.
       return [];
@@ -232,11 +257,16 @@ export function pickerOptions(
 export function Picker() {
   const picker = useApp((s) => s.picker);
   const closePicker = useApp((s) => s.closePicker);
+  const fieldName = useApp((s) =>
+    s.picker?.kind === "field"
+      ? s.issues.get(s.picker.issueId)?.custom_fields.find((f) => f.id === s.picker!.fieldId)?.name
+      : undefined,
+  );
   return (
     <Command.Dialog
       open={picker !== null}
       onOpenChange={(open) => !open && closePicker()}
-      label={picker ? PLACEHOLDER[picker.kind] : "Picker"}
+      label={picker ? (fieldName ? `Set ${fieldName}…` : PLACEHOLDER[picker.kind]) : "Picker"}
       shouldFilter={false}
       overlayClassName="palette-overlay"
       contentClassName="palette picker"
@@ -245,13 +275,13 @@ export function Picker() {
         (picker.kind === "relation" ? (
           <RelationPickerContent issueId={picker.issueId} choice={picker.relation ?? null} />
         ) : (
-          <PickerContent kind={picker.kind} issueId={picker.issueId} />
+          <PickerContent kind={picker.kind} issueId={picker.issueId} fieldId={picker.fieldId} />
         ))}
     </Command.Dialog>
   );
 }
 
-function PickerContent({ kind, issueId }: { kind: PickerKind; issueId: number }) {
+function PickerContent({ kind, issueId, fieldId }: { kind: PickerKind; issueId: number; fieldId?: number }) {
   const issue = useApp((s) => s.issues.get(issueId));
   const issues = useApp((s) => s.issues);
   const meta = useApp((s) => s.meta);
@@ -277,10 +307,27 @@ function PickerContent({ kind, issueId }: { kind: PickerKind; issueId: number })
   }, [kind, issueId, backend]);
 
   const options = useMemo(
-    () => (issue && meta ? pickerOptions(kind, issue, meta, d, issues.values(), allowed) : []),
-    [kind, issue, meta, d, issues, allowed],
+    () => (issue && meta ? pickerOptions(kind, issue, meta, d, issues.values(), allowed, fieldId) : []),
+    [kind, issue, meta, d, issues, allowed, fieldId],
   );
-  const visible = query.trim() ? options.filter((o) => matchesQuery(`${o.label} ${o.group ?? ""}`, query)) : options;
+  const field = kind === "field" ? issue?.custom_fields.find((f) => f.id === fieldId) : undefined;
+  const filtered = query.trim() ? options.filter((o) => matchesQuery(`${o.label} ${o.group ?? ""}`, query)) : options;
+  // A custom field can take a value no issue has yet: offer what was typed.
+  const typed = query.trim();
+  const visible =
+    field && typed && !options.some((o) => o.label === typed)
+      ? [
+          {
+            key: `field-${field.id}-typed`,
+            label: `Set to “${typed}”`,
+            selected: false,
+            changes: {
+              custom_fields: [{ id: field.id, value: nextFieldValue(fieldValues(field.value), !!field.multiple, typed) }],
+            },
+          },
+          ...filtered,
+        ]
+      : filtered;
   const groups = [...new Set(visible.map((o) => o.group ?? ""))];
 
   if (!issue) return null;
@@ -288,8 +335,9 @@ function PickerContent({ kind, issueId }: { kind: PickerKind; issueId: number })
   const choose = (option: PickerOption) => {
     if (option.watcher !== undefined) void setWatcher(issueId, option.watcher, !option.selected);
     else void updateIssue(issueId, option.changes);
-    // Labels and subscribers toggle; other properties take one value.
-    if (kind !== "labels" && kind !== "subscribers") closePicker();
+    // Labels, subscribers and multi-value fields toggle; other properties take one value.
+    if (kind !== "labels" && kind !== "subscribers" && !field?.multiple) closePicker();
+    if (field?.multiple) setQuery("");
   };
 
   return (
@@ -297,9 +345,11 @@ function PickerContent({ kind, issueId }: { kind: PickerKind; issueId: number })
       <div className="picker-context">
         #{issue.id} {issue.subject}
       </div>
-      <Command.Input value={query} onValueChange={setQuery} placeholder={PLACEHOLDER[kind]} />
+      <Command.Input value={query} onValueChange={setQuery} placeholder={field ? `Set ${field.name}…` : PLACEHOLDER[kind]} />
       <Command.List>
-        <Command.Empty>{kind === "labels" ? "This issue has no label fields." : "No matches."}</Command.Empty>
+        <Command.Empty>
+          {kind === "labels" ? "This issue has no label fields." : field ? "Type a value to set it." : "No matches."}
+        </Command.Empty>
         {groups.map((group) => (
           <Command.Group key={group} heading={group || undefined}>
             {visible

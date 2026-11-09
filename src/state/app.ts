@@ -70,13 +70,16 @@ export type PickerKind =
   | "tracker"
   | "category"
   | "project"
-  | "done";
+  | "done"
+  | "field";
 
 export interface PickerState {
   kind: PickerKind;
   issueId: number;
   /** For the relation picker: how to connect, once chosen. */
   relation?: RelationChoice;
+  /** For the custom field picker: which field. */
+  fieldId?: number;
 }
 
 export interface AppState {
@@ -121,7 +124,7 @@ export interface AppState {
   openIssue(id: number | null): void;
   focusIssue(id: number | null): void;
   setPaletteOpen(open: boolean): void;
-  openPicker(kind: PickerKind, issueId: number, relation?: RelationChoice): void;
+  openPicker(kind: PickerKind, issueId: number, relation?: RelationChoice, fieldId?: number): void;
   closePicker(): void;
   syncNow(): Promise<void>;
   updateIssue(id: number, changes: IssueChanges): Promise<IssueDetails | null>;
@@ -353,8 +356,8 @@ export const useApp = create<AppState>()((set, get) => {
       set({ paletteOpen: open });
     },
 
-    openPicker(kind, issueId, relation) {
-      set({ picker: { kind, issueId, relation }, paletteOpen: false });
+    openPicker(kind, issueId, relation, fieldId) {
+      set({ picker: { kind, issueId, relation, fieldId }, paletteOpen: false });
     },
 
     closePicker() {
@@ -425,9 +428,9 @@ export const useApp = create<AppState>()((set, get) => {
       const id = details.issue.id;
       const known = issues.get(id);
       const patch: Partial<Issue> = {};
-      // Redmine doesn't touch updated_on when relations, watchers or logged time change;
-      // attachments only come with details.
-      for (const key of ["relations", "watchers", "attachments", "spent_hours", "total_spent_hours"] as const) {
+      // Redmine doesn't touch updated_on when relations, watchers or logged time change,
+      // or when an admin adds a custom field; attachments only come with details.
+      for (const key of ["relations", "watchers", "attachments", "spent_hours", "total_spent_hours", "custom_fields"] as const) {
         // Watchers missing from details means the role can't see them (any more).
         const fresh = key === "watchers" ? (details.issue.watchers ?? null) : details.issue[key];
         if (known && fresh !== undefined && JSON.stringify(known[key] ?? null) !== JSON.stringify(fresh)) patch[key] = fresh as never;
