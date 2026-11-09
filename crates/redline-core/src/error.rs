@@ -9,6 +9,10 @@ pub enum Error {
     #[error("That doesn't look like a web address: {0}")]
     InvalidUrl(String),
 
+    /// A custom header or the username can't be sent as given.
+    #[error("{0}")]
+    InvalidHeader(String),
+
     /// The server couldn't be reached at all (DNS, TLS, connection refused,
     /// timeout).
     #[error("Couldn't reach the server: {0}")]
@@ -33,6 +37,14 @@ pub enum Error {
     /// is turned off on the server.
     #[error("Redmine says you don't have permission for this.")]
     Forbidden,
+
+    /// A 401, 403 or 407 that didn't come from Redmine, or a redirect to
+    /// another host: usually a proxy or gateway in front of Redmine that
+    /// wants something Redline didn't send.
+    #[error(
+        "The server didn't let the request through (HTTP {0}). If a proxy or gateway sits in front of Redmine, it may need a username or other headers."
+    )]
+    Refused(u16),
 
     /// 404 for a specific object (an issue that was deleted or hidden).
     #[error("Not found in Redmine.")]
@@ -66,11 +78,13 @@ impl Error {
     pub fn code(&self) -> &'static str {
         match self {
             Error::InvalidUrl(_) => "invalid_url",
+            Error::InvalidHeader(_) => "invalid_header",
             Error::Network(_) => "network",
             Error::NotRedmine => "not_redmine",
             Error::Unauthorized => "unauthorized",
             Error::RestApiDisabled => "rest_api_disabled",
             Error::Forbidden => "forbidden",
+            Error::Refused(_) => "refused",
             Error::NotFound => "not_found",
             Error::Rejected(_) => "rejected",
             Error::Busy => "busy",

@@ -25,6 +25,27 @@ Redmine 6.1 and later, with the REST API turned on (Administration > Settings
 > API). Older releases aren't supported. See
 [ADR 0005](docs/adr/0005-supported-redmine-versions.md).
 
+## Servers behind a proxy or gateway
+
+Some organisations put a reverse proxy or gateway in front of Redmine that
+wants more than the API key, such as an `X-Redmine-Username` header or an
+access token. On the sign-in screen, open **Advanced** to add:
+
+- **Username**, sent as `X-Redmine-Username` with every request.
+- **Custom headers**, any name and value pairs your proxy needs.
+
+Redline sends them with every request to that server (sign-in, sync, uploads
+and downloads) and to no other host. It keeps them in the system keychain
+with your API key, and never writes them to logs. To change them later, open
+Settings > Connection; Redline checks them with the server before saving.
+Headers Redline sets itself, such as `X-Redmine-API-Key`, `Accept` and
+`Content-Type`, can't be overridden.
+
+If sign-in fails with a message about the server not letting the request
+through, its HTTP status code is shown: that's usually the proxy asking for
+something extra. Images linked from outside Redmine, and pages opened with
+"Open in Redmine" in your browser, don't carry these headers.
+
 ## Platforms
 
 macOS and Windows 10 and 11.

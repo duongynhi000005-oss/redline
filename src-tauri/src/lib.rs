@@ -88,6 +88,8 @@ pub fn run() {
             commands::get_account,
             commands::sign_in,
             commands::sign_out,
+            commands::get_connection,
+            commands::update_connection,
             commands::get_metadata,
             commands::list_issues,
             commands::get_issues,

@@ -1,3 +1,4 @@
+import type { ConnectionOptions } from "./connection";
 import type {
   Account,
   AppInfo,
@@ -44,8 +45,13 @@ export type FileDrop =
 export interface Backend {
   appInfo(): Promise<AppInfo>;
   getAccount(): Promise<Account | null>;
-  signIn(serverUrl: string, apiKey: string): Promise<Account>;
+  /** `connection` is the username and custom headers a proxy in front of the server needs. */
+  signIn(serverUrl: string, apiKey: string, connection?: ConnectionOptions): Promise<Account>;
   signOut(): Promise<void>;
+  /** The signed-in server's username and custom headers. */
+  getConnection(): Promise<ConnectionOptions>;
+  /** Checks new headers against the server, saves them and restarts syncing with them. */
+  updateConnection(connection: ConnectionOptions): Promise<ConnectionOptions>;
   getMetadata(): Promise<Metadata>;
   listIssues(): Promise<Issue[]>;
   getIssues(ids: number[]): Promise<Issue[]>;

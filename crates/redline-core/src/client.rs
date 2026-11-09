@@ -1,7 +1,10 @@
 //! A small, polite client for Redmine's REST API.
 //!
 //! - Authenticates with the signed-in person's API key in the
-//!   `X-Redmine-API-Key` header.
+//!   `X-Redmine-API-Key` header, plus any username and custom headers the
+//!   server's proxy needs (see [`ConnectionOptions`]).
+//! - Follows redirects only within the same server, so the key and headers
+//!   never go to another host.
 //! - Sends at most [`MAX_PARALLEL_REQUESTS`] requests at once, so a small
 //!   self-hosted server isn't flooded.
 //! - Retries 429 and 503 answers a few times, honouring `Retry-After`.
@@ -17,6 +20,7 @@ use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 use url::Url;
 
+use crate::connection::ConnectionOptions;
 use crate::error::{Error, Result};
 use crate::models::*;
 
@@ -90,9 +94,19 @@ impl Client {
     /// A client for the Redmine at `server` (for example
     /// `https://redmine.example.com` or `https://example.com/redmine`).
     pub fn new(server: &str, api_key: &str) -> Result<Self> {
+        Self::with_options(server, api_key, &ConnectionOptions::default())
+    }
+
+    /// A client that also sends `options`' username and custom headers on
+    /// every request. Fails with [`Error::InvalidHeader`] if one can't be
+    /// sent.
+    pub fn with_options(server: &str, api_key: &str, options: &ConnectionOptions) -> Result<Self> {
         let base = normalize_server_url(server)?;
+        let headers = options.header_map()?;
         let http = reqwest::Client::builder()
             .user_agent(concat!("Redline/", env!("CARGO_PKG_VERSION")))
+            .default_headers(headers)
+            .redirect(same_origin_redirects())
             .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(60))
             .build()
@@ -951,6 +965,23 @@ pub fn normalize_server_url(input: &str) -> Result<Url> {
     Ok(url)
 }
 
+/// Follows up to 10 redirects that stay on the same scheme, host and port.
+/// A redirect elsewhere (a single sign-on page, say) stops there and its
+/// answer is treated like any other, so the key never leaves the server.
+fn same_origin_redirects() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        let same = attempt
+            .previous()
+            .first()
+            .is_some_and(|first| first.origin() == attempt.url().origin());
+        if attempt.previous().len() >= 10 || !same {
+            attempt.stop()
+        } else {
+            attempt.follow()
+        }
+    })
+}
+
 fn network_error(e: reqwest::Error) -> Error {
     if e.is_decode() {
         Error::NotRedmine
@@ -973,8 +1004,37 @@ fn retry_after(response: &Response) -> Option<Duration> {
 
 async fn status_error(response: Response) -> Error {
     match response.status() {
-        StatusCode::UNAUTHORIZED => Error::Unauthorized,
-        StatusCode::FORBIDDEN => Error::Forbidden,
+        // Redmine answers a wrong key with an empty JSON 401, or asks for its
+        // own realm. A proxy asks for another realm or sends a web page.
+        StatusCode::UNAUTHORIZED => {
+            let challenge = response
+                .headers()
+                .get(reqwest::header::WWW_AUTHENTICATE)
+                .and_then(|v| v.to_str().ok())
+                .map(str::to_owned);
+            let from_redmine = match challenge {
+                Some(c) => c.contains("Redmine"),
+                None => !looks_like_html(response).await,
+            };
+            if from_redmine {
+                Error::Unauthorized
+            } else {
+                Error::Refused(401)
+            }
+        }
+        // Redmine answers 403 with an empty or JSON body. A page of HTML is
+        // a proxy's.
+        StatusCode::FORBIDDEN => {
+            if looks_like_html(response).await {
+                Error::Refused(403)
+            } else {
+                Error::Forbidden
+            }
+        }
+        StatusCode::PROXY_AUTHENTICATION_REQUIRED => Error::Refused(407),
+        // A redirect to another host, which Redline doesn't follow: usually
+        // a single sign-on page in front of Redmine.
+        s if s.is_redirection() => Error::Refused(s.as_u16()),
         StatusCode::NOT_FOUND => Error::NotFound,
         StatusCode::UNPROCESSABLE_ENTITY => {
             let messages = response
@@ -988,6 +1048,17 @@ async fn status_error(response: Response) -> Error {
         }
         other => Error::Http(other.as_u16()),
     }
+}
+
+async fn looks_like_html(response: Response) -> bool {
+    let html_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.contains("html"));
+    let text = response.text().await.unwrap_or_default();
+    let body = text.trim_start();
+    !body.is_empty() && (html_type || body.starts_with('<'))
 }
 
 async fn decode<T: DeserializeOwned>(response: Response) -> Result<T> {

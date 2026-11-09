@@ -1,4 +1,6 @@
 import type { Backend } from "./backend";
+import type { ConnectionOptions } from "./connection";
+import { NO_CONNECTION, connectionProblem, normalizeConnection } from "./connection";
 import { applyChanges as applyEdit } from "./edit";
 import { INVERSE, mentionedIds } from "./relations";
 import type {
@@ -396,6 +398,13 @@ function buildJournals(issue: Issue): Journal[] {
 
 const DEMO_SERVER = "https://redmine.example.com/";
 
+/** What the core says when a proxy turns sign-in away. */
+const GATEWAY_REFUSAL = {
+  code: "refused",
+  message:
+    "The server didn't let the request through (HTTP 401). If a proxy or gateway sits in front of Redmine, it may need a username or other headers.",
+};
+
 export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: number } = {}): Backend {
   const latency = options.latencyMs ?? 0;
   const wait = <T>(value: T) => new Promise<T>((r) => setTimeout(() => r(value), latency));
@@ -419,6 +428,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     const issue = issues.get(child)!;
     issues.set(child, { ...issue, parent: { id: 1 } });
   }
+  let connection: ConnectionOptions = NO_CONNECTION;
   let account: Account | null = options.signedIn
     ? { serverUrl: DEMO_SERVER, userId: 1, login: "dev", name: "Dana Developer" }
     : null;
@@ -727,15 +737,32 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     appInfo: () =>
       wait({ version: "0.1.0-demo", platform: /Mac/.test(navigator.platform) ? "macos" : "windows", material: "none" }),
     getAccount: () => wait(account),
-    async signIn(serverUrl, apiKey) {
+    async signIn(serverUrl, apiKey, options) {
       await wait(null);
       if (!apiKey.trim()) throw { code: "unauthorized", message: "Paste your Redmine API key." };
       if (!serverUrl.trim()) throw { code: "invalid_url", message: "That doesn't look like a web address: the address is empty" };
+      const next = normalizeConnection(options ?? NO_CONNECTION);
+      const problem = connectionProblem(next);
+      if (problem) throw { code: "invalid_header", message: problem };
+      // A demo server behind a gateway that wants a username.
+      if (/gateway/.test(serverUrl) && !next.username) throw GATEWAY_REFUSAL;
+      connection = next;
       account = { serverUrl: DEMO_SERVER, userId: 1, login: "dev", name: "Dana Developer" };
       return account;
     },
     async signOut() {
       account = null;
+      connection = NO_CONNECTION;
+    },
+    getConnection: () => wait(connection),
+    async updateConnection(options) {
+      await wait(null);
+      if (!account) throw { code: "signed_out", message: "You're signed out." };
+      const next = normalizeConnection(options);
+      const problem = connectionProblem(next);
+      if (problem) throw { code: "invalid_header", message: problem };
+      connection = next;
+      return connection;
     },
     getMetadata: () => wait(meta),
     listIssues: () => wait([...issues.values()].sort((a, b) => b.updated_on.localeCompare(a.updated_on))),

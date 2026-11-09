@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { knownLabelValues } from "../lib/edit";
 import type { StatusCategory } from "../lib/model";
 import { CATEGORY_LABEL, CATEGORY_ORDER, defaultCategory } from "../lib/model";
@@ -6,6 +6,10 @@ import { useApp } from "../state/app";
 import { useDerived } from "../state/derived";
 import { StatusIcon } from "./icons";
 import { useDialogFocus } from "./useDialogFocus";
+import { ConnectionFields } from "./ConnectionFields";
+import type { ConnectionOptions } from "../lib/connection";
+import { connectionProblem, normalizeConnection, sameConnection } from "../lib/connection";
+import { errorMessage } from "../lib/types";
 
 export function Settings() {
   const open = useApp((s) => s.settingsOpen);
@@ -146,6 +150,8 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
           )}
         </section>
 
+        <ServerHeaders />
+
         <section aria-labelledby="settings-account">
           <h2 id="settings-account">Account</h2>
           <p>
@@ -157,5 +163,95 @@ function SettingsPanel({ onClose }: { onClose: () => void }) {
         </section>
       </div>
     </div>
+  );
+}
+
+/**
+ * The username and custom headers a proxy in front of the server needs.
+ * Saving checks them against the server first, then syncs with them.
+ */
+function ServerHeaders() {
+  const backend = useApp((s) => s.backend);
+  const [saved, setSaved] = useState<ConnectionOptions | null>(null);
+  const [draft, setDraft] = useState<ConnectionOptions | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<{ kind: "error" | "saved"; message: string } | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    backend
+      ?.getConnection()
+      .then((c) => {
+        if (!live) return;
+        setSaved(c);
+        setDraft(c);
+      })
+      .catch((e) => live && setStatus({ kind: "error", message: errorMessage(e) }));
+    return () => {
+      live = false;
+    };
+  }, [backend]);
+
+  const changed = !!saved && !!draft && !sameConnection(saved, draft);
+
+  async function save() {
+    if (!backend || !draft) return;
+    const problem = connectionProblem(draft);
+    if (problem) {
+      setStatus({ kind: "error", message: problem });
+      return;
+    }
+    setBusy(true);
+    setStatus(null);
+    try {
+      const next = await backend.updateConnection(normalizeConnection(draft));
+      setSaved(next);
+      setDraft(next);
+      setStatus({ kind: "saved", message: "Saved. Redline checked them with the server." });
+    } catch (e) {
+      setStatus({ kind: "error", message: errorMessage(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="settings-connection">
+      <h2 id="settings-connection">Connection</h2>
+      <p className="muted">Only for a server behind a proxy or gateway that needs more than your API key.</p>
+      {draft && (
+        <form
+          className="settings-connection"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
+        >
+          <ConnectionFields
+            value={draft}
+            onChange={(next) => {
+              setDraft(next);
+              setStatus(null);
+            }}
+            disabled={busy}
+          />
+          <div className="settings-connection-actions">
+            <button type="submit" className="button-secondary" disabled={!changed || busy}>
+              {busy ? "Checking…" : "Save"}
+            </button>
+            {changed && !busy && (
+              <button type="button" className="link-button" onClick={() => setDraft(saved)}>
+                Discard changes
+              </button>
+            )}
+          </div>
+        </form>
+      )}
+      {status && (
+        <p className={status.kind === "error" ? "settings-error" : "muted"} role={status.kind === "error" ? "alert" : "status"}>
+          {status.message}
+        </p>
+      )}
+    </section>
   );
 }
