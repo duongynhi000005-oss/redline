@@ -93,6 +93,12 @@ export function DateProperty({
             }
           }}
         />
+        {/* An empty date box shows a made-up date (WebKit shows today's); say None instead. */}
+        {!shown && (
+          <span className="property-date-none muted" aria-hidden="true">
+            None
+          </span>
+        )}
         {value && (
           <button
             type="button"

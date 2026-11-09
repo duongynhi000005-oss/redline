@@ -600,8 +600,25 @@ h2 {
   outline: none;
 }
 
-.property-date input.empty {
-  color: var(--text-tertiary);
+.property-date {
+  position: relative;
+}
+
+.property-date input.empty:not(:focus),
+.property-date input.empty:not(:focus)::-webkit-datetime-edit {
+  color: transparent;
+}
+
+.property-date-none {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.property-date input.empty:focus + .property-date-none {
+  display: none;
 }
 
 .property-input {
