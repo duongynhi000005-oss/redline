@@ -2,11 +2,15 @@ import { useMemo } from "react";
 import type { CategoryMap, PriorityLevel, StatusCategory } from "../lib/model";
 import { CATEGORY_ORDER, categoryMap, issueCategory, priorityLevels, teamOf } from "../lib/model";
 import type { Issue, Metadata, Project } from "../lib/types";
+import type { ServerSettings } from "../lib/settings";
+import { DEFAULT_SETTINGS } from "../lib/settings";
 import type { Route } from "./app";
 import { useApp } from "./app";
 
 export interface Derived {
   categories: CategoryMap;
+  /** Custom fields shown as labels; null means every multi-value field. */
+  labelFields: Set<number> | null;
   priorities: Map<number, PriorityLevel>;
   projects: Map<number, Project>;
   /** Top-level projects, alphabetically. */
@@ -15,7 +19,7 @@ export interface Derived {
   teamProjects: Map<number, Project[]>;
 }
 
-export function derive(meta: Metadata): Derived {
+export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTINGS): Derived {
   const projects = new Map(meta.projects.map((p) => [p.id, p]));
   const teams = meta.projects
     .filter((p) => !p.parent || !projects.has(p.parent.id))
@@ -27,7 +31,8 @@ export function derive(meta: Metadata): Derived {
   }
   teamProjects.forEach((list) => list.sort((a, b) => a.name.localeCompare(b.name)));
   return {
-    categories: categoryMap(meta),
+    categories: categoryMap(meta, settings.statusCategories),
+    labelFields: settings.labelFields ? new Set(settings.labelFields) : null,
     priorities: priorityLevels(meta.priorities),
     projects,
     teams,
@@ -37,6 +42,7 @@ export function derive(meta: Metadata): Derived {
 
 const EMPTY: Derived = {
   categories: new Map(),
+  labelFields: null,
   priorities: new Map(),
   projects: new Map(),
   teams: [],
@@ -45,7 +51,8 @@ const EMPTY: Derived = {
 
 export function useDerived(): Derived {
   const meta = useApp((s) => s.meta);
-  return useMemo(() => (meta ? derive(meta) : EMPTY), [meta]);
+  const settings = useApp((s) => s.settings);
+  return useMemo(() => (meta ? derive(meta, settings) : EMPTY), [meta, settings]);
 }
 
 /** Priority order for sorting: Urgent, High, Medium, Low, then no priority. */

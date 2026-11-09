@@ -3,6 +3,8 @@ import type { Backend } from "../lib/backend";
 import type { Account, Issue, IssueChanges, IssueDetails, Metadata, SyncState } from "../lib/types";
 import { errorMessage } from "../lib/types";
 import { applyChanges } from "../lib/edit";
+import type { ServerSettings } from "../lib/settings";
+import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "../lib/settings";
 
 /** Where the main pane is. Teams are top-level Redmine projects. */
 export type Route =
@@ -39,6 +41,8 @@ export interface AppState {
   picker: PickerState | null;
   /** The new-issue form. */
   composerOpen: boolean;
+  settingsOpen: boolean;
+  settings: ServerSettings;
   /** A short message shown at the bottom of the window, like a failed edit. */
   toast: string | null;
 
@@ -55,6 +59,8 @@ export interface AppState {
   updateIssue(id: number, changes: IssueChanges): Promise<IssueDetails | null>;
   showToast(message: string | null): void;
   setComposerOpen(open: boolean): void;
+  setSettingsOpen(open: boolean): void;
+  updateSettings(change: Partial<ServerSettings>): void;
   createIssue(fields: IssueChanges): Promise<Issue | null>;
 }
 
@@ -79,6 +85,8 @@ function initial() {
     paletteOpen: false,
     picker: null as PickerState | null,
     composerOpen: false,
+    settingsOpen: false,
+    settings: DEFAULT_SETTINGS,
     toast: null as string | null,
   };
 }
@@ -89,7 +97,13 @@ export const useApp = create<AppState>()((set, get) => {
     const gen = ++generation;
     const [meta, list] = await Promise.all([backend.getMetadata(), backend.listIssues()]);
     if (gen !== generation) return;
-    set({ meta, issues: new Map(list.map((i) => [i.id, i])), phase: "ready" });
+    const account = get().account;
+    set({
+      meta,
+      issues: new Map(list.map((i) => [i.id, i])),
+      settings: account ? loadSettings(account.serverUrl, account.userId) : DEFAULT_SETTINGS,
+      phase: "ready",
+    });
     unlisten.forEach((u) => u());
     unlisten = [];
     const subscriptions = await Promise.all([
@@ -130,6 +144,9 @@ export const useApp = create<AppState>()((set, get) => {
         break;
       case "sync-now":
         void state.syncNow();
+        break;
+      case "settings":
+        state.setSettingsOpen(true);
         break;
       case "sign-out":
         void state.signOut();
@@ -237,6 +254,17 @@ export const useApp = create<AppState>()((set, get) => {
 
     setComposerOpen(open) {
       set({ composerOpen: open, paletteOpen: false });
+    },
+
+    setSettingsOpen(open) {
+      set({ settingsOpen: open, paletteOpen: false, picker: null });
+    },
+
+    updateSettings(change) {
+      const settings = { ...get().settings, ...change };
+      set({ settings });
+      const account = get().account;
+      if (account) saveSettings(account.serverUrl, account.userId, settings);
     },
 
     async createIssue(fields) {

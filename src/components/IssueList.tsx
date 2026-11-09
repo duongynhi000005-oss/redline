@@ -61,7 +61,7 @@ export function IssueRow({
   onFocus: () => void;
 }) {
   const category = issueCategory(issue, d.categories);
-  const labels = issueLabels(issue, null);
+  const labels = issueLabels(issue, d.labelFields);
   return (
     <div
       id={`issue-row-${issue.id}`}

@@ -166,8 +166,11 @@ export function IssueDetail({ id }: { id: number }) {
 
   const category = issueCategory(issue, d.categories);
   const level = d.priorities.get(issue.priority.id) ?? 0;
-  const labels = issueLabels(issue, null);
-  const otherFields = issue.custom_fields.filter((f) => !f.multiple && f.value);
+  const labels = issueLabels(issue, d.labelFields);
+  // Fields not shown as labels get a row of their own.
+  const otherFields = issue.custom_fields.filter(
+    (f) => f.value && f.value.length !== 0 && (d.labelFields ? !d.labelFields.has(f.id) : !f.multiple),
+  );
 
   return (
     <section className="main detail" aria-label={`Issue ${issue.id}`}>
@@ -248,7 +251,7 @@ export function IssueDetail({ id }: { id: number }) {
             {issue.done_ratio ? <Property label="Done">{issue.done_ratio}%</Property> : null}
             {otherFields.map((f) => (
               <Property key={f.id} label={f.name}>
-                {String(f.value)}
+                {Array.isArray(f.value) ? f.value.join(", ") : f.value}
               </Property>
             ))}
           </dl>

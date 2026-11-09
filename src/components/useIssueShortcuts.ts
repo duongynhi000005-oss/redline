@@ -34,13 +34,18 @@ export function useIssueShortcuts() {
           state.setComposerOpen(true);
           return;
         }
+        if (matchesShortcut(e, "mod+,")) {
+          e.preventDefault();
+          state.setSettingsOpen(true);
+          return;
+        }
         if (matchesShortcut(e, "mod+r")) {
           e.preventDefault();
           void state.syncNow();
           return;
         }
       }
-      if (state.paletteOpen || state.picker || state.composerOpen || isTyping(e.target) || e.repeat) return;
+      if (state.paletteOpen || state.picker || state.composerOpen || state.settingsOpen || isTyping(e.target) || e.repeat) return;
       if (matchesShortcut(e, "c")) {
         e.preventDefault();
         state.setComposerOpen(true);

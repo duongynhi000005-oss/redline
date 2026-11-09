@@ -24,4 +24,5 @@ Element.prototype.scrollTo ??= function scrollTo() {} as Element["scrollTo"];
 afterEach(() => {
   cleanup();
   resetApp();
+  localStorage.clear();
 });

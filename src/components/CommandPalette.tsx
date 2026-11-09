@@ -67,6 +67,7 @@ function PaletteContent() {
   const syncNow = useApp((s) => s.syncNow);
   const signOut = useApp((s) => s.signOut);
   const setComposerOpen = useApp((s) => s.setComposerOpen);
+  const setSettingsOpen = useApp((s) => s.setSettingsOpen);
   const issues = useApp((s) => s.issues);
   const target = useApp((s) => targetIssueId(s));
   const d = useDerived();
@@ -112,11 +113,12 @@ function PaletteContent() {
       }
     }
     list.push(
+      { id: "settings", label: "Open settings", group: "Redline", shortcut: "mod+,", run: () => setSettingsOpen(true) },
       { id: "sync", label: "Sync now", group: "Redline", icon: <Icon name="sync" />, run: () => void syncNow() },
       { id: "sign-out", label: "Sign out", group: "Redline", run: () => void signOut() },
     );
     return list;
-  }, [d, navigate, syncNow, signOut, target, setComposerOpen]);
+  }, [d, navigate, syncNow, signOut, target, setComposerOpen, setSettingsOpen]);
 
   const q = query.trim();
   const visibleActions = q ? actions.filter((a) => matchesQuery(`${a.label} ${a.keywords ?? ""}`, q)) : actions;

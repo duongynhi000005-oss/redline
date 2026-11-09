@@ -1065,3 +1065,96 @@ h2 {
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
+
+/* Settings */
+
+.settings {
+  width: min(640px, calc(100vw - 48px));
+  max-height: 76vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-header h1 {
+  font-size: 15px;
+}
+
+.settings-close {
+  margin-left: auto;
+  align-self: center;
+}
+
+.settings-body {
+  overflow-y: auto;
+  padding: 4px 20px 20px;
+}
+
+.settings-body section {
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-body section:last-child {
+  border-bottom: 0;
+}
+
+.settings-body h2 {
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.settings-body p {
+  margin: 0 0 10px;
+}
+
+.settings-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 10px;
+}
+
+.settings-table td {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-table td:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-table td:last-child {
+  text-align: right;
+}
+
+.settings select {
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.settings-fields {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.settings-fields label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+}

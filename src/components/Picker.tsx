@@ -115,20 +115,27 @@ export function pickerOptions(
     case "labels": {
       const options: PickerOption[] = [];
       const known = knownLabelValues(allIssues);
-      for (const field of issue.custom_fields.filter((f) => f.multiple)) {
+      const isLabel = (f: { id: number; multiple?: boolean }) => (d.labelFields ? d.labelFields.has(f.id) : !!f.multiple);
+      for (const field of issue.custom_fields.filter(isLabel)) {
         const current = Array.isArray(field.value) ? field.value.filter(Boolean) : field.value ? [field.value] : [];
         const values = new Set([...(known.get(field.id)?.values ?? []), ...current]);
         for (const value of [...values].sort((a, b) => a.localeCompare(b))) {
           const selected = current.includes(value);
-          const next = selected ? current.filter((v) => v !== value) : [...current, value];
+          let value_: string | string[];
+          if (field.multiple) {
+            const next = selected ? current.filter((v) => v !== value) : [...current, value];
+            // Redmine clears a multi-value field when sent a single blank.
+            value_ = next.length ? next : [""];
+          } else {
+            value_ = selected ? "" : value;
+          }
           options.push({
             key: `label-${field.id}-${value}`,
             label: value,
             group: field.name,
             icon: <span className="chip-dot" style={{ background: `hsl(${hueFor(field.name + value)} 55% 55%)` }} />,
             selected,
-            // Redmine clears a multi-value field when sent a single blank.
-            changes: { custom_fields: [{ id: field.id, value: next.length ? next : [""] }] },
+            changes: { custom_fields: [{ id: field.id, value: value_ }] },
           });
         }
       }

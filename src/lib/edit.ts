@@ -56,12 +56,14 @@ export function applyChanges(issue: Issue, c: IssueChanges, meta: Metadata): Iss
   return next;
 }
 
-/** Every value seen for each multi-value custom field, for the label picker. */
+/**
+ * Every value seen for each custom field, for the label picker. Redmine only
+ * tells admins a field's possible values, so Redline learns them from issues.
+ */
 export function knownLabelValues(issues: Iterable<Issue>): Map<number, { name: string; values: string[] }> {
   const fields = new Map<number, { name: string; values: Set<string> }>();
   for (const issue of issues) {
     for (const f of issue.custom_fields) {
-      if (!f.multiple) continue;
       let entry = fields.get(f.id);
       if (!entry) fields.set(f.id, (entry = { name: f.name, values: new Set() }));
       for (const v of Array.isArray(f.value) ? f.value : f.value ? [f.value] : []) if (v) entry.values.add(v);
