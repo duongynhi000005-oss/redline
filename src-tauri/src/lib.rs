@@ -100,6 +100,8 @@ pub fn run() {
             commands::set_watcher,
             commands::open_in_redmine,
             commands::remove_relation,
+            commands::delete_issue,
+            commands::update_comment,
             commands::find_mentions,
             commands::attachment_data,
             commands::save_attachment,

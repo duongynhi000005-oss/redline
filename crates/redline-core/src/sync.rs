@@ -455,6 +455,68 @@ impl Syncer {
         Ok((created, changed))
     }
 
+    /// Changes or removes a comment, then re-reads its issue.
+    pub async fn update_comment(
+        &self,
+        issue_id: u64,
+        journal_id: u64,
+        notes: &str,
+    ) -> Result<IssueDetails> {
+        self.client.update_journal(journal_id, notes).await?;
+        self.issue_details(issue_id).await
+    }
+
+    /// Deletes an issue. Redmine deletes its sub-issues too, so they leave
+    /// the cache with it, and its parent is re-read for its new totals.
+    /// Returns the ids removed and the ids changed.
+    pub async fn delete_issue(&self, id: u64) -> Result<(Vec<u64>, Vec<u64>)> {
+        let cached = self.store.issues()?;
+        let parent = cached
+            .iter()
+            .find(|i| i.id == id)
+            .and_then(|i| i.parent.as_ref().map(|p| p.id));
+        match self.client.delete_issue(id).await {
+            Ok(()) | Err(Error::NotFound) => {}
+            Err(e) => return Err(e),
+        }
+        let mut removed = vec![id];
+        let mut i = 0;
+        while i < removed.len() {
+            let under = removed[i];
+            removed.extend(
+                cached
+                    .iter()
+                    .filter(|c| c.parent.as_ref().is_some_and(|p| p.id == under))
+                    .map(|c| c.id),
+            );
+            i += 1;
+        }
+        self.store.remove_issues(&removed)?;
+        // The parent's totals and the other ends of its relations change too.
+        let mut touched: Vec<u64> = parent.into_iter().collect();
+        for issue in &cached {
+            for r in issue.relations.iter().flatten() {
+                let other = if removed.contains(&r.issue_id) {
+                    r.issue_to_id
+                } else if removed.contains(&r.issue_to_id) {
+                    r.issue_id
+                } else {
+                    continue;
+                };
+                if !removed.contains(&other) && !touched.contains(&other) {
+                    touched.push(other);
+                }
+            }
+        }
+        touched.retain(|id| !removed.contains(id));
+        let changed = if touched.is_empty() {
+            vec![]
+        } else {
+            self.refresh_issues(&touched).await?
+        };
+        Ok((removed, changed))
+    }
+
     /// Removes a relation, then refreshes both issues it joined.
     pub async fn remove_relation(&self, relation: &Relation) -> Result<Vec<u64>> {
         match self.client.delete_relation(relation.id).await {

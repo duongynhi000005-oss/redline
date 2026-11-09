@@ -25,7 +25,7 @@ browser, because Redmine has no API for it
 | Custom fields (every format) | Values on the issue; definitions are admin-only, so formats are learned from values | ✅ | Multi-value fields are labels. Every other field has a row in the properties panel, empty ones too: fields holding only days are edited as dates, the rest pick a value Redline has seen or take a typed one. User and version fields show raw values, since their formats can't be read without admin rights. #42 |
 | Status transitions | `include=allowed_statuses` | ✅ | Status picker and board drops |
 | Comments (notes), private notes | `PUT /issues/:id.json` with `notes` | ✅ | Activity |
-| Edit a comment | `PUT /journals/:id.json` | ⬜ | Comment menu. #42 |
+| Edit a comment | `PUT /journals/:id.json` (Redmine 5.0+) | ✅ | Edit and Delete on a comment, for your own with "Edit own notes" or anyone's with "Edit notes". An emptied comment is removed, and "edited" marks a changed one. #42 |
 | History (journal details) | `include=journals` | ✅ | Activity |
 | Related issues (relates, duplicates, blocks, precedes, follows, copied) | `GET/POST /issues/:id/relations.json`, `DELETE /relations/:id.json`; `include=relations` on lists | ✅ | Related section on the issue, add and remove; blocked mark on rows and cards. Redmine doesn't change `updated_on` for relation changes, so other people's relation edits arrive when the issue is opened or on the six-hourly re-check. #35 |
 | Mentions of other issues (`#123`) | Text in descriptions and notes; `GET /search.json` finds notes that mention an issue | ✅ | Related section: "Mentions" and "Mentioned in". #35 |
@@ -34,8 +34,8 @@ browser, because Redmine has no API for it
 | Attachments | `include=attachments`, `POST /uploads.json`, `GET /attachments/download/:id`, `DELETE /attachments/:id.json` | ✅ | Tiles on the issue with image previews, save, delete, drop or pick files to upload (with a comment when dropped on the comment box). Inline images in descriptions and comments show the attachment. Files are cached on disk once read. #39 |
 | Associated revisions | `include=changesets` | ⬜ | Commits on the issue. #48 |
 | Spent time on an issue | `GET/POST/PUT/DELETE /time_entries.json` | ✅ | Spent property and a Time section on the issue: who logged what, when and as which activity, changed or deleted where the role allows. Log time with Cmd/Ctrl+Shift+T, typing 1.5, 1:30 or 1h 30m. #40 |
-| Copy issue | No API | ⬜ | "Duplicate issue" creates a copy with the same fields and a "copied to" relation. #42 |
-| Delete issue | `DELETE /issues/:id.json` (needs permission) | ⬜ | Issue menu, with confirmation. #42 |
+| Copy issue | No API | ✅ | Duplicate, in the issue's … menu and the command palette, creates an issue with the same fields (not status, history, files or sub-issues, as Redmine's Copy does by default) and a "copied to" relation, then opens it. #42 |
+| Delete issue | `DELETE /issues/:id.json` (needs Delete issues) | ✅ | In the issue's … menu and the command palette, where the role may delete. A confirmation says how many sub-issues and how much logged time go with it, since Redmine deletes both. #42 |
 | Bulk edit | No bulk API; one request per issue | ⬜ | Multi-select (X) then a picker, sent politely one by one. #43 |
 | Reactions | UI since 6.1; no API before 7.1 | 🌐 | Shown when the server's API offers them. Not planned until 7.1 ships |
 

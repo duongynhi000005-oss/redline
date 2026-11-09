@@ -10,6 +10,7 @@ import { canManageVersions, cycleProjects } from "./Cycle";
 import { ISSUE_SHORTCUTS, issueCommandAvailable, runIssueCommand } from "./useIssueShortcuts";
 import { useDerived } from "../state/derived";
 import type { IconName } from "./icons";
+import { issueActions } from "./IssueActions";
 import { Icon, StatusIcon } from "./icons";
 import { fieldEnabled, moveTargets } from "../lib/edit";
 
@@ -218,6 +219,25 @@ function PaletteContent() {
         keywords: "watchers watch notify",
         run: () => useApp.getState().openPicker("subscribers", target),
       });
+      const actions = issue ? issueActions(meta, issue) : null;
+      if (actions?.duplicate)
+        list.push({
+          id: "issue-duplicate",
+          label: "Duplicate issue",
+          group: `Issue #${target}`,
+          icon: <Icon name="copy" />,
+          keywords: "copy clone",
+          run: () => void useApp.getState().duplicateIssue(target),
+        });
+      if (actions?.delete)
+        list.push({
+          id: "issue-delete",
+          label: "Delete issue…",
+          group: `Issue #${target}`,
+          icon: <Icon name="trash" />,
+          keywords: "remove destroy",
+          run: () => useApp.getState().openDeleteDialog(target),
+        });
       for (const c of RELATION_CHOICES) {
         list.push({
           id: `issue-relate-${c.choice}`,

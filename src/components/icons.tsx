@@ -306,6 +306,21 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M7 2.5A4.5 4.5 0 0 1 11.5 7H7z" fill="currentColor" />
         </Svg>
       );
+    case "more":
+      return (
+        <Svg {...props}>
+          <circle cx="3.5" cy="7" r="1" fill="currentColor" />
+          <circle cx="7" cy="7" r="1" fill="currentColor" />
+          <circle cx="10.5" cy="7" r="1" fill="currentColor" />
+        </Svg>
+      );
+    case "copy":
+      return (
+        <Svg {...props}>
+          <rect x="4.5" y="4.5" width="7" height="7" rx="1.3" {...stroke} />
+          <path d="M9.5 4.5V3.8a1.3 1.3 0 0 0-1.3-1.3H3.8a1.3 1.3 0 0 0-1.3 1.3v4.4a1.3 1.3 0 0 0 1.3 1.3h.7" {...stroke} />
+        </Svg>
+      );
     case "lock":
       return (
         <Svg {...props}>
@@ -385,4 +400,6 @@ export type IconName =
   | "category"
   | "tracker"
   | "done"
-  | "lock";
+  | "lock"
+  | "more"
+  | "copy";

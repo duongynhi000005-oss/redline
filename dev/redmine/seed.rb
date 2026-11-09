@@ -57,6 +57,8 @@ end
 developer = Role.find_by(name: "Developer") || Role.givable.first
 # Many teams let people fix their own time; Redmine's defaults don't.
 developer.add_permission!(:edit_own_time_entries) unless developer.has_permission?(:edit_own_time_entries)
+# And fix their own comments, which Redmine's defaults don't allow either.
+developer.add_permission!(:edit_own_issue_notes) unless developer.has_permission?(:edit_own_issue_notes)
 
 labels = IssueCustomField.find_by(name: "Area") || IssueCustomField.create!(
   name: "Area", field_format: "list", multiple: true, is_for_all: true, is_filter: true,

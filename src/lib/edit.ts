@@ -123,3 +123,31 @@ export function nextFieldValue(current: string[], multiple: boolean, value: stri
 export function fieldValues(value: string | string[] | null | undefined): string[] {
   return (Array.isArray(value) ? value : value ? [value] : []).filter(Boolean);
 }
+
+/**
+ * The fields of a new issue copied from another, as Redmine's own Copy does:
+ * everything but status, history, files and sub-issues.
+ */
+export function copyFields(issue: Issue): IssueChanges {
+  const custom = issue.custom_fields
+    .filter((f) => fieldValues(f.value).length)
+    .map((f) => ({ id: f.id, value: f.multiple ? fieldValues(f.value) : fieldValues(f.value)[0]! }));
+  const fields: IssueChanges = {
+    project_id: issue.project.id,
+    tracker_id: issue.tracker.id,
+    subject: issue.subject,
+    description: issue.description ?? undefined,
+    priority_id: issue.priority.id,
+    assigned_to_id: issue.assigned_to?.id ?? null,
+    category_id: issue.category?.id ?? null,
+    fixed_version_id: issue.fixed_version?.id ?? null,
+    parent_issue_id: issue.parent?.id ?? null,
+    start_date: issue.start_date ?? null,
+    due_date: issue.due_date ?? null,
+    estimated_hours: issue.estimated_hours ?? null,
+    is_private: issue.is_private || undefined,
+    ...(custom.length ? { custom_fields: custom } : {}),
+  };
+  // Leave out what's empty rather than send it.
+  return Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== null && v !== undefined)) as IssueChanges;
+}

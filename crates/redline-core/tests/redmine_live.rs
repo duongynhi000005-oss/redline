@@ -543,3 +543,62 @@ async fn sets_and_clears_category_estimate_and_done() {
     assert_eq!(cleared.estimated_hours, None);
     assert_eq!(cleared.start_date, None);
 }
+
+#[tokio::test]
+async fn edits_and_removes_a_comment_but_may_not_delete_the_issue() {
+    let client = live!();
+    let projects = client.projects().await.unwrap();
+    let web = projects.iter().find(|p| p.identifier == "web").unwrap();
+    let created = client
+        .create_issue(&IssueChanges {
+            project_id: Some(web.id),
+            subject: Some("Comments from the live test".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    client
+        .update_issue(
+            created.id,
+            &IssueChanges {
+                notes: Some("First take".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let journal = client
+        .issue(created.id, &["journals"])
+        .await
+        .unwrap()
+        .journals
+        .unwrap();
+    let id = journal.last().unwrap().id;
+
+    // The seed lets developers edit their own comments.
+    client.update_journal(id, "Second take").await.unwrap();
+    let journals = client
+        .issue(created.id, &["journals"])
+        .await
+        .unwrap()
+        .journals
+        .unwrap();
+    let edited = journals.iter().find(|j| j.id == id).unwrap();
+    assert_eq!(edited.notes.as_deref(), Some("Second take"));
+    assert!(edited.updated_on.is_some());
+
+    // Emptied, a comment that changed nothing else goes away.
+    client.update_journal(id, "").await.unwrap();
+    let journals = client
+        .issue(created.id, &["journals"])
+        .await
+        .unwrap()
+        .journals
+        .unwrap();
+    assert!(journals.iter().all(|j| j.id != id));
+
+    // Developers can't delete issues; the issue stays.
+    let err = client.delete_issue(created.id).await.unwrap_err();
+    assert!(matches!(err, Error::Forbidden), "{err:?}");
+    assert!(client.issue(created.id, &[]).await.is_ok());
+}

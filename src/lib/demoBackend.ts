@@ -192,12 +192,23 @@ function buildMetadata(): Metadata {
           "log_time",
           "edit_time_entries",
           "manage_versions",
+          "delete_issues",
+          "edit_issue_notes",
+          "manage_issue_relations",
         ],
       },
       {
         id: 4,
         name: "Developer",
-        permissions: ["view_issues", "add_issues", "edit_issues", "view_time_entries", "log_time", "edit_own_time_entries"],
+        permissions: [
+          "view_issues",
+          "add_issues",
+          "edit_issues",
+          "edit_own_issue_notes",
+          "view_time_entries",
+          "log_time",
+          "edit_own_time_entries",
+        ],
       },
     ],
     time_entry_activities: [
@@ -320,6 +331,8 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
 
   // Who watches what; the demo user watches what they're assigned.
   const watchers = new Map<number, Named[]>();
+  // Comments changed or removed, by journal id.
+  const commentEdits = new Map<number, { notes: string; at: string }>();
   for (const issue of issues.values()) {
     const list = [issue.author, issue.assigned_to].filter((p): p is Named => !!p);
     watchers.set(
@@ -418,7 +431,13 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
         ...(may(issue.project.id, "view_issue_watchers") ? { ...issue, watchers: list } : issue),
         attachments: (files.get(id) ?? []).map((f) => f.attachment),
       },
-      journals: buildJournals(issue),
+      journals: buildJournals(issue).flatMap((j) => {
+        const edit = commentEdits.get(j.id);
+        if (!edit) return [j];
+        // Redmine drops an entry left with no comment and no changes.
+        if (!edit.notes && !j.details.length) return [];
+        return [{ ...j, notes: edit.notes, updated_on: edit.at }];
+      }),
       allowedStatuses: meta.statuses.map((s) => ({ id: s.id, name: s.name, is_closed: s.is_closed })),
       watching: list.some((w) => w.id === meta.user!.id),
     };
@@ -481,6 +500,33 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       issues.set(id, issue);
       changeHandlers.forEach((h) => h({ changed: [id], removed: [] }));
       return issue;
+    },
+    async deleteIssue(id) {
+      await wait(null);
+      const issue = issues.get(id);
+      if (!issue) throw { code: "not_found", message: "Not found in Redmine." };
+      if (!may(issue.project.id, "delete_issues")) {
+        throw { code: "forbidden", message: "You don't have permission to do that in Redmine." };
+      }
+      const removed = [id];
+      for (let i = 0; i < removed.length; i++)
+        for (const c of issues.values()) if (c.parent?.id === removed[i]) removed.push(c.id);
+      for (const r of removed) issues.delete(r);
+      const changed: number[] = [];
+      for (const other of issues.values()) {
+        const kept = (other.relations ?? []).filter((r) => !removed.includes(r.issue_id) && !removed.includes(r.issue_to_id));
+        if (kept.length !== (other.relations ?? []).length) {
+          issues.set(other.id, { ...other, relations: kept });
+          changed.push(other.id);
+        }
+      }
+      changeHandlers.forEach((h) => h({ changed, removed }));
+    },
+    async updateComment(issueId, journalId, notes) {
+      await wait(null);
+      if (!issues.has(issueId)) throw { code: "not_found", message: "Not found in Redmine." };
+      commentEdits.set(journalId, { notes, at: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") });
+      return details(issueId);
     },
     async addRelation(issueId, relation) {
       await wait(null);
