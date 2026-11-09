@@ -22,6 +22,9 @@ import type {
   User,
   WikiPage,
   WikiPageChanges,
+  News,
+  NewsChanges,
+  ProjectFile,
 } from "./types";
 
 type Unlisten = () => void;
@@ -95,6 +98,19 @@ export interface Backend {
   saveWikiPage(projectId: number, title: string, changes: WikiPageChanges): Promise<void>;
   /** Deletes a page; its sub-pages go with it or move to the top. */
   deleteWikiPage(projectId: number, title: string, withChildren: boolean): Promise<void>;
+  /** One page (100) of news, newest first: a team's, or every team's when projectId is null. Read from Redmine. */
+  news(projectId: number | null, offset: number): Promise<Found<News>>;
+  /** One news post with its comments and attachments. */
+  newsItem(id: number): Promise<News>;
+  /** Posts news in a team. Needs "Manage news". */
+  createNews(projectId: number, changes: NewsChanges): Promise<void>;
+  updateNews(id: number, changes: NewsChanges): Promise<void>;
+  deleteNews(id: number): Promise<void>;
+  /** A team's files, the team's own and its versions'. Read from Redmine. */
+  projectFiles(projectId: number): Promise<ProjectFile[]>;
+  /** Uploads files to a team's Files, under a version or the whole team. */
+  addProjectFiles(projectId: number, paths: string[], versionId: number | null, description: string): Promise<void>;
+  deleteProjectFile(id: number): Promise<void>;
   /** Time entries, newest day first. Read from Redmine, not the cache. */
   timeEntries(query: TimeQuery): Promise<TimeEntry[]>;
   logTime(entry: TimeEntryChanges): Promise<TimeEntry>;

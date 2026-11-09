@@ -18,6 +18,8 @@ import type {
   User,
   Version,
   WikiPage,
+  News,
+  ProjectFile,
 } from "./types";
 
 // Sample data for running the UI in a plain browser (`npm run dev`) and in
@@ -148,6 +150,7 @@ function buildMetadata(): Metadata {
         enabled_modules: [
           { id: 1, name: "issue_tracking" },
           { id: 2, name: "time_tracking" },
+          { id: 4, name: "news" },
         ],
         issue_custom_fields: [],
       },
@@ -232,6 +235,11 @@ function buildMetadata(): Metadata {
           "edit_wiki_pages",
           "rename_wiki_pages",
           "delete_wiki_pages",
+          "view_news",
+          "manage_news",
+          "comment_news",
+          "view_files",
+          "manage_files",
         ],
       },
       {
@@ -248,6 +256,9 @@ function buildMetadata(): Metadata {
           "view_wiki_pages",
           "view_wiki_edits",
           "edit_wiki_pages",
+          "view_news",
+          "comment_news",
+          "view_files",
         ],
       },
     ],
@@ -266,7 +277,7 @@ function buildMetadata(): Metadata {
 /** Pages the demo's search finds besides issues. */
 const DEMO_PAGES = [
   { id: 1, title: "Wiki: Release checklist", type: "wiki-page", url: "https://redmine.example.com/projects/web/wiki/Release_checklist" },
-  { id: 2, title: "News: Web 2.0 board view ships", type: "news", url: "https://redmine.example.com/news/2" },
+  { id: 1, title: "News: Board view ships in Sprint 2", type: "news", url: "https://redmine.example.com/news/1" },
   { id: 3, title: "Document: Board view spec", type: "document", url: "https://redmine.example.com/documents/3" },
 ];
 
@@ -522,6 +533,69 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   const findWiki = (projectId: number, title: string) =>
     wikiOf(projectId).find((v) => v[0]!.title.toLowerCase() === title.toLowerCase());
   const latest = (versions: WikiPage[]) => versions[versions.length - 1]!;
+
+  // News, newest first, and each team's files.
+  let nextNews = 10;
+  let news: News[] = [
+    {
+      id: 3,
+      project: { id: 1, name: "Web" },
+      author: people[0]!,
+      title: "Redline 0.1 is out",
+      summary: "The first release, for macOS and Windows.",
+      description: "Download it from the releases page and sign in with your Redmine address and API key.\n\nTell us what's missing in the **Web** team.",
+      created_on: iso(1, 3),
+      comments: [{ id: 1, author: people[1]!, content: "Works great on my Mac." }],
+      attachments: [],
+    },
+    {
+      id: 2,
+      project: { id: 2, name: "Mobile" },
+      author: people[2]!,
+      title: "Mobile beta starts Monday",
+      summary: "TestFlight invites go out to the team first.",
+      description: "We'll test on iOS for two weeks before Android.",
+      created_on: iso(4),
+      comments: [],
+      attachments: [],
+    },
+    {
+      id: 1,
+      project: { id: 1, name: "Web" },
+      author: people[1]!,
+      title: "Board view ships in Sprint 2",
+      summary: "Issues as columns you can drag between.",
+      description: "The board groups issues by status, assignee or cycle. Drag a card to change it.",
+      created_on: iso(9),
+      comments: [
+        { id: 2, author: people[3]!, content: "Can it group by label too?" },
+        { id: 3, author: people[1]!, content: "Yes, by any label field." },
+      ],
+      attachments: [],
+    },
+  ];
+  const newsOf = (id: number) => {
+    const post = news.find((n) => n.id === id);
+    if (!post || !newsAccessible(post.project.id)) throw { code: "not_found", message: "Not found in Redmine." };
+    return post;
+  };
+  const newsAccessible = (projectId: number) =>
+    meta.projects.find((p) => p.id === projectId)?.enabled_modules.some((m) => m.name === "news") === true;
+  const projectFiles = new Map<number, ProjectFile[]>();
+  const addProjectFile = (projectId: number, filename: string, text: string, version: Named | null, description: string, author: Named, day: number) => {
+    const a = addFile(-100 - projectId, filename, typeOf(filename), filename.endsWith(".svg") ? encode(mockup) : encode(text), author, iso(day));
+    const file: ProjectFile = { ...a, version, description, downloads: day, digest: null };
+    projectFiles.set(projectId, [file, ...(projectFiles.get(projectId) ?? [])]);
+    return file;
+  };
+  addProjectFile(1, "board-mockup.svg", "", { id: 1, name: "Sprint 1" }, "The first board sketch", people[1]!, 16);
+  addProjectFile(1, "brand-colors.txt", "Red #e5484d\nInk #1c2024\n", null, "Colors for the web app", people[3]!, 12);
+  addProjectFile(1, "release-notes.txt", "Board view, timeline and keyboard moves.\n", { id: 2, name: "Sprint 2" }, "What's in Sprint 2", people[0]!, 2);
+  const filesOf = (projectId: number) => {
+    const project = meta.projects.find((p) => p.id === projectId);
+    if (!project?.enabled_modules.some((m) => m.name === "files")) throw forbidden();
+    return projectFiles.get(projectId) ?? [];
+  };
 
   // Time logged over the last two weeks.
   let nextTimeEntry = 500;
@@ -903,6 +977,74 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
           .filter((v) => !gone.has(v[0]!.title.toLowerCase()))
           .map((v) => (latest(v).parent?.title.toLowerCase() === title.toLowerCase() ? v.map((p) => ({ ...p, parent: null })) : v)),
       );
+    },
+    async news(projectId, offset) {
+      await wait(null);
+      const list = news
+        .filter((n) => (projectId === null ? newsAccessible(n.project.id) : n.project.id === projectId))
+        .map((n) => ({ ...n, comments: undefined, attachments: undefined }));
+      if (projectId !== null && !newsAccessible(projectId)) throw { code: "not_found", message: "Not found in Redmine." };
+      return { items: list.slice(offset, offset + 100), total: list.length };
+    },
+    async newsItem(id) {
+      await wait(null);
+      return structuredClone(newsOf(id));
+    },
+    async createNews(projectId, changes) {
+      await wait(null);
+      if (!may(projectId, "manage_news")) throw forbidden();
+      if (!changes.title?.trim()) throw { code: "rejected", message: "Title cannot be blank" };
+      if (!changes.description?.trim()) throw { code: "rejected", message: "Description cannot be blank" };
+      const project = meta.projects.find((p) => p.id === projectId)!;
+      news = [
+        {
+          id: nextNews++,
+          project: { id: project.id, name: project.name },
+          author: people[0]!,
+          title: changes.title.trim(),
+          summary: changes.summary?.trim() ?? "",
+          description: changes.description,
+          created_on: new Date().toISOString(),
+          comments: [],
+          attachments: [],
+        },
+        ...news,
+      ];
+    },
+    async updateNews(id, changes) {
+      await wait(null);
+      const post = newsOf(id);
+      if (!may(post.project.id, "manage_news")) throw forbidden();
+      news = news.map((n) => (n.id === id ? { ...n, ...changes } : n));
+    },
+    async deleteNews(id) {
+      await wait(null);
+      const post = newsOf(id);
+      if (!may(post.project.id, "manage_news")) throw forbidden();
+      news = news.filter((n) => n.id !== id);
+    },
+    async projectFiles(projectId) {
+      await wait(null);
+      return filesOf(projectId).map((f) => ({ ...f }));
+    },
+    async addProjectFiles(projectId, paths, versionId, description) {
+      await wait(null);
+      filesOf(projectId);
+      if (!may(projectId, "manage_files")) throw forbidden();
+      const version = versionId ? meta.versions.find((v) => v.id === versionId) : undefined;
+      for (const path of paths)
+        addProjectFile(projectId, path.split(/[\\/]/).pop()!, "", version ? { id: version.id, name: version.name } : null, description, people[0]!, 0);
+    },
+    async deleteProjectFile(id) {
+      await wait(null);
+      for (const [projectId, list] of projectFiles) {
+        if (!list.some((f) => f.id === id)) continue;
+        if (!may(projectId, "manage_files")) throw forbidden();
+        projectFiles.set(projectId, list.filter((f) => f.id !== id));
+        files.set(-100 - projectId, (files.get(-100 - projectId) ?? []).filter((f) => f.attachment.id !== id));
+        return;
+      }
+      throw { code: "not_found", message: "Not found in Redmine." };
     },
     async timeEntries(query) {
       await wait(null);

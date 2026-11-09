@@ -74,7 +74,7 @@ describe("Redmine search", () => {
     await waitFor(() => expect(useApp.getState().openIssueId).not.toBeNull());
   });
 
-  it("opens wiki pages, news and documents in the browser", async () => {
+  it("opens documents and other Redmine pages in the browser", async () => {
     const { user, backend } = await start();
     const opened: string[] = [];
     backend.openInRedmine = async (path) => void opened.push(path);

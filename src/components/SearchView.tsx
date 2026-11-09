@@ -109,6 +109,11 @@ export function SearchView({ text }: { text: string }) {
       return;
     }
     const path = redminePath(r.url, serverUrl);
+    const news = r.type === "news" ? path?.match(/^news\/(\d+)\/?(?:[?#].*)?$/) : null;
+    if (news && d.news.size > 0) {
+      navigate({ view: "news", projectId: null, newsId: Number(news[1]) });
+      return;
+    }
     const wiki = wikiTarget(path);
     const project = wiki ? [...d.projects.values()].find((p) => p.identifier === wiki.project) : undefined;
     if (wiki && project && d.wikis.has(project.id)) navigate({ view: "wiki", projectId: project.id, title: wiki.title });

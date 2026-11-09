@@ -459,6 +459,73 @@ pub struct WikiPageChanges {
     pub parent_title: Option<String>,
 }
 
+/// A news post. A list (`/news.json`) leaves out comments and attachments;
+/// one post (`/news/:id.json`) has them when asked.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct News {
+    pub id: u64,
+    pub project: Named,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<Named>,
+    pub title: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_on: Option<String>,
+    #[serde(default)]
+    pub comments: Vec<NewsComment>,
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
+}
+
+/// A comment on a news post. Redmine's API gives no date for it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct NewsComment {
+    pub id: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<Named>,
+    #[serde(default)]
+    pub content: String,
+}
+
+/// What to post or change in a news post.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NewsChanges {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+/// A file in a project's Files area (`/projects/:id/files.json`): an
+/// attachment of the project, or of one of its versions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ProjectFile {
+    pub id: u64,
+    pub filename: String,
+    #[serde(default)]
+    pub filesize: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<Named>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_on: Option<String>,
+    /// The version the file belongs to, when it isn't the whole project's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<Named>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    #[serde(default)]
+    pub downloads: u64,
+}
+
 /// One hit from Redmine's search (`/search.json`).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SearchResult {

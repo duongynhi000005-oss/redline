@@ -15,6 +15,8 @@ import { TimeView } from "./components/TimeView";
 import { SearchView } from "./components/SearchView";
 import { TeamOverview } from "./components/TeamOverview";
 import { WikiView } from "./components/WikiView";
+import { NewsView } from "./components/NewsView";
+import { FilesView } from "./components/FilesView";
 import { PersonCard } from "./components/PersonCard";
 import { DeleteTeamDialog, TeamDialog } from "./components/TeamDialogs";
 import { useIssueShortcuts } from "./components/useIssueShortcuts";
@@ -79,6 +81,10 @@ export function App({ backend }: { backend?: Backend }) {
         <TeamOverview projectId={route.projectId} />
       ) : route.view === "wiki" ? (
         <WikiView projectId={route.projectId} title={route.title} />
+      ) : route.view === "news" ? (
+        <NewsView projectId={route.projectId} newsId={route.newsId} />
+      ) : route.view === "files" ? (
+        <FilesView projectId={route.projectId} />
       ) : route.view === "search" ? (
         <SearchView key={route.text} text={route.text} />
       ) : (

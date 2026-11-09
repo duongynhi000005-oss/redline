@@ -14,6 +14,8 @@ function sameRoute(a: Route, b: Route): boolean {
   if (a.view === "project" && b.view === "project") return a.projectId === b.projectId;
   if (a.view === "overview" && b.view === "overview") return a.projectId === b.projectId;
   if (a.view === "wiki" && b.view === "wiki") return a.projectId === b.projectId;
+  if (a.view === "news" && b.view === "news") return a.projectId === b.projectId;
+  if (a.view === "files" && b.view === "files") return a.projectId === b.projectId;
   if (a.view === "time" && b.view === "time") return a.teamId === b.teamId;
   if (a.view === "query" && b.view === "query") return a.queryId === b.queryId;
   // A cycle's issues light up the team's Cycles item.
@@ -134,6 +136,7 @@ export function Sidebar() {
           badge={unread ? String(unread) : undefined}
         />
         <NavItem route={{ view: "my-issues", tab: "assigned" }} icon={<Icon name="my-issues" />} label="My issues" />
+        {d.news.size > 0 && <NavItem route={{ view: "news", projectId: null, newsId: null }} icon={<Icon name="news" />} label="Updates" />}
 
         {views.length > 0 && (
           <>
@@ -196,6 +199,12 @@ export function Sidebar() {
                       label="Wiki"
                       depth={1}
                     />
+                  )}
+                  {d.news.has(team.id) && (
+                    <NavItem route={{ view: "news", projectId: team.id, newsId: null }} icon={<Icon name="news" />} label="News" depth={1} />
+                  )}
+                  {d.files.has(team.id) && (
+                    <NavItem route={{ view: "files", projectId: team.id }} icon={<Icon name="file" />} label="Files" depth={1} />
                   )}
                   {d.teamTime.has(team.id) && (
                     <NavItem route={{ view: "time", teamId: team.id }} icon={<Icon name="time" />} label="Time" depth={1} />

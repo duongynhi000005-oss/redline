@@ -388,3 +388,44 @@ export interface WikiPageChanges {
   /** The parent's title; empty moves the page to the top. */
   parent_title?: string;
 }
+
+/** A news post. Lists leave out its comments and attachments. */
+export interface News {
+  id: number;
+  project: Named;
+  author?: Named | null;
+  title: string;
+  summary?: string | null;
+  description?: string | null;
+  created_on?: string | null;
+  comments?: NewsComment[];
+  attachments?: Attachment[];
+}
+
+/** A comment on a news post. Redmine's API gives no date for it. */
+export interface NewsComment {
+  id: number;
+  author?: Named | null;
+  content: string;
+}
+
+/** What to post or change in a news post. */
+export interface NewsChanges {
+  title?: string;
+  summary?: string;
+  description?: string;
+}
+
+/** A file in a team's Files: the team's own, or one of its versions'. */
+export interface ProjectFile {
+  id: number;
+  filename: string;
+  filesize: number;
+  content_type?: string | null;
+  description?: string | null;
+  author?: Named | null;
+  created_on?: string | null;
+  version?: Named | null;
+  digest?: string | null;
+  downloads: number;
+}
