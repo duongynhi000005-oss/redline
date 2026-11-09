@@ -48,6 +48,8 @@ pub struct IssueQuery {
     pub issue_ids: Vec<u64>,
     /// Extra includes, for example `relations` or `attachments`.
     pub include: Vec<&'static str>,
+    /// Only issues the signed-in user watches.
+    pub watched_by_me: bool,
     pub offset: u64,
     pub limit: Option<u32>,
 }
@@ -108,7 +110,10 @@ impl Client {
     /// The user the API key belongs to. Use this to check a server address
     /// and key when signing in: its errors say what's wrong in plain words.
     pub async fn current_user(&self) -> Result<User> {
-        match self.get::<Value>("users/current.json", &[]).await {
+        match self
+            .get::<Value>("users/current.json", &[("include", "memberships".into())])
+            .await
+        {
             Ok(body) => take(body, "user"),
             Err(Error::NotFound) => Err(Error::NotRedmine),
             Err(Error::Forbidden) => Err(Error::RestApiDisabled),
@@ -161,6 +166,24 @@ impl Client {
         .await
     }
 
+    /// Every role, with its permissions. Roles the server won't describe
+    /// are left out.
+    pub async fn roles(&self) -> Result<Vec<Role>> {
+        let named: Vec<Named> = take(self.get("roles.json", &[]).await?, "roles")?;
+        let mut out = Vec::with_capacity(named.len());
+        for role in named {
+            match self
+                .get::<Value>(&format!("roles/{}.json", role.id), &[])
+                .await
+            {
+                Ok(body) => out.push(take(body, "role")?),
+                Err(Error::NotFound | Error::Forbidden) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(out)
+    }
+
     /// A project's versions, including ones shared with it.
     pub async fn versions(&self, project_id: u64) -> Result<Vec<Version>> {
         take(
@@ -198,6 +221,9 @@ impl Client {
         }
         if !query.include.is_empty() {
             params.push(("include", query.include.join(",")));
+        }
+        if query.watched_by_me {
+            params.push(("watcher_id", "me".into()));
         }
         let body: Value = self.get("issues.json", &params).await?;
         page(body, "issues")
@@ -251,6 +277,25 @@ impl Client {
     /// Removes a relation (from both issues).
     pub async fn delete_relation(&self, relation_id: u64) -> Result<()> {
         let url = self.url(&format!("relations/{relation_id}.json"))?;
+        self.send(|| self.http.delete(url.clone())).await?;
+        Ok(())
+    }
+
+    /// Adds a watcher to an issue. Needs the "Add watchers" permission,
+    /// even for the user's own subscription.
+    pub async fn add_watcher(&self, issue_id: u64, user_id: u64) -> Result<()> {
+        self.send_json(
+            Method::POST,
+            &format!("issues/{issue_id}/watchers.json"),
+            &json!({ "user_id": user_id }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Removes a watcher from an issue. Needs the "Delete watchers" permission.
+    pub async fn remove_watcher(&self, issue_id: u64, user_id: u64) -> Result<()> {
+        let url = self.url(&format!("issues/{issue_id}/watchers/{user_id}.json"))?;
         self.send(|| self.http.delete(url.clone())).await?;
         Ok(())
     }

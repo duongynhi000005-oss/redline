@@ -570,6 +570,76 @@ h2 {
   background: var(--bg-hover);
 }
 
+/* Subscribers (Redmine watchers) */
+.icon-button.is-on {
+  color: var(--accent);
+}
+
+.icon-button.small {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+}
+
+.subscribers {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.subscribers-header {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+}
+
+.subscribers-header h3 {
+  display: flex;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.subscribers-header .icon-button {
+  margin-left: auto;
+}
+
+.subscribers-note {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.subscribers-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.subscribers-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+}
+
+.subscriber-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subscriber-remove {
+  opacity: 0;
+}
+
+.subscribers-list li:hover .subscriber-remove,
+.subscriber-remove:focus-visible {
+  opacity: 1;
+}
+
 /* Sub-issues, relations and mentions */
 .parent-link {
   display: inline-flex;

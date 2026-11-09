@@ -37,6 +37,28 @@ pub struct User {
     pub admin: bool,
     #[serde(default)]
     pub created_on: Option<String>,
+    /// The user's own memberships, including roles from groups, with
+    /// `include=memberships`. Tells Redline what the user may do where.
+    #[serde(default)]
+    pub memberships: Vec<UserMembership>,
+}
+
+/// One project the signed-in user belongs to, and their roles there.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct UserMembership {
+    pub project: Named,
+    #[serde(default)]
+    pub roles: Vec<Named>,
+}
+
+/// A role and its permissions, from `/roles/:id.json`. Any user may read
+/// these; Redline uses them to offer only what Redmine will allow.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Role {
+    pub id: u64,
+    pub name: String,
+    #[serde(default)]
+    pub permissions: Vec<String>,
 }
 
 impl User {
@@ -519,6 +541,7 @@ mod tests {
             mail: None,
             admin: false,
             created_on: None,
+            memberships: Vec::new(),
         };
         assert_eq!(user.display_name(), "dev");
         user.firstname = "Dana".into();

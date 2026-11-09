@@ -4,17 +4,29 @@ import type { PickerKind } from "../state/app";
 import { overlayOpen, targetIssueId, useApp } from "../state/app";
 
 /** Linear's single-key shortcuts for the open or highlighted issue. */
-export const ISSUE_SHORTCUTS: { shortcut: string; kind: PickerKind | "assign-me"; label: string }[] = [
+export type IssueCommand = PickerKind | "assign-me" | "subscribe" | "open-in-redmine";
+
+export const ISSUE_SHORTCUTS: { shortcut: string; kind: IssueCommand; label: string }[] = [
   { shortcut: "s", kind: "status", label: "Change status…" },
   { shortcut: "p", kind: "priority", label: "Change priority…" },
   { shortcut: "a", kind: "assignee", label: "Assign to…" },
   { shortcut: "i", kind: "assign-me", label: "Assign to me" },
   { shortcut: "l", kind: "labels", label: "Change labels…" },
   { shortcut: "shift+c", kind: "cycle", label: "Move to cycle…" },
+  { shortcut: "shift+s", kind: "subscribe", label: "Subscribe or unsubscribe" },
+  { shortcut: "mod+shift+o", kind: "open-in-redmine", label: "Open in Redmine" },
 ];
 
-export function runIssueCommand(kind: PickerKind | "assign-me", issueId: number) {
+export function runIssueCommand(kind: IssueCommand, issueId: number) {
   const state = useApp.getState();
+  if (kind === "subscribe") {
+    void state.toggleSubscribe(issueId);
+    return;
+  }
+  if (kind === "open-in-redmine") {
+    state.openInRedmine(`issues/${issueId}`);
+    return;
+  }
   if (kind === "assign-me") {
     const me = state.account?.userId;
     if (me !== undefined) void state.updateIssue(issueId, { assigned_to_id: me });

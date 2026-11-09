@@ -13,6 +13,15 @@ export interface User {
   lastname: string;
   mail?: string | null;
   admin: boolean;
+  /** The user's own memberships, roles from groups included. */
+  memberships?: { project: Named; roles: Named[] }[];
+}
+
+/** A role and the permission keys it grants, such as "add_issue_watchers". */
+export interface Role {
+  id: number;
+  name: string;
+  permissions: string[];
 }
 
 export interface IssueStatus {
@@ -146,6 +155,8 @@ export interface Issue {
   closed_on?: string | null;
   /** Synced with every issue; can lag behind others' changes by a few hours. */
   relations?: Relation[] | null;
+  /** Only when the role may see them. */
+  watchers?: Named[] | null;
 }
 
 export interface Metadata {
@@ -156,12 +167,15 @@ export interface Metadata {
   priorities: IssuePriority[];
   versions: Version[];
   memberships: Membership[];
+  roles?: Role[];
 }
 
 export interface IssueDetails {
   issue: Issue;
   journals: Journal[];
   allowedStatuses: IssueStatusRef[] | null;
+  /** Whether you watch the issue, when Redmine says. */
+  watching?: boolean | null;
 }
 
 /** Fields to change. `null` clears a field; leaving a key out leaves it alone. */

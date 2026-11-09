@@ -28,6 +28,8 @@ pub struct Metadata {
     pub priorities: Vec<IssuePriority>,
     pub versions: Vec<Version>,
     pub memberships: Vec<Membership>,
+    /// Roles and their permissions, so Redline offers only what Redmine allows.
+    pub roles: Vec<Role>,
 }
 
 /// A handle to the cache. Cheap to clone; all clones share one connection.
@@ -159,6 +161,12 @@ impl Store {
             )
             .map_err(storage)?;
         }
+        tx.execute(
+            "INSERT INTO kv (key, value) VALUES ('roles', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [to_json(&meta.roles)?],
+        )
+        .map_err(storage)?;
         tx.commit().map_err(storage)
     }
 
@@ -172,6 +180,7 @@ impl Store {
             priorities: rows(&conn, "SELECT json FROM priorities ORDER BY position")?,
             versions: rows(&conn, "SELECT json FROM versions ORDER BY id")?,
             memberships: rows(&conn, "SELECT json FROM memberships ORDER BY id")?,
+            roles: kv_get(&conn, "roles")?.unwrap_or_default(),
         })
     }
 

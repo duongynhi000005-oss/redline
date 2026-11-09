@@ -30,7 +30,7 @@ browser, because Redmine has no API for it
 | Related issues (relates, duplicates, blocks, precedes, follows, copied) | `GET/POST /issues/:id/relations.json`, `DELETE /relations/:id.json`; `include=relations` on lists | ✅ | Related section on the issue, add and remove; blocked mark on rows and cards. Redmine doesn't change `updated_on` for relation changes, so other people's relation edits arrive when the issue is opened or on the six-hourly re-check. #35 |
 | Mentions of other issues (`#123`) | Text in descriptions and notes; `GET /search.json` finds notes that mention an issue | ✅ | Related section: "Mentions" and "Mentioned in". #35 |
 | Sub-issues and parent | `include=children`, `parent_issue_id` | ✅ | Sub-issues list with progress, parent link, set parent and add sub-issue. #35 |
-| Watchers | `include=watchers`, `POST/DELETE /issues/:id/watchers.json` | ⬜ | Subscribe button and subscriber list. #38 |
+| Watchers | `include=watchers`, `POST/DELETE /issues/:id/watchers.json` | ✅ | Subscribe button (Shift+S) and a Subscribers list on every issue. The API needs the role's add/delete watcher permissions even for yourself, so Redline reads the roles' permissions and, where the role lacks them, opens the issue in Redmine to watch it there. Whether you watch is read with `watcher_id=me` even when the list is hidden. #38 |
 | Attachments | `include=attachments`, `POST /uploads.json`, `GET /attachments/download/:id`, `DELETE /attachments/:id.json` | ⬜ | Attachments on the issue: preview, save, drop to upload. #39 |
 | Associated revisions | `include=changesets` | ⬜ | Commits on the issue. #48 |
 | Spent time on an issue | `GET/POST/PUT/DELETE /time_entries.json` | ⬜ | Time on the issue, Log time (Cmd/Ctrl+Shift+T). #40 |
@@ -86,4 +86,4 @@ browser, because Redmine has no API for it
 | Two-factor and OAuth application setup | Belong in Redmine's own account pages. |
 
 Anything with 🌐 has an "Open in Redmine" action (Cmd/Ctrl+Shift+O) so it is
-never a dead end.
+never a dead end. Issues have it now, in the header and the command palette.

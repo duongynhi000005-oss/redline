@@ -58,6 +58,9 @@ pub struct IssueDetails {
     /// Statuses this user may move the issue to. `None` on servers older
     /// than 5.0, where Redline has to try the change and see.
     pub allowed_statuses: Option<Vec<IssueStatusRef>>,
+    /// Whether the signed-in user watches the issue. `None` when Redmine
+    /// wouldn't say.
+    pub watching: Option<bool>,
 }
 
 /// Syncs one server into one cache.
@@ -119,6 +122,9 @@ impl Syncer {
         versions.sort_by_key(|v| v.id);
         memberships.sort_by_key(|m| m.id);
 
+        // Any user may read roles; a locked-down server may still refuse.
+        let roles = ok_unless_forbidden(self.client.roles().await)?;
+
         let meta = Metadata {
             user: Some(user),
             projects,
@@ -127,6 +133,7 @@ impl Syncer {
             priorities: priorities.into_iter().filter(|p| p.active).collect(),
             versions,
             memberships,
+            roles,
         };
         self.store.replace_metadata(&meta)?;
         Ok(meta)
@@ -232,11 +239,53 @@ impl Syncer {
         let allowed_statuses = issue.allowed_statuses.clone();
         self.store.upsert_issues(std::slice::from_ref(&issue))?;
         self.store.set_journals(id, &issue.updated_on, &journals)?;
+        let watching = self.watching(&issue).await;
         Ok(IssueDetails {
             issue,
             journals,
             allowed_statuses,
+            watching,
         })
+    }
+
+    /// Whether the signed-in user watches an issue: from its watchers when
+    /// the role may see them, otherwise by asking for the issue among the
+    /// ones the user watches, which any user may do.
+    async fn watching(&self, issue: &Issue) -> Option<bool> {
+        let me = self.store.metadata().ok()?.user?.id;
+        if let Some(watchers) = &issue.watchers {
+            return Some(watchers.iter().any(|w| w.id == me));
+        }
+        let page = self
+            .client
+            .issues(&IssueQuery {
+                issue_ids: vec![issue.id],
+                watched_by_me: true,
+                limit: Some(1),
+                ..Default::default()
+            })
+            .await
+            .ok()?;
+        Some(!page.items.is_empty())
+    }
+
+    /// Adds or removes a watcher, then re-reads the issue.
+    pub async fn set_watcher(
+        &self,
+        issue_id: u64,
+        user_id: u64,
+        watching: bool,
+    ) -> Result<IssueDetails> {
+        if watching {
+            self.client.add_watcher(issue_id, user_id).await?;
+        } else {
+            match self.client.remove_watcher(issue_id, user_id).await {
+                // Not watching already: nothing left to do but re-read.
+                Ok(()) | Err(Error::NotFound) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        self.issue_details(issue_id).await
     }
 
     /// Re-reads issues (with relations) into the cache. Returns the ids that
@@ -375,6 +424,7 @@ impl Syncer {
                 issue,
                 journals,
                 allowed_statuses: None,
+                watching: None,
             }),
             _ => None,
         })

@@ -5,6 +5,7 @@ import { isTyping, matchesShortcut, shortcutLabel } from "../lib/platform";
 import { blockingIssues, mentionsIn, relatedGroups, subIssues } from "../lib/relations";
 import type { Issue, IssueDetails, Journal, Relation } from "../lib/types";
 import { errorMessage } from "../lib/types";
+import { allowed } from "../lib/permissions";
 import { overlayOpen, useApp } from "../state/app";
 import { useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
@@ -31,6 +32,65 @@ function Property({ label, children, onEdit, shortcut }: { label: string; childr
         )}
       </dd>
     </div>
+  );
+}
+
+/** Who gets Redmine's notifications for the issue, as far as the role may see and change. */
+function Subscribers({ issue }: { issue: Issue }) {
+  const meta = useApp((s) => s.meta);
+  const me = useApp((s) => s.account?.userId);
+  const openPicker = useApp((s) => s.openPicker);
+  const setWatcher = useApp((s) => s.setWatcher);
+  const canAdd = allowed(meta, issue.project.id, "add_issue_watchers") !== false;
+  const canRemove = allowed(meta, issue.project.id, "delete_issue_watchers") !== false;
+  const watchers = issue.watchers;
+  return (
+    <section className="subscribers" aria-label="Subscribers">
+      <header className="subscribers-header">
+        <h3>
+          Subscribers{watchers && watchers.length > 0 && <span className="count">{watchers.length}</span>}
+        </h3>
+        {canAdd && (
+          <button
+            type="button"
+            className="icon-button small"
+            onClick={() => openPicker("subscribers", issue.id)}
+            aria-label="Change subscribers"
+            title="Change subscribers"
+          >
+            <Icon name="plus" size={12} />
+          </button>
+        )}
+      </header>
+      {watchers == null ? (
+        <p className="muted subscribers-note">Your role can't see who else is subscribed.</p>
+      ) : watchers.length === 0 ? (
+        <p className="muted subscribers-note">No one yet.</p>
+      ) : (
+        <ul className="subscribers-list">
+          {watchers.map((w) => (
+            <li key={w.id}>
+              <Avatar name={w.name} size={16} />
+              <span className="subscriber-name">
+                {w.name}
+                {w.id === me && <span className="muted"> (you)</span>}
+              </span>
+              {canRemove && (
+                <button
+                  type="button"
+                  className="icon-button small subscriber-remove"
+                  onClick={() => void setWatcher(issue.id, w.id, false)}
+                  aria-label={`Remove ${w.name}`}
+                  title={`Remove ${w.name}`}
+                >
+                  <Icon name="close" size={10} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -248,6 +308,10 @@ export function IssueDetail({ id }: { id: number }) {
   const openIssue = useApp((s) => s.openIssue);
   const overlay = useApp(overlayOpen);
   const openPicker = useApp((s) => s.openPicker);
+  const watchingNow = useApp((s) => s.watching.get(id));
+  const me = useApp((s) => s.account?.userId);
+  const toggleSubscribe = useApp((s) => s.toggleSubscribe);
+  const openInRedmine = useApp((s) => s.openInRedmine);
   const d = useDerived();
   const [loaded, setLoaded] = useState<{ id: number; details?: IssueDetails; error?: string } | null>(null);
   const details = loaded?.id === id ? (loaded.details ?? null) : null;
@@ -261,13 +325,8 @@ export function IssueDetail({ id }: { id: number }) {
       .then((result) => {
         if (!live) return;
         setLoaded({ id, details: result });
-        // Redmine doesn't touch updated_on for relation changes; take the fresh ones.
-        const state = useApp.getState();
-        const known = state.issues.get(id);
-        const fresh = result.issue.relations;
-        if (known && fresh && JSON.stringify(known.relations ?? []) !== JSON.stringify(fresh)) {
-          useApp.setState({ issues: new Map(state.issues).set(id, { ...known, relations: fresh }) });
-        }
+        // Redmine doesn't touch updated_on for relations or watchers; take the fresh ones.
+        useApp.getState().takeDetails(result);
       })
       .catch((e) => live && setLoaded({ id, error: errorMessage(e) }));
     return () => {
@@ -295,6 +354,7 @@ export function IssueDetail({ id }: { id: number }) {
     );
   }
 
+  const subscribed = watchingNow ?? issue.watchers?.some((w) => w.id === me) ?? false;
   const parentIssue = issue.parent ? allIssues.get(issue.parent.id) : undefined;
   const blockedBy = blockingIssues(issue, allIssues);
   const category = issueCategory(issue, d.categories);
@@ -314,6 +374,26 @@ export function IssueDetail({ id }: { id: number }) {
         <span className="breadcrumb">
           {issue.project.name} <Icon name="chevron-right" size={12} /> #{issue.id}
         </span>
+        <span className="header-spacer" data-tauri-drag-region />
+        <button
+          type="button"
+          className={subscribed ? "icon-button is-on" : "icon-button"}
+          onClick={() => void toggleSubscribe(issue.id)}
+          aria-pressed={subscribed}
+          aria-label={subscribed ? "Unsubscribe" : "Subscribe"}
+          title={`${subscribed ? "Unsubscribe" : "Subscribe"} (${shortcutLabel("shift+s")})`}
+        >
+          <Icon name={subscribed ? "bell-filled" : "bell"} />
+        </button>
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => openInRedmine(`issues/${issue.id}`)}
+          aria-label="Open in Redmine"
+          title={`Open in Redmine (${shortcutLabel("mod+shift+o")})`}
+        >
+          <Icon name="external" />
+        </button>
       </header>
       <div className="detail-body">
         <div className="detail-content">
@@ -401,6 +481,7 @@ export function IssueDetail({ id }: { id: number }) {
               </Property>
             ))}
           </dl>
+          <Subscribers issue={issue} />
         </aside>
       </div>
     </section>
