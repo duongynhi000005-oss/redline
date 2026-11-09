@@ -7,7 +7,8 @@ import type { Issue, Metadata } from "./types";
 // ordering. Each list keeps its own, saved per server and user.
 
 export type Grouping = "status" | "assignee" | "priority" | "cycle" | "category" | "none";
-export type Ordering = "priority" | "updated" | "created";
+/** "query" keeps the order a saved Redmine query sorts by. */
+export type Ordering = "priority" | "updated" | "created" | "query";
 /** How a list is laid out: rows, a board of columns, bars on a timeline, or a month calendar. */
 export type Layout = "list" | "board" | "timeline" | "calendar";
 /** How much time a timeline shows at once. */
@@ -59,16 +60,25 @@ export const ORDERINGS: { value: Ordering; label: string }[] = [
   { value: "priority", label: "Priority" },
   { value: "updated", label: "Last updated" },
   { value: "created", label: "Created" },
+  { value: "query", label: "As the view sorts" },
 ];
 
-export function isDefaultView(v: ViewOptions): boolean {
+/** A saved query's list starts as Redmine sorts it, ungrouped. */
+export const QUERY_VIEW: ViewOptions = { ...DEFAULT_VIEW, grouping: "none", ordering: "query" };
+
+/** The view a list starts with, before it's changed. */
+export function defaultViewFor(key: string): ViewOptions {
+  return key.startsWith("query:") ? QUERY_VIEW : DEFAULT_VIEW;
+}
+
+export function isDefaultView(v: ViewOptions, base: ViewOptions = DEFAULT_VIEW): boolean {
   return (
     !v.filters.length &&
-    v.grouping === DEFAULT_VIEW.grouping &&
-    v.ordering === DEFAULT_VIEW.ordering &&
-    v.layout === DEFAULT_VIEW.layout &&
-    v.showEmptyColumns === DEFAULT_VIEW.showEmptyColumns &&
-    v.zoom === DEFAULT_VIEW.zoom
+    v.grouping === base.grouping &&
+    v.ordering === base.ordering &&
+    v.layout === base.layout &&
+    v.showEmptyColumns === base.showEmptyColumns &&
+    v.zoom === base.zoom
   );
 }
 
@@ -130,6 +140,9 @@ export function compareBy(ordering: Ordering, ctx: GroupContext): (a: Issue, b: 
       return recent;
     case "created":
       return (a, b) => b.created_on.localeCompare(a.created_on) || b.id - a.id;
+    // The list arrives in the query's order, and sorting is stable.
+    case "query":
+      return () => 0;
   }
 }
 

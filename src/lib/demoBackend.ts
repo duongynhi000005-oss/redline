@@ -216,8 +216,19 @@ function buildMetadata(): Metadata {
       { id: 9, name: "Development", is_default: true },
       { id: 10, name: "Review", is_default: false },
     ],
+    queries: [
+      { id: 1, name: "Open bugs", is_public: true, project_id: 1 },
+      { id: 2, name: "Assigned to me, by due date", is_public: false, project_id: null },
+    ],
   };
 }
+
+/** Pages the demo's search finds besides issues. */
+const DEMO_PAGES = [
+  { id: 1, title: "Wiki: Release checklist", type: "wiki-page", url: "https://redmine.example.com/projects/web/wiki/Release_checklist" },
+  { id: 2, title: "News: Web 2.0 board view ships", type: "news", url: "https://redmine.example.com/news/2" },
+  { id: 3, title: "Document: Board view spec", type: "document", url: "https://redmine.example.com/documents/3" },
+];
 
 /** A date this many days from the demo's today. */
 function day(offset: number): string {
@@ -736,6 +747,42 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     },
     async onFileDrop() {
       return () => {};
+    },
+    async runQuery(queryId) {
+      await wait(null);
+      const open = [...issues.values()].filter((i) => !i.status.is_closed);
+      const ids =
+        queryId === 1
+          ? open
+              .filter((i) => i.project.id === 1 && i.tracker.id === 1)
+              .sort((a, b) => b.priority.id - a.priority.id || a.id - b.id)
+          : queryId === 2
+            ? open
+                .filter((i) => i.assigned_to?.id === people[0]!.id)
+                .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") || a.id - b.id)
+            : null;
+      if (!ids) throw { code: "not_found", message: "Not found in Redmine." };
+      return { items: ids.map((i) => i.id), total: ids.length };
+    },
+    async search(text, offset) {
+      await wait(null);
+      const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+      const hit = (t: string) => words.every((w) => t.toLowerCase().includes(w));
+      const found = [
+        ...[...issues.values()]
+          .filter((i) => hit(`${i.subject} ${i.description ?? ""}`))
+          .sort((a, b) => b.updated_on.localeCompare(a.updated_on))
+          .map((i) => ({
+            id: i.id,
+            title: `${i.tracker.name} #${i.id} (${i.status.name}): ${i.subject}`,
+            type: i.status.is_closed ? "issue-closed" : "issue",
+            url: `https://redmine.example.com/issues/${i.id}`,
+            description: i.description ?? "",
+            datetime: i.updated_on,
+          })),
+        ...DEMO_PAGES.filter((p) => hit(p.title)).map((p) => ({ ...p, description: "", datetime: "2026-11-01T09:00:00Z" })),
+      ];
+      return { items: found.slice(offset, offset + 25), total: found.length };
     },
     async findMentions(id) {
       await wait(null);

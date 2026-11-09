@@ -17,11 +17,14 @@ export function useRouteIssues(route: Route): Issue[] {
   const issues = useApp((s) => s.issues);
   const meta = useApp((s) => s.meta);
   const account = useApp((s) => s.account);
+  const run = useApp((s) => (route.view === "query" ? s.queryRuns.get(route.queryId) : undefined));
   const d = useDerived();
-  return useMemo(
-    () => (meta ? issuesForRoute(route, issues.values(), d, account?.userId, meta) : []),
-    [route, issues, d, account, meta],
-  );
+  return useMemo(() => {
+    if (!meta) return [];
+    // A saved query's issues are what Redmine found, in its order.
+    if (route.view === "query") return (run?.ids ?? []).flatMap((id) => issues.get(id) ?? []);
+    return issuesForRoute(route, issues.values(), d, account?.userId, meta);
+  }, [route, issues, d, account, meta, run]);
 }
 
 /** Fields that would tell the list nothing new are left out. */

@@ -3691,3 +3691,112 @@ button.time-row-issue:hover {
     --glass-blur: none;
   }
 }
+
+/* Redmine search */
+
+.search-form {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 16px 4px;
+  padding: 0 10px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.search-form:focus-within {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.search-form input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+
+.search-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0 24px;
+}
+
+.search-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 40px;
+  padding: 0 16px 0 22px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+}
+
+.search-result:hover,
+.search-result:focus-visible {
+  background: var(--bg-hover);
+  outline: none;
+}
+
+.search-kind {
+  flex: none;
+  width: 72px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.search-title {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-description {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+.search-title + .search-external,
+.search-title + .issue-date {
+  margin-left: auto;
+}
+
+.search-external {
+  flex: none;
+  display: grid;
+  color: var(--text-tertiary);
+}
+
+.search-more {
+  display: block;
+  margin: 16px auto 0;
+}
+
+.list-note {
+  flex: none;
+  margin: 0;
+  padding: 8px 22px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}

@@ -12,6 +12,7 @@ import { TimeDialog } from "./components/TimeDialog";
 import { DeleteIssueDialog } from "./components/IssueActions";
 import { VersionDialog } from "./components/Cycle";
 import { TimeView } from "./components/TimeView";
+import { SearchView } from "./components/SearchView";
 import { useIssueShortcuts } from "./components/useIssueShortcuts";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
@@ -70,6 +71,8 @@ export function App({ backend }: { backend?: Backend }) {
         <CycleList teamId={route.teamId} />
       ) : route.view === "time" ? (
         <TimeView teamId={route.teamId} />
+      ) : route.view === "search" ? (
+        <SearchView key={route.text} text={route.text} />
       ) : (
         <IssueList />
       )}

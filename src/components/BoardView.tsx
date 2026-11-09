@@ -10,7 +10,7 @@ import type { ViewOptions } from "../lib/views";
 import type { Route } from "../state/app";
 import { overlayOpen, useApp } from "../state/app";
 import type { Derived } from "../state/derived";
-import { useDerived } from "../state/derived";
+import { showsProject, useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
 import { BlockedMark, GroupIcon, spokenIssue } from "./IssueList";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
@@ -268,11 +268,7 @@ export function BoardView({ issues, view, route }: { issues: Issue[]; view: View
     [issues, view.grouping, view.ordering, view.showEmptyColumns, d, meta, me, versions],
   );
 
-  const showProject = useCallback(
-    (issue: Issue) =>
-      route.view === "my-issues" || ((route.view === "team" || route.view === "cycle") && issue.project.id !== route.teamId),
-    [route],
-  );
+  const showProject = useCallback((issue: Issue) => showsProject(route, issue.project.id, d), [route, d]);
 
   const setDragState = (next: Drag | null) => {
     dragRef.current = next;

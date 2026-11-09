@@ -2,6 +2,7 @@ import type {
   Account,
   AppInfo,
   Attachment,
+  Found,
   Issue,
   IssueChanges,
   IssueDetails,
@@ -9,6 +10,7 @@ import type {
   Metadata,
   NewRelation,
   Relation,
+  SearchResult,
   SyncState,
   TimeEntry,
   TimeEntryChanges,
@@ -52,6 +54,10 @@ export interface Backend {
   removeRelation(relation: Relation): Promise<void>;
   /** Ids of issues whose description or comments mention #id. */
   findMentions(id: number): Promise<number[]>;
+  /** Runs a saved query: its issues' ids in its order (up to 500), and how many it finds in all. */
+  runQuery(queryId: number, projectId?: number | null): Promise<Found<number>>;
+  /** One page (25) of what Redmine search finds, newest first. */
+  search(text: string, offset: number): Promise<Found<SearchResult>>;
   /** Adds or removes a watcher, then returns the issue as Redmine has it. */
   setWatcher(issueId: number, userId: number, watching: boolean): Promise<IssueDetails>;
   /** Opens a page of the Redmine server in the browser, such as "issues/12". */

@@ -203,6 +203,33 @@ export interface Metadata {
   roles?: Role[];
   /** What time can be logged as. */
   time_entry_activities?: TimeEntryActivity[];
+  /** Saved issue queries the user can see. */
+  queries?: SavedQuery[];
+}
+
+/** A saved issue query in Redmine (a custom query). */
+export interface SavedQuery {
+  id: number;
+  name: string;
+  is_public: boolean;
+  /** Set when the query belongs to a project and runs there. */
+  project_id?: number | null;
+}
+
+/** One page of a list, and how many there are in all. */
+export interface Found<T> {
+  items: T[];
+  total: number;
+}
+
+/** Something Redmine search found. `type` is Redmine's: issue, issue-closed, wiki-page, news, document, message, changeset, project. */
+export interface SearchResult {
+  id: number;
+  title: string;
+  type: string;
+  url?: string | null;
+  description?: string | null;
+  datetime?: string | null;
 }
 
 export interface TimeEntryActivity {

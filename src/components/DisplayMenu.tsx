@@ -82,7 +82,7 @@ export function DisplayMenu({ route }: { route: Route }) {
           <label className="display-row">
             <span>Ordering</span>
             <select value={view.ordering} onChange={(e) => updateView(key, { ordering: e.target.value as Ordering })}>
-              {ORDERINGS.map((o) => (
+              {ORDERINGS.filter((o) => o.value !== "query" || route.view === "query").map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>

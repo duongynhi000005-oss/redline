@@ -24,12 +24,19 @@ use crate::client::{Client, IssueQuery, PAGE_SIZE};
 use crate::error::{Error, Result};
 use crate::mentions;
 use crate::models::{
-    Issue, IssueChanges, IssueStatusRef, Journal, NewRelation, Relation, TimeEntry,
-    TimeEntryChanges, Upload, Version, VersionChanges,
+    Found, Issue, IssueChanges, IssueStatusRef, Journal, NewRelation, Relation, SearchResult,
+    TimeEntry, TimeEntryChanges, Upload, Version, VersionChanges,
 };
 use crate::store::{Metadata, Store};
 
 const CURSOR_KEY: &str = "issues_cursor";
+
+/// The most issues a saved query shows; past this, the list says how many
+/// more Redmine has.
+const QUERY_LIMIT: usize = 500;
+
+/// Search results per page.
+const SEARCH_PAGE: u32 = 25;
 
 /// How far behind the newest `updated_on` the next delta starts. Covers
 /// clock differences and several edits in the same second; issues that
@@ -139,6 +146,7 @@ impl Syncer {
             .into_iter()
             .filter(|a| a.active)
             .collect();
+        let queries = ok_unless_forbidden(self.client.queries().await)?;
 
         let meta = Metadata {
             user: Some(user),
@@ -150,6 +158,7 @@ impl Syncer {
             memberships,
             roles,
             time_entry_activities,
+            queries,
         };
         self.store.replace_metadata(&meta)?;
         Ok(meta)
@@ -534,6 +543,42 @@ impl Syncer {
     /// Search matches text loosely, so `#12` also finds `#123`; each hit is
     /// checked against its description, or its comments when the description
     /// doesn't say. Works offline from the cache alone.
+    /// Runs a saved query: the ids of the issues it finds, in its order, up
+    /// to [`QUERY_LIMIT`], and how many it finds in all. The issues go into
+    /// the cache like any others; the second value lists those that changed.
+    pub async fn query_issues(
+        &self,
+        query_id: u64,
+        project_id: Option<u64>,
+    ) -> Result<(Found<u64>, Vec<u64>)> {
+        let mut issues = Vec::new();
+        let total = loop {
+            let page = self
+                .client
+                .query_issues(query_id, project_id, issues.len() as u64)
+                .await?;
+            let fetched = page.items.len();
+            issues.extend(page.items);
+            let total = page.total_count;
+            if fetched == 0 || issues.len() as u64 >= total || issues.len() >= QUERY_LIMIT {
+                break total;
+            }
+        };
+        issues.truncate(QUERY_LIMIT);
+        let changed = self.store.upsert_issues(&issues)?;
+        let items = issues.iter().map(|i| i.id).collect();
+        Ok((Found { items, total }, changed))
+    }
+
+    /// One page of what Redmine search finds, newest first.
+    pub async fn search(&self, text: &str, offset: u64) -> Result<Found<SearchResult>> {
+        let page = self.client.search(text, offset, SEARCH_PAGE).await?;
+        Ok(Found {
+            items: page.items,
+            total: page.total_count,
+        })
+    }
+
     pub async fn mentions_of(&self, id: u64) -> Result<Vec<u64>> {
         let mut found: Vec<u64> = Vec::new();
         let mut unsure: Vec<u64> = Vec::new();

@@ -235,5 +235,46 @@ if web && CustomValue.where(custom_field: review_by, customized_type: "Issue").w
   say "set review dates"
 end
 
+# Saved queries: a public one in Web, and one of dev's own across projects.
+if web && !IssueQuery.exists?(name: "Open bugs")
+  IssueQuery.create!(
+    name: "Open bugs", project: web, user: admin, visibility: IssueQuery::VISIBILITY_PUBLIC,
+    filters: { "status_id" => { operator: "o", values: [""] }, "tracker_id" => { operator: "=", values: [Tracker.first.id.to_s] } },
+    sort_criteria: [%w[priority desc], %w[id asc]], column_names: %i[tracker status subject]
+  )
+  say "added the Open bugs query"
+end
+unless IssueQuery.exists?(name: "Assigned to me, by due date")
+  IssueQuery.create!(
+    name: "Assigned to me, by due date", user: user, visibility: IssueQuery::VISIBILITY_PRIVATE,
+    filters: { "status_id" => { operator: "o", values: [""] }, "assigned_to_id" => { operator: "=", values: ["me"] } },
+    sort_criteria: [%w[due_date asc]], column_names: %i[tracker status subject due_date]
+  )
+  say "added dev's own query"
+end
+
+# A wiki and news in Web, for search and their own views.
+if web
+  web.enabled_module_names = (web.enabled_module_names | %w[wiki news])
+  wiki = web.wiki || Wiki.create!(project: web, start_page: "Wiki")
+  if wiki.pages.none?
+    {
+      "Wiki" => "# Web\n\nStart here. See [[Release checklist]] before shipping.",
+      "Release_checklist" => "# Release checklist\n\n1. Close the sprint's issues.\n2. Check the board view on macOS and Windows.\n3. Write the news post."
+    }.each do |title, text|
+      page = WikiPage.new(wiki: wiki, title: title)
+      page.content = WikiContent.new(page: page, text: text, author: user)
+      page.save!
+    end
+    say "wrote wiki pages"
+  end
+  if News.where(project: web).none?
+    News.create!(project: web, author: user, title: "Board view ships in Sprint 2",
+                 summary: "Issues as columns you can drag between.",
+                 description: "The board view groups issues by status, assignee or cycle. Drag a card to change it.")
+    say "posted news"
+  end
+end
+
 token = Token.find_by(user: user, action: "api") || Token.create!(user: user, action: "api")
 puts "REDLINE_TEST_API_KEY=#{token.value}"

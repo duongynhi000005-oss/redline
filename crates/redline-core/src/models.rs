@@ -397,6 +397,27 @@ pub struct SearchResult {
     pub datetime: Option<String>,
 }
 
+/// A saved issue query (Redmine calls them custom queries) that the user can
+/// see: their own, and public ones. A query that belongs to a project runs
+/// in that project.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Query {
+    pub id: u64,
+    pub name: String,
+    #[serde(default)]
+    pub is_public: bool,
+    #[serde(default)]
+    pub project_id: Option<u64>,
+}
+
+/// One page of a list, as the UI reads it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Found<T> {
+    pub items: Vec<T>,
+    /// How many there are in all, which can be more than `items`.
+    pub total: u64,
+}
+
 /// A Redmine issue. Lists include the core fields; a single issue can also
 /// carry journals, watchers, children and allowed statuses when asked.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
