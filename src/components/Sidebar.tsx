@@ -12,6 +12,7 @@ function sameRoute(a: Route, b: Route): boolean {
   if (a.view !== b.view) return false;
   if (a.view === "team" && b.view === "team") return a.teamId === b.teamId;
   if (a.view === "project" && b.view === "project") return a.projectId === b.projectId;
+  if (a.view === "overview" && b.view === "overview") return a.projectId === b.projectId;
   if (a.view === "time" && b.view === "time") return a.teamId === b.teamId;
   if (a.view === "query" && b.view === "query") return a.queryId === b.queryId;
   // A cycle's issues light up the team's Cycles item.
@@ -167,6 +168,12 @@ export function Sidebar() {
               </button>
               {open && (
                 <>
+                  <NavItem
+                    route={{ view: "overview", projectId: team.id }}
+                    icon={<Icon name="overview" />}
+                    label="Overview"
+                    depth={1}
+                  />
                   <NavItem
                     route={{ view: "team", teamId: team.id, tab: "active" }}
                     icon={<Icon name="issues" />}

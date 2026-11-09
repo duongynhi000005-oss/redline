@@ -13,6 +13,8 @@ import { DeleteIssueDialog } from "./components/IssueActions";
 import { VersionDialog } from "./components/Cycle";
 import { TimeView } from "./components/TimeView";
 import { SearchView } from "./components/SearchView";
+import { TeamOverview } from "./components/TeamOverview";
+import { PersonCard } from "./components/PersonCard";
 import { useIssueShortcuts } from "./components/useIssueShortcuts";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
@@ -71,6 +73,8 @@ export function App({ backend }: { backend?: Backend }) {
         <CycleList teamId={route.teamId} />
       ) : route.view === "time" ? (
         <TimeView teamId={route.teamId} />
+      ) : route.view === "overview" ? (
+        <TeamOverview projectId={route.projectId} />
       ) : route.view === "search" ? (
         <SearchView key={route.text} text={route.text} />
       ) : (
@@ -84,6 +88,7 @@ export function App({ backend }: { backend?: Backend }) {
       <TimeDialog />
       <VersionDialog />
       <DeleteIssueDialog />
+      <PersonCard />
       <Toast />
     </div>
   );

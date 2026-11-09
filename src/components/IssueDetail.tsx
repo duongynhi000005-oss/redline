@@ -12,6 +12,7 @@ import { overlayOpen, useApp } from "../state/app";
 import { useDerived } from "../state/derived";
 import { Attachments } from "./Attachments";
 import { Avatar } from "./Avatar";
+import { PersonAvatar } from "./PersonCard";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
 import { IssueMenu } from "./IssueActions";
 import { IssueTime } from "./IssueTime";
@@ -51,7 +52,7 @@ function Subscribers({ issue }: { issue: Issue }) {
         <ul className="subscribers-list">
           {watchers.map((w) => (
             <li key={w.id}>
-              <Avatar name={w.name} size={16} />
+              <PersonAvatar person={w} size={16} />
               <span className="subscriber-name">
                 {w.name}
                 {w.id === me && <span className="muted"> (you)</span>}
@@ -115,7 +116,7 @@ function Comment({
   return (
     <article className="comment" aria-label={`Comment by ${who}`}>
       <header>
-        <Avatar name={who} size={20} />
+        <PersonAvatar person={journal.user} size={20} />
         <strong>{who}</strong>
         <time dateTime={journal.created_on} title={longDate(journal.created_on)}>
           {relativeTime(journal.created_on)}
@@ -224,7 +225,7 @@ function Activity({
           <li key={j.id}>
             {j.details.map((detail, i) => (
               <div key={i} className="activity-change">
-                <Avatar name={who} size={16} />
+                <PersonAvatar person={j.user} size={16} />
                 <span>
                   <strong>{who}</strong> {describeDetail(detail, meta)}
                 </span>
@@ -661,7 +662,7 @@ export function IssueDetail({ id }: { id: number }) {
           <Connections issue={issue} journals={details?.journals ?? null} />
           <h2 className="activity-title">Activity</h2>
           <div className="activity-change">
-            <Avatar name={issue.author?.name} size={16} />
+            <PersonAvatar person={issue.author} size={16} />
             <span>
               <strong>{issue.author?.name ?? "Someone"}</strong> created the issue
             </span>

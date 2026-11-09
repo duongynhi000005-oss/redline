@@ -55,10 +55,10 @@ browser, because Redmine has no API for it
 
 | Redmine | API with a user key | Redline | Where it lives |
 | --- | --- | --- | --- |
-| Projects (list, overview) | `GET /projects.json`, `GET /projects/:id.json` | 🟡 teams in the sidebar | Team overview: description, sub-teams, members, counts, modules. #45 |
+| Projects (list, overview) | `GET /projects.json`, `GET /projects/:id.json` | ✅ | Teams in the sidebar. Team > Overview, for teams and sub-teams: description, homepage, status, visibility, sub-teams, members by role, open and closed counts from the cache, and an Areas list of every enabled module. Areas Redline has a view for open there (Issues, Cycles, Time, Calendar and Gantt as layouts); the rest open in the browser until their own views land. #45 |
 | Create, close, archive a project | `POST/PUT /projects`, close and archive actions (permissions vary) | ⬜ | Team overview menu, when allowed. #45 |
-| Members and roles | `GET /projects/:id/memberships.json`; writes need Manage members | 🟡 used for pickers | Team overview > Members. #45 |
-| Users | `GET /users/:id.json` (public fields); listing is admin-only | ⬜ | Person card from any avatar. #45 |
+| Members and roles | `GET /projects/:id/memberships.json`; writes need Manage members | ✅ shown | Team overview > Members, grouped by role; groups show as groups. Adding and removing members stays in Redmine's project settings. #45 |
+| Users | `GET /users/:id.json` (public fields); listing is admin-only | ✅ | A person card from team members and from avatars on an issue (author, activity, comments, subscribers): name, email unless hidden, when they joined, the teams you share with their roles, and their open issues. Avatars inside list rows and board cards open the issue instead. #45 |
 | Groups | Admin-only | 🌐 | Group assignees show as a group; group pages open in the browser |
 | My account | `GET/PUT /my/account.json` | ✅ (sign-in) | Settings > Account |
 | My page | No API | 🟡 | My issues and Inbox are Redline's My page |

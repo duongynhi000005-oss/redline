@@ -14,6 +14,7 @@ import type {
   Relation,
   SyncState,
   TimeEntry,
+  User,
   Version,
 } from "./types";
 
@@ -25,6 +26,14 @@ const people: Named[] = [
   { id: 2, name: "Sam Teammate" },
   { id: 3, name: "Riley Chen" },
   { id: 4, name: "Jordan Patel" },
+];
+
+// What Redmine shows of each person to Dana. Riley hides their email.
+const demoUsers: User[] = [
+  { id: 1, login: "dev", firstname: "Dana", lastname: "Developer", mail: "dana@example.com", admin: false, created_on: "2026-03-02T09:00:00Z" },
+  { id: 2, login: "sam", firstname: "Sam", lastname: "Teammate", mail: "sam@example.com", admin: false, created_on: "2026-04-14T09:00:00Z" },
+  { id: 3, login: "riley", firstname: "Riley", lastname: "Chen", mail: null, admin: false, created_on: "2026-05-20T09:00:00Z" },
+  { id: 4, login: "jordan", firstname: "Jordan", lastname: "Patel", mail: "jordan@example.com", admin: false, created_on: "2026-06-08T09:00:00Z" },
 ];
 
 const subjects = [
@@ -83,6 +92,11 @@ function buildMetadata(): Metadata {
         id: 1,
         name: "Web",
         identifier: "web",
+        description: "The **Redline** web team: the list, board and sync engine.",
+        homepage: "https://example.com/web",
+        status: 1,
+        is_public: true,
+        created_on: "2026-03-02T09:00:00Z",
         trackers: [
           { id: 1, name: "Bug" },
           { id: 2, name: "Feature" },
@@ -95,6 +109,10 @@ function buildMetadata(): Metadata {
         enabled_modules: [
           { id: 1, name: "issue_tracking" },
           { id: 2, name: "time_tracking" },
+          { id: 3, name: "wiki" },
+          { id: 4, name: "news" },
+          { id: 5, name: "files" },
+          { id: 6, name: "boards" },
         ],
         issue_custom_fields: [
           { id: 1, name: "Area" },
@@ -106,7 +124,11 @@ function buildMetadata(): Metadata {
         id: 3,
         name: "Design",
         identifier: "web-design",
+        description: "Icons, colors and type for Redline.",
         parent: { id: 1, name: "Web" },
+        status: 1,
+        is_public: false,
+        created_on: "2026-05-11T09:00:00Z",
         trackers: [{ id: 2, name: "Feature" }],
         issue_categories: [],
         enabled_modules: [{ id: 1, name: "issue_tracking" }],
@@ -116,6 +138,9 @@ function buildMetadata(): Metadata {
         id: 2,
         name: "Mobile",
         identifier: "mobile",
+        status: 1,
+        is_public: false,
+        created_on: "2026-04-01T09:00:00Z",
         trackers: [{ id: 1, name: "Bug" }],
         issue_categories: [],
         enabled_modules: [
@@ -171,7 +196,8 @@ function buildMetadata(): Metadata {
         id: projectId * 10 + i,
         project: { id: projectId, name: projectId === 1 ? "Web" : "Mobile" },
         user: p,
-        roles: [{ id: 4, name: "Developer" }],
+        // Dana manages Web, as her own memberships say.
+        roles: projectId === 1 && p.id === 1 ? [{ id: 3, name: "Manager" }] : [{ id: 4, name: "Developer" }],
       })),
     ),
     // As in Redmine's defaults: managers handle watchers and anyone's time,
@@ -576,6 +602,13 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       return details(issueId);
     },
     async openInRedmine() {},
+    async openHomepage() {},
+    async getUser(id) {
+      await wait(null);
+      const user = demoUsers.find((u) => u.id === id);
+      if (!user) throw { code: "not_found", message: "Redmine doesn't show you this person." };
+      return { ...user, memberships: undefined };
+    },
     async attachmentData(id) {
       await wait(null);
       for (const list of files.values()) {

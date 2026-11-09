@@ -321,6 +321,56 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M9.5 4.5V3.8a1.3 1.3 0 0 0-1.3-1.3H3.8a1.3 1.3 0 0 0-1.3 1.3v4.4a1.3 1.3 0 0 0 1.3 1.3h.7" {...stroke} />
         </Svg>
       );
+    case "overview":
+      return (
+        <Svg {...props}>
+          <circle cx="7" cy="7" r="5" {...stroke} />
+          <path d="M7 6.3v3.2" {...stroke} />
+          <circle cx="7" cy="4.5" r="0.4" fill="currentColor" />
+        </Svg>
+      );
+    case "people":
+      return (
+        <Svg {...props}>
+          <circle cx="5.2" cy="5" r="2" {...stroke} />
+          <path d="M1.8 11.5c.4-2 1.8-3 3.4-3s3 1 3.4 3" {...stroke} />
+          <path d="M9.4 3.2a2 2 0 0 1 0 3.7M10.4 8.6c1 .4 1.6 1.4 1.8 2.9" {...stroke} />
+        </Svg>
+      );
+    case "wiki":
+      return (
+        <Svg {...props}>
+          <path d="M7 3.5C5.8 2.7 4.3 2.4 2.5 2.5v8c1.8-.1 3.3.2 4.5 1 1.2-.8 2.7-1.1 4.5-1v-8c-1.8-.1-3.3.2-4.5 1zM7 3.5v8" {...stroke} />
+        </Svg>
+      );
+    case "news":
+      return (
+        <Svg {...props}>
+          <rect x="2.5" y="2.5" width="9" height="9" rx="1.5" {...stroke} />
+          <path d="M4.5 5h5M4.5 7h5M4.5 9h3" {...stroke} />
+        </Svg>
+      );
+    case "forum":
+      return (
+        <Svg {...props}>
+          <path d="M2.5 3.5h9v6H6l-2.5 2v-2h-1z" {...stroke} />
+        </Svg>
+      );
+    case "repository":
+      return (
+        <Svg {...props}>
+          <circle cx="4.5" cy="3.5" r="1.3" {...stroke} />
+          <circle cx="4.5" cy="10.5" r="1.3" {...stroke} />
+          <circle cx="9.5" cy="5" r="1.3" {...stroke} />
+          <path d="M4.5 4.8v4.4M9.5 6.3c0 2-2.5 2-4.5 3" {...stroke} />
+        </Svg>
+      );
+    case "link":
+      return (
+        <Svg {...props}>
+          <path d="M6 8a2.5 2.5 0 0 0 3.5 0l1.8-1.8a2.5 2.5 0 0 0-3.5-3.5L7 3.5M8 6a2.5 2.5 0 0 0-3.5 0L2.7 7.8a2.5 2.5 0 0 0 3.5 3.5L7 10.5" {...stroke} />
+        </Svg>
+      );
     case "view":
       return (
         <Svg {...props}>
@@ -378,6 +428,13 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
 }
 
 export type IconName =
+  | "overview"
+  | "people"
+  | "wiki"
+  | "news"
+  | "forum"
+  | "repository"
+  | "link"
   | "relation"
   | "sub-issue"
   | "blocked"

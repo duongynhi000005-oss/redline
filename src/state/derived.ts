@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import type { CategoryMap, PriorityLevel, StatusCategory } from "../lib/model";
-import { categoryMap, issueCategory, priorityLevels, teamOf } from "../lib/model";
+import { categoryMap, issueCategory, priorityLevels, projectTree, teamOf } from "../lib/model";
 import { moduleEnabled, timeAccess } from "../lib/permissions";
 import type { Issue, Metadata, Project, SavedQuery, Version } from "../lib/types";
 import type { ServerSettings } from "../lib/settings";
@@ -110,21 +110,7 @@ export function issuesForRoute(
   meta: Metadata,
 ): Issue[] {
   const out: Issue[] = [];
-  const projectTree = (rootId: number) => {
-    const ids = new Set([rootId]);
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const p of d.projects.values()) {
-        if (p.parent && ids.has(p.parent.id) && !ids.has(p.id)) {
-          ids.add(p.id);
-          grew = true;
-        }
-      }
-    }
-    return ids;
-  };
-  const inProject = route.view === "project" ? projectTree(route.projectId) : null;
+  const inProject = route.view === "project" ? projectTree(route.projectId, d.projects.values()) : null;
   for (const issue of issues) {
     switch (route.view) {
       case "my-issues":
@@ -147,6 +133,7 @@ export function issuesForRoute(
       // A query's issues come from Redmine (see useRouteIssues); search isn't a list of issues.
       case "query":
       case "search":
+      case "overview":
       case "cycles":
       case "time":
       case "inbox":
@@ -181,6 +168,8 @@ export function routeTitle(route: Route, d: Derived): string {
       return d.projects.get(route.teamId)?.name ?? "Team";
     case "project":
       return d.projects.get(route.projectId)?.name ?? "Project";
+    case "overview":
+      return d.projects.get(route.projectId)?.name ?? "Team";
     case "cycles":
       return `${d.projects.get(route.teamId)?.name ?? "Team"} cycles`;
     case "time":

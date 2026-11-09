@@ -13,6 +13,9 @@ export interface User {
   lastname: string;
   mail?: string | null;
   admin: boolean;
+  created_on?: string | null;
+  /** Shown to admins and to the user themselves. */
+  last_login_on?: string | null;
   /** The user's own memberships, roles from groups included. */
   memberships?: { project: Named; roles: Named[] }[];
 }
@@ -56,8 +59,12 @@ export interface Project {
   name: string;
   identifier: string;
   description?: string | null;
+  homepage?: string | null;
   parent?: Named | null;
+  /** 1 active, 5 closed, 9 archived. */
   status?: number | null;
+  is_public?: boolean | null;
+  created_on?: string | null;
   trackers: Named[];
   issue_categories: Named[];
   enabled_modules: Named[];

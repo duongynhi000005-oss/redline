@@ -17,6 +17,7 @@ import type {
   TimeQuery,
   Version,
   VersionChanges,
+  User,
 } from "./types";
 
 type Unlisten = () => void;
@@ -62,6 +63,10 @@ export interface Backend {
   setWatcher(issueId: number, userId: number, watching: boolean): Promise<IssueDetails>;
   /** Opens a page of the Redmine server in the browser, such as "issues/12". */
   openInRedmine(path: string): Promise<void>;
+  /** Opens a team's homepage, as Redmine gives it, in the browser. */
+  openHomepage(projectId: number): Promise<void>;
+  /** Another user, as Redmine shows them to the signed-in user. */
+  getUser(id: number): Promise<User>;
   /** An attachment's content, for previews. Cached once read. */
   attachmentData(id: number): Promise<Uint8Array>;
   /** Asks where to save an attachment and saves it. False when cancelled. */

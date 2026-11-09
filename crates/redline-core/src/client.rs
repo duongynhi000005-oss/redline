@@ -134,6 +134,13 @@ impl Client {
         }
     }
 
+    /// Another user, with what Redmine shows of them to this user: names
+    /// always, the email unless they hide it. Users who share no project
+    /// with this user aren't found.
+    pub async fn user(&self, id: u64) -> Result<User> {
+        take(self.get(&format!("users/{id}.json"), &[]).await?, "user")
+    }
+
     // ----- Metadata ------------------------------------------------------
 
     /// Every project the user can see, with its trackers, categories,

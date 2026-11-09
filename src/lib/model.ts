@@ -111,6 +111,23 @@ export function activeCycle(projectId: number, versions: Version[], today = new 
 }
 
 /** Top-level projects are teams; subprojects belong to their top ancestor. */
+/** A project and its sub-projects, all the way down. */
+export function projectTree(rootId: number, projects: Iterable<{ id: number; parent?: { id: number } | null }>): Set<number> {
+  const all = [...projects];
+  const ids = new Set([rootId]);
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const p of all) {
+      if (p.parent && ids.has(p.parent.id) && !ids.has(p.id)) {
+        ids.add(p.id);
+        grew = true;
+      }
+    }
+  }
+  return ids;
+}
+
 export function teamOf(projectId: number, meta: Metadata): number {
   const byId = new Map(meta.projects.map((p) => [p.id, p]));
   let current = byId.get(projectId);

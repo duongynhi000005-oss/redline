@@ -8,11 +8,14 @@ export function Property({
   children,
   onEdit,
   shortcut,
+  action,
 }: {
   label: string;
   children: React.ReactNode;
   onEdit?: () => void;
   shortcut?: string;
+  /** What pressing the value does, when it isn't changing it, such as "Open homepage". */
+  action?: string;
 }) {
   return (
     <div className="property">
@@ -23,8 +26,8 @@ export function Property({
             type="button"
             className="property-button"
             onClick={onEdit}
-            aria-label={`${label}: change`}
-            title={shortcut ? `Change ${label.toLowerCase()} (${shortcutLabel(shortcut)})` : undefined}
+            aria-label={action ?? `${label}: change`}
+            title={action ?? (shortcut ? `Change ${label.toLowerCase()} (${shortcutLabel(shortcut)})` : undefined)}
           >
             {children}
           </button>
