@@ -120,6 +120,20 @@ impl Client {
 
     // ----- Account -------------------------------------------------------
 
+    /// Checks that Redmine still accepts the API key, with the smallest
+    /// request that can tell. Redmine treats a key it doesn't know (revoked,
+    /// regenerated, or its user locked) as an anonymous visitor: lists answer
+    /// 200 with only public data, often nothing, so a sync alone can't tell.
+    /// Only the current-user endpoint refuses with 401.
+    pub async fn check_key(&self) -> Result<()> {
+        match self.get::<Value>("users/current.json", &[]).await {
+            Ok(_) => Ok(()),
+            Err(Error::NotFound) => Err(Error::NotRedmine),
+            Err(Error::Forbidden) => Err(Error::RestApiDisabled),
+            Err(e) => Err(e),
+        }
+    }
+
     /// The user the API key belongs to. Use this to check a server address
     /// and key when signing in: its errors say what's wrong in plain words.
     pub async fn current_user(&self) -> Result<User> {

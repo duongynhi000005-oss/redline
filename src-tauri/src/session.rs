@@ -36,6 +36,9 @@ pub struct SyncState {
     /// Milliseconds since the epoch of the last successful sync.
     pub last_synced_at: Option<u64>,
     pub message: Option<String>,
+    /// What went wrong, in the codes UI errors use (for example
+    /// "unauthorized"), so the UI can offer more than trying again.
+    pub code: Option<&'static str>,
     /// How far a long sync has got, while it runs.
     pub progress: Option<SyncCount>,
 }
@@ -74,6 +77,7 @@ impl Session {
             state: "syncing",
             last_synced_at: None,
             message: None,
+            code: None,
             progress: None,
         }));
         let task = tauri::async_runtime::spawn(sync_loop(
@@ -150,6 +154,7 @@ async fn sync_loop(
                 state: "syncing",
                 last_synced_at,
                 message: None,
+                code: None,
                 progress: None,
             },
         );
@@ -159,6 +164,10 @@ async fn sync_loop(
                 syncer.sync_metadata().await?;
                 last_metadata = Some(Instant::now());
                 let _ = app.emit(EVENT_METADATA_CHANGED, ());
+            } else {
+                // Metadata reads the current user, which is what notices a
+                // revoked key; between metadata refreshes, ask on its own.
+                syncer.check_key().await?;
             }
             // Each page reaches the UI as it lands, so a long first sync
             // fills the lists as it goes instead of all at the end.
@@ -181,6 +190,7 @@ async fn sync_loop(
                                 state: "syncing",
                                 last_synced_at,
                                 message: None,
+                                code: None,
                                 progress: Some(SyncCount {
                                     fetched: page.fetched,
                                     total: page.total,
@@ -214,6 +224,7 @@ async fn sync_loop(
                     state: "idle",
                     last_synced_at,
                     message: None,
+                    code: None,
                     progress: None,
                 }
             }
@@ -221,12 +232,14 @@ async fn sync_loop(
                 state: "offline",
                 last_synced_at,
                 message: Some(e.to_string()),
+                code: Some(e.code()),
                 progress: None,
             },
             Err(e) => SyncState {
                 state: "error",
                 last_synced_at,
                 message: Some(e.to_string()),
+                code: Some(e.code()),
                 progress: None,
             },
         };

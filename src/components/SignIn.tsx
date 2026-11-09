@@ -4,7 +4,9 @@ import { errorMessage } from "../lib/types";
 
 export function SignIn() {
   const signIn = useApp((s) => s.signIn);
-  const [server, setServer] = useState("");
+  // After "Sign in again" the server is known; only the key is new.
+  const again = useApp((s) => s.signInServer);
+  const [server, setServer] = useState(again);
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,13 +30,17 @@ export function SignIn() {
           R
         </div>
         <h1 id="signin-title">Sign in to Redmine</h1>
-        <p className="muted">Redline works with any Redmine server that has its REST API turned on.</p>
+        <p className="muted">
+          {again
+            ? "Redmine no longer accepts the API key Redline had. Paste the current one from My account in Redmine."
+            : "Redline works with any Redmine server that has its REST API turned on."}
+        </p>
         <label>
           <span>Server address</span>
           <input
             type="url"
             inputMode="url"
-            autoFocus
+            autoFocus={!again}
             required
             placeholder="https://redmine.example.com"
             value={server}
@@ -49,6 +55,7 @@ export function SignIn() {
           <input
             type="password"
             required
+            autoFocus={!!again}
             placeholder="From My account → API access key"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}

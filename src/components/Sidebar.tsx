@@ -61,6 +61,8 @@ function NavItem({
   );
 }
 
+export const KEY_REFUSED_LABEL = "API key refused · Sign in again";
+
 export function syncLabel(
   state: "syncing" | "idle" | "offline" | "error",
   message: string | null,
@@ -87,6 +89,8 @@ export function Sidebar() {
   const sync = useApp((s) => s.sync);
   const setPaletteOpen = useApp((s) => s.setPaletteOpen);
   const syncNow = useApp((s) => s.syncNow);
+  const signInAgain = useApp((s) => s.signInAgain);
+  const keyRefused = sync.state === "error" && sync.code === "unauthorized";
   const meta = useApp((s) => s.meta);
   const unread = useApp((s) => s.inbox.items.filter((i) => !i.read).length);
   const d = useDerived();
@@ -241,12 +245,17 @@ export function Sidebar() {
       <button
         type="button"
         className={`sync-status sync-${sync.state}`}
-        onClick={() => void syncNow()}
-        title="Sync now"
+        onClick={() => void (keyRefused ? signInAgain() : syncNow())}
+        title={keyRefused ? "Redmine no longer accepts your API key. Sign in again with a new one." : "Sync now"}
         aria-live="polite"
       >
-        <Icon name={sync.state === "offline" ? "offline" : "sync"} className={sync.state === "syncing" ? "spin" : ""} />
-        {sync.state === "syncing" && sync.progress ? (
+        <Icon
+          name={keyRefused ? "lock" : sync.state === "offline" ? "offline" : "sync"}
+          className={sync.state === "syncing" ? "spin" : ""}
+        />
+        {keyRefused ? (
+          <span>{KEY_REFUSED_LABEL}</span>
+        ) : sync.state === "syncing" && sync.progress ? (
           <>
             {/* The count changes with every page; screen readers hear it once. */}
             <span aria-hidden="true">{syncLabel(sync.state, sync.message, sync.lastSyncedAt, undefined, sync.progress)}</span>

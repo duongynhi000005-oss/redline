@@ -297,9 +297,19 @@ impl Syncer {
         Ok(())
     }
 
+    /// Fails with [`Error::Unauthorized`] when Redmine no longer accepts the
+    /// API key. Redmine answers lists for an unknown key as if for an
+    /// anonymous visitor, so a sync can't notice by itself.
+    pub async fn check_key(&self) -> Result<()> {
+        self.client.check_key().await
+    }
+
     /// Drops cached issues that the server no longer returns (deleted, moved
     /// out of reach, or made private). Returns the ids dropped.
     pub async fn prune_deleted(&self) -> Result<Vec<u64>> {
+        // With a key Redmine no longer accepts, every issue would look
+        // deleted and the whole cache would go.
+        self.client.check_key().await?;
         let ids = self.store.issue_ids()?;
         let mut gone = Vec::new();
         for batch in ids.chunks(PAGE_SIZE as usize) {
