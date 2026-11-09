@@ -27,6 +27,24 @@ describe("accessibility", () => {
     expect(list).toHaveAttribute("aria-activedescendant", screen.getByRole("option", { selected: true }).id);
   });
 
+  it("jumps to the first and last issue with Home and End, and by a page with Page Up and Page Down", async () => {
+    const user = await start();
+    const list = screen.getByRole("listbox", { name: "Issues" });
+    const focused = () => within(list).getByRole("option", { selected: true }).id;
+    const ids = within(list).getAllByRole("option").map((o) => o.id);
+
+    await user.keyboard("{End}");
+    expect(list).toHaveFocus();
+    expect(focused()).toBe(ids[ids.length - 1]);
+    await user.keyboard("{Home}");
+    expect(focused()).toBe(ids[0]);
+    // The test setup makes the list 800px tall: 22 rows of 36px, less one.
+    await user.keyboard("{PageDown}");
+    expect(focused()).toBe(ids[Math.min(ids.length - 1, 21)]);
+    await user.keyboard("{PageUp}");
+    expect(focused()).toBe(ids[0]);
+  });
+
   it("keeps focus inside Settings and gives it back on close", async () => {
     const user = await start();
     const search = screen.getByRole("button", { name: /Search/ });
