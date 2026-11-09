@@ -212,3 +212,45 @@ async fn updates_send_only_changed_fields_and_surface_redmine_errors() {
         "Redmine refused the change: Status is not included in the list"
     );
 }
+
+#[tokio::test]
+async fn sync_pages_and_moves_the_cursor_forward() {
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    let mut late = issue(3);
+    late["updated_on"] = json!("2026-11-05T10:00:00Z");
+    Mock::given(path("/issues.json"))
+        .and(query_param("offset", "0"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [issue(1), issue(2)], "total_count": 3, "offset": 0, "limit": 2
+        })))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(path("/issues.json"))
+        .and(query_param("offset", "2"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [late], "total_count": 3, "offset": 2, "limit": 2
+        })))
+        .mount(&server)
+        .await;
+    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
+    let report = syncer.sync_issues().await.unwrap();
+    assert!(report.initial);
+    assert_eq!(report.changed, vec![1, 2, 3]);
+
+    // The next delta asks from a minute before the newest change.
+    server.reset().await;
+    Mock::given(path("/issues.json"))
+        .and(query_param("updated_on", ">=2026-11-05T09:59:00Z"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [], "total_count": 0, "offset": 0, "limit": 100
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let report = syncer.sync_issues().await.unwrap();
+    assert!(!report.initial);
+    assert!(report.changed.is_empty());
+}

@@ -176,7 +176,7 @@ jobs:
         if: steps.scaffold.outputs.ready == 'true'
         env:
           REDLINE_TEST_REDMINE_URL: http://localhost:3000
-        run: cargo test -p redline-core --locked -- --test-threads=2
+        run: cargo test -p redline-core --locked -- --test-threads=1
 
       - name: Redmine logs
         if: failure() && steps.scaffold.outputs.ready == 'true'

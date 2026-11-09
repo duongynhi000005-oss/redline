@@ -161,3 +161,55 @@ async fn edits_an_issue_and_reports_workflow_errors() {
         "{err:?}"
     );
 }
+
+#[tokio::test]
+async fn syncs_into_a_local_cache() {
+    use redline_core::{Store, Syncer};
+
+    let client = live!();
+    let syncer = Syncer::new(client.clone(), Store::in_memory().unwrap());
+
+    let meta = syncer.sync_metadata().await.unwrap();
+    assert_eq!(meta.user.as_ref().unwrap().login, "dev");
+    assert!(meta.projects.iter().any(|p| p.identifier == "web"));
+    assert!(!meta.memberships.is_empty());
+    assert!(meta.versions.iter().any(|v| v.name == "Sprint 2"));
+    assert_eq!(syncer.store().metadata().unwrap(), meta);
+
+    let first = syncer.sync_issues().await.unwrap();
+    assert!(first.initial);
+    assert!(first.changed.len() >= 9);
+    let cached = syncer.store().count_issues().unwrap();
+    assert_eq!(cached as usize, first.changed.len());
+
+    // Nothing changed on the server, so the next delta changes nothing.
+    let second = syncer.sync_issues().await.unwrap();
+    assert!(!second.initial);
+    assert!(second.changed.is_empty(), "{:?}", second.changed);
+
+    // An edit shows up in the next delta.
+    let id = syncer.store().issues().unwrap().last().unwrap().id;
+    client
+        .update_issue(
+            id,
+            &redline_core::models::IssueChanges {
+                notes: Some("Touched by the sync test".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    let third = syncer.sync_issues().await.unwrap();
+    assert!(third.changed.contains(&id), "{third:?}");
+
+    let details = syncer.issue_details(id).await.unwrap();
+    assert!(
+        details
+            .journals
+            .iter()
+            .any(|j| j.notes.as_deref() == Some("Touched by the sync test"))
+    );
+    assert!(syncer.cached_issue_details(id).unwrap().is_some());
+
+    assert!(syncer.prune_deleted().await.unwrap().is_empty());
+}

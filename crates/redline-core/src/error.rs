@@ -51,6 +51,10 @@ pub enum Error {
     #[error("Redmine answered with HTTP {0}.")]
     Http(u16),
 
+    /// The local cache couldn't be read or written.
+    #[error("Redline's local cache had a problem: {0}")]
+    Storage(String),
+
     /// The response body didn't match what Redline expects.
     #[error("Couldn't read Redmine's response: {0}")]
     Decode(String),
@@ -70,6 +74,7 @@ impl Error {
             Error::Rejected(_) => "rejected",
             Error::Busy => "busy",
             Error::Http(_) => "http",
+            Error::Storage(_) => "storage",
             Error::Decode(_) => "decode",
         }
     }
