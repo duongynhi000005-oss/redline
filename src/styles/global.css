@@ -1919,6 +1919,21 @@ h2 {
   white-space: nowrap;
 }
 
+.timeline-today-label {
+  position: absolute;
+  top: 7px;
+  z-index: 1;
+  translate: -50% 0;
+  padding: 1px 6px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
 .timeline-tick.major {
   color: var(--text-secondary);
   font-weight: 500;
@@ -1946,18 +1961,8 @@ h2 {
   position: absolute;
   top: 0;
   bottom: 0;
-  z-index: 2;
-  border-left: 1.5px solid var(--danger);
-}
-
-.timeline-today::before {
-  content: "";
-  position: absolute;
-  top: -4px;
-  left: -4.5px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
+  width: 2px;
+  margin-left: -1px;
   background: var(--danger);
 }
 
@@ -2085,7 +2090,7 @@ h2 {
   align-self: stretch;
   margin: 4px 0 4px 4px;
   border-radius: 2px;
-  background: var(--bar);
+  background: var(--bar, var(--status-backlog));
 }
 
 .cat-triage {
@@ -2109,7 +2114,10 @@ h2 {
 }
 
 .timeline-bar-title {
-  flex: 1;
+  /* Stays readable when the bar starts off to the left. */
+  position: sticky;
+  left: 308px;
+  flex: 0 1 auto;
   min-width: 0;
   padding: 0 8px 0 6px;
   overflow: hidden;
@@ -2152,21 +2160,21 @@ h2 {
 }
 
 .timeline-milestone {
-  --bar: var(--status-backlog);
   position: absolute;
-  top: 12px;
-  width: 12px;
-  height: 12px;
-  margin-left: -6px;
-  transform: rotate(45deg);
-  border-radius: 2px;
-  background: var(--bar);
+  top: 11px;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
   cursor: grab;
 }
 
-.timeline-milestone .timeline-outside {
-  transform: rotate(-45deg) translate(14px, 9px);
-  transform-origin: 0 0;
+.timeline-milestone::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  background: var(--bar, var(--status-backlog));
 }
 
 .timeline-outside {
@@ -2183,12 +2191,6 @@ h2 {
   pointer-events: none;
 }
 
-.timeline-milestone .timeline-outside {
-  top: 0;
-  left: 0;
-  translate: none;
-}
-
 @media (forced-colors: active) {
   .timeline-bar,
   .timeline-milestone {
@@ -2201,7 +2203,7 @@ h2 {
   }
 
   .timeline-today,
-  .timeline-today::before {
+  .timeline-today-label {
     forced-color-adjust: none;
     border-color: Highlight;
     background: Highlight;

@@ -37,6 +37,10 @@ function longDate(day: number) {
   return new Date(`${dayDate(day)}T00:00:00Z`).toLocaleDateString(undefined, { dateStyle: "medium", timeZone: "UTC" });
 }
 
+function shortDate(day: number) {
+  return new Date(`${dayDate(day)}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 /** How a span reads aloud and in tooltips. */
 export function spanLabel(span: Span | null, issue: Issue): string {
   if (!span) return "No dates";
@@ -271,11 +275,17 @@ export function TimelineView({ issues, view, route }: { issues: Issue[]; view: V
         <div className="timeline-header" style={{ width: LABELS + trackWidth }} aria-hidden="true">
           <div className="timeline-corner">Issue</div>
           <div className="timeline-ticks" style={{ width: trackWidth }}>
-            {marks.map((t) => (
-              <span key={t.day} className={`timeline-tick${t.major ? " major" : ""}`} style={{ left: x(t.day) }}>
-                {t.label}
-              </span>
-            ))}
+            {marks
+              // Today's own label stands in for a tick right next to it.
+              .filter((t) => Math.abs(x(t.day) - x(now)) > 44)
+              .map((t) => (
+                <span key={t.day} className={`timeline-tick${t.major ? " major" : ""}`} style={{ left: x(t.day) }}>
+                  {t.label}
+                </span>
+              ))}
+            <span className="timeline-today-label" style={{ left: x(now) + dayWidth / 2 }}>
+              {shortDate(now)}
+            </span>
           </div>
         </div>
         <div className="timeline-lines" style={{ left: LABELS, width: trackWidth, top: HEADER, height: height - HEADER }} aria-hidden="true">
