@@ -43,6 +43,17 @@ export function redminePath(url: string | null | undefined, serverUrl: string): 
   }
 }
 
+/** The wiki page a result's path points at, as a project identifier and a title (null for the start page). */
+export function wikiTarget(path: string | null): { project: string; title: string | null } | null {
+  const m = path?.match(/^projects\/([^/?#]+)\/wiki(?:\/([^/?#]+))?\/?(?:[?#].*)?$/);
+  if (!m) return null;
+  try {
+    return { project: decodeURIComponent(m[1]!), title: m[2] ? decodeURIComponent(m[2]) : null };
+  } catch {
+    return null;
+  }
+}
+
 const isIssue = (r: SearchResult) => r.type.startsWith("issue");
 
 /** Redmine search across issues, wiki pages, news, documents, forums and commits. */
@@ -98,7 +109,10 @@ export function SearchView({ text }: { text: string }) {
       return;
     }
     const path = redminePath(r.url, serverUrl);
-    if (path) openInRedmine(path);
+    const wiki = wikiTarget(path);
+    const project = wiki ? [...d.projects.values()].find((p) => p.identifier === wiki.project) : undefined;
+    if (wiki && project && d.wikis.has(project.id)) navigate({ view: "wiki", projectId: project.id, title: wiki.title });
+    else if (path) openInRedmine(path);
   }
 
   const searched = text.trim();

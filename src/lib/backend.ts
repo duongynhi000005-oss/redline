@@ -20,6 +20,8 @@ import type {
   Project,
   ProjectChanges,
   User,
+  WikiPage,
+  WikiPageChanges,
 } from "./types";
 
 type Unlisten = () => void;
@@ -85,6 +87,14 @@ export interface Backend {
   /** Uploads files and attaches them to an issue, with an optional comment. */
   attachFiles(issueId: number, paths: string[], notes?: string): Promise<IssueDetails>;
   deleteAttachment(issueId: number, attachmentId: number): Promise<IssueDetails>;
+  /** A project's wiki pages, without their text. Read from Redmine, not the cache. */
+  wikiIndex(projectId: number): Promise<WikiPage[]>;
+  /** One page with its text and attachments: the start page when title is null, an older version when asked. */
+  wikiPage(projectId: number, title: string | null, version?: number | null): Promise<WikiPage>;
+  /** Saves a page, making it when the title is new. */
+  saveWikiPage(projectId: number, title: string, changes: WikiPageChanges): Promise<void>;
+  /** Deletes a page; its sub-pages go with it or move to the top. */
+  deleteWikiPage(projectId: number, title: string, withChildren: boolean): Promise<void>;
   /** Time entries, newest day first. Read from Redmine, not the cache. */
   timeEntries(query: TimeQuery): Promise<TimeEntry[]>;
   logTime(entry: TimeEntryChanges): Promise<TimeEntry>;

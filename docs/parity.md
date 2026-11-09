@@ -67,7 +67,7 @@ browser, because Redmine has no API for it
 
 | Redmine | API with a user key | Redline | Where it lives |
 | --- | --- | --- | --- |
-| Wiki | `GET /projects/:id/wiki/index.json`, `GET/PUT/DELETE /projects/:id/wiki/:title.json`, page versions | ⬜ | Team > Wiki: page tree, reader, CommonMark editor. #46 |
+| Wiki | `GET /projects/:id/wiki/index.json`, `GET/PUT/DELETE /projects/:id/wiki/:title.json`, `GET /projects/:id/wiki/:title/:version.json` | ✅ | Team > Wiki: page tree, reader with `[[wiki links]]` (pages not written yet look it), attachments, sub-pages. Editor with preview, a comment for the history and the parent page (Rename wiki pages), refusing a save over someone else's. History of the last 10 versions, reading and restoring an older one. New page and sub-page, delete with or without sub-pages. Wiki search results open here. Uploading files to a page, protecting pages, watchers and renaming a title stay in Redmine (the API has no rename). #46 |
 | News | `GET /news.json`, `GET/POST/PUT/DELETE` news (comments have no API) | ⬜ | Team > News, and an Updates list across teams. #47 |
 | Files | `GET/POST /projects/:id/files.json` | ⬜ | Team > Files: list, save, upload. #47 |
 | Documents | No API (search finds them) | 🌐 | Team > Documents lists what search finds; opening one goes to the browser. #49 |

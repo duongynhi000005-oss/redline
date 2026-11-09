@@ -17,6 +17,7 @@ import type {
   TimeEntry,
   User,
   Version,
+  WikiPage,
 } from "./types";
 
 // Sample data for running the UI in a plain browser (`npm run dev`) and in
@@ -226,6 +227,11 @@ function buildMetadata(): Metadata {
           "delete_issues",
           "edit_issue_notes",
           "manage_issue_relations",
+          "view_wiki_pages",
+          "view_wiki_edits",
+          "edit_wiki_pages",
+          "rename_wiki_pages",
+          "delete_wiki_pages",
         ],
       },
       {
@@ -239,6 +245,9 @@ function buildMetadata(): Metadata {
           "view_time_entries",
           "log_time",
           "edit_own_time_entries",
+          "view_wiki_pages",
+          "view_wiki_edits",
+          "edit_wiki_pages",
         ],
       },
     ],
@@ -437,6 +446,82 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       txt: "text/plain",
       pdf: "application/pdf",
     })[name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
+
+  // Web's wiki: every version of each page, oldest first.
+  const layout = addFile(-1, "layout.svg", "image/svg+xml", encode(mockup), people[1]!, iso(6));
+  const wikis = new Map<number, WikiPage[][]>();
+  const wikiVersion = (title: string, parent: string | null, text: string, author: Named, comments: string, day: number): WikiPage => ({
+    title,
+    parent: parent ? { title: parent } : null,
+    text,
+    version: 0,
+    author,
+    comments,
+    created_on: iso(day),
+    updated_on: iso(day),
+    attachments: [],
+  });
+  const history = (...versions: WikiPage[]) =>
+    versions.map((v, i) => ({ ...v, version: i + 1, created_on: versions[0]!.created_on }));
+  wikis.set(1, [
+    history(
+      wikiVersion("Wiki", null, "# Web\n\nNotes for the web team.", people[1]!, "", 20),
+      wikiVersion(
+        "Wiki",
+        null,
+        "# Web\n\nThe Redline web team's notes. Start with [[Getting started]], and read [[Release checklist]] before shipping.",
+        people[0]!,
+        "Point at the guides",
+        9,
+      ),
+      wikiVersion(
+        "Wiki",
+        null,
+        "# Web\n\nThe Redline web team's notes. Start with [[Getting started]], and read [[Release checklist]] before shipping.\n\n" +
+          "## This cycle\n\n- Board view polish, see #3\n- Sync engine retries\n\nIdeas that aren't issues yet go in [[Roadmap]].",
+        people[0]!,
+        "Add this cycle",
+        1,
+      ),
+    ),
+    history(
+      wikiVersion(
+        "Getting_started",
+        "Wiki",
+        "# Getting started\n\n1. Clone the repository.\n2. Run `npm install`.\n3. Start the app:\n\n```sh\nnpm run tauri dev\n```\n\n" +
+          "The layout of the main window:\n\n![](layout.svg)",
+        people[1]!,
+        "",
+        6,
+      ),
+    ),
+    history(
+      wikiVersion("Release_checklist", "Wiki", "# Release checklist\n\n- Bump the version\n- Tag", people[2]!, "", 12),
+      wikiVersion(
+        "Release_checklist",
+        "Wiki",
+        "# Release checklist\n\n- [ ] Bump the version in `package.json` and `Cargo.toml`\n- [ ] Update the changelog\n" +
+          "- [ ] Tag and push\n- [ ] Check the signed builds for macOS and Windows",
+        people[0]!,
+        "Spell out each step",
+        3,
+      ),
+    ),
+    history(
+      wikiVersion("Code_review", "Getting_started", "# Code review\n\nEvery change gets one review. Keep pull requests small.", people[3]!, "", 8),
+    ),
+  ]);
+  wikis.get(1)![1]![0]!.attachments = [layout];
+  const wikiOf = (projectId: number) => {
+    const project = meta.projects.find((p) => p.id === projectId);
+    if (!project || !project.enabled_modules.some((m) => m.name === "wiki")) throw { code: "not_found", message: "Not found in Redmine." };
+    const list = wikis.get(projectId) ?? [];
+    wikis.set(projectId, list);
+    return list;
+  };
+  const findWiki = (projectId: number, title: string) =>
+    wikiOf(projectId).find((v) => v[0]!.title.toLowerCase() === title.toLowerCase());
+  const latest = (versions: WikiPage[]) => versions[versions.length - 1]!;
 
   // Time logged over the last two weeks.
   let nextTimeEntry = 500;
@@ -735,6 +820,89 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       );
       changeHandlers.forEach((h) => h({ changed: [issueId], removed: [] }));
       return details(issueId);
+    },
+    async wikiIndex(projectId) {
+      await wait(null);
+      return wikiOf(projectId).map((v) => {
+        const p = latest(v);
+        return { title: p.title, parent: p.parent, version: p.version, created_on: p.created_on, updated_on: p.updated_on };
+      });
+    },
+    async wikiPage(projectId, title, version) {
+      await wait(null);
+      const versions = findWiki(projectId, title ?? "Wiki");
+      if (!versions) throw { code: "not_found", message: "Not found in Redmine." };
+      const page = version ? versions[version - 1] : latest(versions);
+      if (!page) throw { code: "not_found", message: "Not found in Redmine." };
+      if (version && !may(projectId, "view_wiki_edits")) throw forbidden();
+      return { ...page, parent: latest(versions).parent, attachments: latest(versions).attachments };
+    },
+    async saveWikiPage(projectId, title, changes) {
+      await wait(null);
+      if (!may(projectId, "edit_wiki_pages")) throw forbidden();
+      const versions = findWiki(projectId, title);
+      const now = new Date().toISOString();
+      if (!versions) {
+        const page: WikiPage = {
+          title,
+          parent: changes.parent_title ? { title: changes.parent_title } : null,
+          text: changes.text,
+          version: 1,
+          author: people[0]!,
+          comments: changes.comments ?? "",
+          created_on: now,
+          updated_on: now,
+          attachments: [],
+        };
+        wikiOf(projectId).push([page]);
+        return;
+      }
+      const current = latest(versions);
+      if (changes.version !== undefined && changes.version !== current.version && changes.text !== current.text)
+        throw {
+          code: "rejected",
+          message: "Someone else saved this page while you were editing it. Copy your text, reload the page and edit it again.",
+        };
+      let parent = current.parent;
+      if (changes.parent_title !== undefined && (changes.parent_title || null) !== (current.parent?.title ?? null)) {
+        if (!may(projectId, "rename_wiki_pages")) throw forbidden();
+        parent = changes.parent_title ? { title: changes.parent_title } : null;
+      }
+      for (const v of versions) v.parent = parent;
+      if (changes.text === current.text) return;
+      versions.push({
+        ...current,
+        parent,
+        text: changes.text,
+        version: current.version + 1,
+        author: people[0]!,
+        comments: changes.comments ?? "",
+        updated_on: now,
+      });
+    },
+    async deleteWikiPage(projectId, title, withChildren) {
+      await wait(null);
+      if (!may(projectId, "delete_wiki_pages")) throw forbidden();
+      const list = wikiOf(projectId);
+      const gone = new Set([title.toLowerCase()]);
+      if (withChildren) {
+        for (let grew = true; grew; ) {
+          grew = false;
+          for (const v of list) {
+            const p = latest(v);
+            if (p.parent && gone.has(p.parent.title.toLowerCase()) && !gone.has(p.title.toLowerCase())) {
+              gone.add(p.title.toLowerCase());
+              grew = true;
+            }
+          }
+        }
+      }
+      wikis.set(
+        projectId,
+        list
+          .filter((v) => !gone.has(v[0]!.title.toLowerCase()))
+          .map((v) => (latest(v).parent?.title.toLowerCase() === title.toLowerCase() ? v.map((p) => ({ ...p, parent: null })) : v)),
+      );
     },
     async timeEntries(query) {
       await wait(null);

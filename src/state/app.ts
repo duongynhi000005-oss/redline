@@ -43,6 +43,8 @@ export type Route =
   | { view: "cycles"; teamId: number }
   | { view: "time"; teamId: number }
   | { view: "cycle"; teamId: number; versionId: number }
+  /** A project's wiki: a page, or its start page when title is null. */
+  | { view: "wiki"; projectId: number; title: string | null }
   /** A saved Redmine query, run on the server. */
   | { view: "query"; queryId: number }
   /** Redmine search, across issues, wiki, news, documents, forums and commits. */
@@ -74,6 +76,8 @@ export function routeKey(route: Route): string {
       return `project:${route.projectId}`;
     case "overview":
       return `overview:${route.projectId}`;
+    case "wiki":
+      return `wiki:${route.projectId}`;
     case "cycle":
       return `cycle:${route.versionId}`;
     case "query":
@@ -982,7 +986,7 @@ export const useApp = create<AppState>()((set, get) => {
       const issues = new Map(get().issues);
       for (const i of get().issues.values()) if (gone.has(i.project.id)) issues.delete(i.id);
       const shown =
-        route.view === "overview" || route.view === "project"
+        route.view === "overview" || route.view === "project" || route.view === "wiki"
           ? route.projectId
           : route.view === "team" || route.view === "cycles" || route.view === "time" || route.view === "cycle"
             ? route.teamId

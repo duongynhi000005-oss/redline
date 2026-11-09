@@ -14,6 +14,7 @@ import { VersionDialog } from "./components/Cycle";
 import { TimeView } from "./components/TimeView";
 import { SearchView } from "./components/SearchView";
 import { TeamOverview } from "./components/TeamOverview";
+import { WikiView } from "./components/WikiView";
 import { PersonCard } from "./components/PersonCard";
 import { DeleteTeamDialog, TeamDialog } from "./components/TeamDialogs";
 import { useIssueShortcuts } from "./components/useIssueShortcuts";
@@ -76,6 +77,8 @@ export function App({ backend }: { backend?: Backend }) {
         <TimeView teamId={route.teamId} />
       ) : route.view === "overview" ? (
         <TeamOverview projectId={route.projectId} />
+      ) : route.view === "wiki" ? (
+        <WikiView projectId={route.projectId} title={route.title} />
       ) : route.view === "search" ? (
         <SearchView key={route.text} text={route.text} />
       ) : (

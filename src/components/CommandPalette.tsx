@@ -95,7 +95,7 @@ function PaletteContent() {
       { id: "new-issue", label: "Create new issue", group: "Issues", shortcut: "c", run: () => setComposerOpen(true) },
     ];
     // Lists of issues can be filtered; the inbox, cycle overview and search can't.
-    if (route.view !== "inbox" && route.view !== "cycles" && route.view !== "time" && route.view !== "search" && route.view !== "overview" && !detailOpen) {
+    if (route.view !== "inbox" && route.view !== "cycles" && route.view !== "time" && route.view !== "search" && route.view !== "overview" && route.view !== "wiki" && !detailOpen) {
       list.push({
         id: "filter",
         label: "Filter…",
@@ -308,6 +308,15 @@ function PaletteContent() {
         keywords: `${team.identifier} members people team`,
         run: go({ view: "overview", projectId: team.id }),
       });
+      if (d.wikis.has(team.id))
+        list.push({
+          id: `go-wiki-${team.id}`,
+          label: `Go to ${team.name} wiki`,
+          group: "Navigation",
+          icon: <Icon name="wiki" />,
+          keywords: `${team.identifier} docs pages`,
+          run: go({ view: "wiki", projectId: team.id, title: null }),
+        });
       list.push({
         id: `go-cycles-${team.id}`,
         label: `Go to ${team.name} cycles`,
@@ -341,6 +350,15 @@ function PaletteContent() {
           keywords: `${team.name} ${p.identifier} members people`,
           run: go({ view: "overview", projectId: p.id }),
         });
+        if (d.wikis.has(p.id))
+          list.push({
+            id: `go-wiki-${p.id}`,
+            label: `Go to ${p.name} wiki`,
+            group: "Navigation",
+            icon: <Icon name="wiki" />,
+            keywords: `${team.name} ${p.identifier} docs pages`,
+            run: go({ view: "wiki", projectId: p.id, title: null }),
+          });
       }
     }
     list.push(

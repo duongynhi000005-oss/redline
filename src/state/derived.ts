@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import type { CategoryMap, PriorityLevel, StatusCategory } from "../lib/model";
 import { categoryMap, issueCategory, priorityLevels, projectTree, teamOf } from "../lib/model";
-import { moduleEnabled, timeAccess } from "../lib/permissions";
+import { moduleEnabled, timeAccess, wikiAccess } from "../lib/permissions";
 import type { Issue, Metadata, Project, SavedQuery, Version } from "../lib/types";
 import type { ServerSettings } from "../lib/settings";
 import { DEFAULT_SETTINGS } from "../lib/settings";
@@ -23,6 +23,8 @@ export interface Derived {
   teamTime: Set<number>;
   /** Saved Redmine queries, by id. */
   queries: Map<number, SavedQuery>;
+  /** Projects whose wiki the user can read. */
+  wikis: Set<number>;
 }
 
 export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTINGS): Derived {
@@ -48,6 +50,7 @@ export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTIN
     teamProjects,
     teamTime,
     queries: new Map((meta.queries ?? []).map((q) => [q.id, q])),
+    wikis: new Set(meta.projects.filter((p) => wikiAccess(meta, p.id).view).map((p) => p.id)),
   };
 }
 
@@ -91,6 +94,7 @@ const EMPTY: Derived = {
   teamProjects: new Map(),
   teamTime: new Set(),
   queries: new Map(),
+  wikis: new Set(),
 };
 
 export function useDerived(): Derived {
@@ -134,6 +138,7 @@ export function issuesForRoute(
       case "query":
       case "search":
       case "overview":
+      case "wiki":
       case "cycles":
       case "time":
       case "inbox":
@@ -170,6 +175,8 @@ export function routeTitle(route: Route, d: Derived): string {
       return d.projects.get(route.projectId)?.name ?? "Project";
     case "overview":
       return d.projects.get(route.projectId)?.name ?? "Team";
+    case "wiki":
+      return `${d.projects.get(route.projectId)?.name ?? "Team"} wiki`;
     case "cycles":
       return `${d.projects.get(route.teamId)?.name ?? "Team"} cycles`;
     case "time":
