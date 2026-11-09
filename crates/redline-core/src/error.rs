@@ -39,8 +39,9 @@ pub enum Error {
     NotFound,
 
     /// 422: Redmine refused a change, with its own messages, for example a
-    /// workflow rule or a required field.
-    #[error("Redmine refused the change: {}", .0.join("; "))]
+    /// workflow rule or a required field. With no messages, someone changed
+    /// the same issue at the same moment.
+    #[error("{}", rejected_message(.0))]
     Rejected(Vec<String>),
 
     /// The server kept answering 429 or 503 after retries.
@@ -81,3 +82,12 @@ impl Error {
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+fn rejected_message(messages: &[String]) -> String {
+    if messages.is_empty() {
+        "Redmine refused the change because the issue changed at the same moment. Try again."
+            .to_owned()
+    } else {
+        format!("Redmine refused the change: {}", messages.join("; "))
+    }
+}

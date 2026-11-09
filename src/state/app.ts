@@ -27,6 +27,8 @@ import type { Filter, FilterField } from "../lib/filters";
 import type { ViewOptions } from "../lib/views";
 import { DEFAULT_VIEW, isDefaultView, loadViews, saveViews } from "../lib/views";
 
+const NO_SELECTION: number[] = [];
+
 /** Where the main pane is. Teams are top-level Redmine projects. */
 export type Route =
   | { view: "inbox" }
@@ -80,6 +82,8 @@ export interface PickerState {
   relation?: RelationChoice;
   /** For the custom field picker: which field. */
   fieldId?: number;
+  /** When set, the picker changes all these issues (a multi-selection), not just `issueId`. */
+  issueIds?: number[];
 }
 
 export interface AppState {
@@ -94,6 +98,8 @@ export interface AppState {
   openIssueId: number | null;
   /** The highlighted row in the issue list. */
   focusedIssueId: number | null;
+  /** Issues picked with X, Shift or Cmd/Ctrl-click, for changing several at once. */
+  selection: number[];
   paletteOpen: boolean;
   /** The property picker open for an issue, like Linear's S, P and A menus. */
   picker: PickerState | null;
@@ -127,6 +133,16 @@ export interface AppState {
   focusIssue(id: number | null): void;
   setPaletteOpen(open: boolean): void;
   openPicker(kind: PickerKind, issueId: number, relation?: RelationChoice, fieldId?: number): void;
+  /** Opens a picker that changes several issues at once. */
+  openBulkPicker(kind: PickerKind, issueIds: number[]): void;
+  setSelection(ids: number[]): void;
+  toggleSelected(id: number): void;
+  /** Changes several issues, a few at a time, and sums up what Redmine refused. */
+  /**
+   * Changes several issues, a few at a time, and says in one message how it
+   * went. `unchanged` counts picked issues that already had the change.
+   */
+  updateIssues(changes: [number, IssueChanges][], unchanged?: number): Promise<number>;
   closePicker(): void;
   syncNow(): Promise<void>;
   updateIssue(id: number, changes: IssueChanges): Promise<IssueDetails | null>;
@@ -194,6 +210,7 @@ function initial() {
     route: { view: "my-issues", tab: "assigned" } as Route,
     openIssueId: null as number | null,
     focusedIssueId: null as number | null,
+    selection: NO_SELECTION,
     paletteOpen: false,
     picker: null as PickerState | null,
     timeDialog: null as AppState["timeDialog"],
@@ -252,6 +269,8 @@ export const useApp = create<AppState>()((set, get) => {
         });
         set({ issues });
         if (removed.includes(get().openIssueId ?? -1)) set({ openIssueId: null });
+        if (removed.length && get().selection.some((id) => removed.includes(id)))
+          set({ selection: get().selection.filter((id) => !removed.includes(id)) });
         void collectInbox(backend, fresh);
       }),
       backend.onMetadataChanged(async () => set({ meta: await backend.getMetadata() })),
@@ -351,7 +370,7 @@ export const useApp = create<AppState>()((set, get) => {
     },
 
     navigate(route) {
-      set({ route, openIssueId: null, focusedIssueId: null });
+      set({ route, openIssueId: null, focusedIssueId: null, selection: NO_SELECTION });
     },
 
     openIssue(id) {
@@ -369,6 +388,64 @@ export const useApp = create<AppState>()((set, get) => {
 
     openPicker(kind, issueId, relation, fieldId) {
       set({ picker: { kind, issueId, relation, fieldId }, paletteOpen: false });
+    },
+
+    openBulkPicker(kind, issueIds) {
+      if (!issueIds.length) return;
+      set({ picker: { kind, issueId: issueIds[0]!, issueIds }, paletteOpen: false });
+    },
+
+    setSelection(ids) {
+      set({ selection: ids.length ? [...new Set(ids)] : NO_SELECTION });
+    },
+
+    toggleSelected(id) {
+      const { selection } = get();
+      const next = selection.includes(id) ? selection.filter((s) => s !== id) : [...selection, id];
+      set({ selection: next.length ? next : NO_SELECTION });
+    },
+
+    async updateIssues(changes, unchanged = 0) {
+      const { backend, meta } = get();
+      if (!backend || !changes.length) return 0;
+      // Show every change at once; Redmine's answers replace them.
+      const before = new Map(changes.map(([id]) => [id, get().issues.get(id)]));
+      if (meta) {
+        const issues = new Map(get().issues);
+        for (const [id, c] of changes) {
+          const issue = issues.get(id);
+          if (issue) issues.set(id, applyChanges(issue, c, meta));
+        }
+        set({ issues });
+      }
+      const refused: { id: number; reason: string }[] = [];
+      let done = 0;
+      const queue = [...changes];
+      // A few at a time, like the client's own limit, so Redmine isn't flooded.
+      const worker = async () => {
+        for (let next = queue.shift(); next; next = queue.shift()) {
+          const [id, c] = next;
+          try {
+            const details = await backend.updateIssue(id, c);
+            set({ issues: new Map(get().issues).set(id, details.issue) });
+            done++;
+          } catch (e) {
+            const old = before.get(id);
+            if (old) set({ issues: new Map(get().issues).set(id, old) });
+            refused.push({ id, reason: errorMessage(e).replace(/^Redmine refused the change: /, "") });
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(4, changes.length) }, worker));
+      const had = unchanged ? `, and ${unchanged} already had that` : "";
+      if (!refused.length) set({ toast: `Changed ${done === 1 ? "1 issue" : `${done} issues`}${had}` });
+      else {
+        refused.sort((a, b) => a.id - b.id);
+        const shown = refused.slice(0, 3).map((r) => `#${r.id}: ${r.reason}`);
+        const more = refused.length > 3 ? ` and ${refused.length - 3} more` : "";
+        set({ toast: `Changed ${done} of ${changes.length} issues. Redmine refused ${shown.join("; ")}${more}` });
+      }
+      return done;
     },
 
     closePicker() {
@@ -736,6 +813,7 @@ export const useApp = create<AppState>()((set, get) => {
         issues: next,
         openIssueId: openIssueId !== null && gone.has(openIssueId) ? null : openIssueId,
         focusedIssueId: focusedIssueId !== null && gone.has(focusedIssueId) ? null : focusedIssueId,
+        selection: get().selection.some((s) => gone.has(s)) ? get().selection.filter((s) => !gone.has(s)) : get().selection,
         toast: `Deleted #${id}${issue ? ` ${issue.subject}` : ""}`,
       });
       return true;
@@ -800,4 +878,14 @@ export function resetApp() {
   unlisten.forEach((u) => u());
   unlisten = [];
   useApp.setState(initial());
+}
+
+/**
+ * The issues a command changes: the open issue, else the selection when
+ * there is one, else the highlighted row.
+ */
+export function targetIssueIds(s: Pick<AppState, "openIssueId" | "focusedIssueId" | "selection">): number[] {
+  if (s.openIssueId !== null) return [s.openIssueId];
+  if (s.selection.length) return s.selection;
+  return s.focusedIssueId !== null ? [s.focusedIssueId] : [];
 }

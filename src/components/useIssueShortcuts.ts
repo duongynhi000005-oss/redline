@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { isMac, isTyping, matchesShortcut } from "../lib/platform";
 import { timeAccess } from "../lib/permissions";
 import type { PickerKind } from "../state/app";
-import { overlayOpen, targetIssueId, useApp } from "../state/app";
+import { overlayOpen, targetIssueIds, useApp } from "../state/app";
 
 /** Linear's single-key shortcuts for the open or highlighted issue. */
 export type IssueCommand = PickerKind | "assign-me" | "subscribe" | "open-in-redmine" | "log-time";
@@ -25,6 +25,30 @@ export function issueCommandAvailable(kind: IssueCommand, issueId: number): bool
   const state = useApp.getState();
   const issue = state.issues.get(issueId);
   return !!issue && timeAccess(state.meta, issue.project.id).log;
+}
+
+/** Commands that can change several issues at once. */
+const BULK: IssueCommand[] = ["status", "priority", "assignee", "assign-me", "labels", "cycle"];
+
+export function bulkCommand(kind: IssueCommand): boolean {
+  return BULK.includes(kind);
+}
+
+/** Runs a command on one issue, or on several where it can. */
+export function runIssueCommandOn(kind: IssueCommand, ids: number[]) {
+  const state = useApp.getState();
+  if (ids.length === 1) return runIssueCommand(kind, ids[0]!);
+  if (!ids.length) return;
+  if (!bulkCommand(kind)) {
+    useApp.setState({ toast: "That works on one issue at a time. Press Escape to clear the selection." });
+    return;
+  }
+  if (kind === "assign-me") {
+    const me = state.account?.userId;
+    if (me !== undefined) void state.updateIssues(ids.map((id) => [id, { assigned_to_id: me }]));
+    return;
+  }
+  state.openBulkPicker(kind as PickerKind, ids);
 }
 
 export function runIssueCommand(kind: IssueCommand, issueId: number) {
@@ -78,12 +102,25 @@ export function useIssueShortcuts() {
         state.setComposerOpen(true);
         return;
       }
-      const id = targetIssueId(state);
-      if (id === null) return;
+      // X picks the highlighted issue for changing several at once; Escape lets them go.
+      if (state.openIssueId === null) {
+        if (matchesShortcut(e, "x") && state.focusedIssueId !== null) {
+          e.preventDefault();
+          state.toggleSelected(state.focusedIssueId);
+          return;
+        }
+        if (e.key === "Escape" && state.selection.length) {
+          e.preventDefault();
+          state.setSelection([]);
+          return;
+        }
+      }
+      const ids = targetIssueIds(state);
+      if (!ids.length) return;
       const hit = ISSUE_SHORTCUTS.find((s) => matchesShortcut(e, s.shortcut));
       if (!hit) return;
       e.preventDefault();
-      runIssueCommand(hit.kind, id);
+      runIssueCommandOn(hit.kind, ids);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

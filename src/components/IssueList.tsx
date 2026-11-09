@@ -4,6 +4,7 @@ import { issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
 import { matchesFilters } from "../lib/filters";
 import { blockingIssues } from "../lib/relations";
 import { isTyping } from "../lib/platform";
+import { clickSelection } from "../lib/selection";
 import type { Issue } from "../lib/types";
 import type { MyIssuesTab, Route, TeamTab } from "../state/app";
 import { overlayOpen, routeKey, useApp, viewFor } from "../state/app";
@@ -19,6 +20,7 @@ import { DisplayMenu } from "./DisplayMenu";
 import { Avatar } from "./Avatar";
 import { CycleHeader } from "./Cycle";
 import { FilterBar, useRouteIssues } from "./Filters";
+import { SelectionBar } from "./SelectionBar";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
 
 type Row = { kind: "group"; group: Group; count: number } | { kind: "issue"; issue: Issue };
@@ -128,6 +130,8 @@ export function IssueRow({
   focused,
   showProject,
   showCycle = true,
+  selected = false,
+  selecting = false,
   onOpen,
   onFocus,
 }: {
@@ -136,7 +140,11 @@ export function IssueRow({
   focused: boolean;
   showProject: boolean;
   showCycle?: boolean;
-  onOpen: () => void;
+  /** Picked for changing several issues at once. */
+  selected?: boolean;
+  /** Whether any issue is picked, so every row shows its box. */
+  selecting?: boolean;
+  onOpen: (e: React.MouseEvent) => void;
   onFocus: () => void;
 }) {
   const category = issueCategory(issue, d.categories);
@@ -147,11 +155,15 @@ export function IssueRow({
       id={`issue-row-${issue.id}`}
       role="option"
       aria-label={spoken}
-      aria-selected={focused}
-      className={`issue-row${focused ? " focused" : ""}`}
+      // While issues are picked, selected means picked; otherwise it's the highlighted row.
+      aria-selected={selecting ? selected : focused}
+      className={`issue-row${focused ? " focused" : ""}${selected ? " selected" : ""}${selecting ? " selecting" : ""}`}
       onClick={onOpen}
       onMouseMove={onFocus}
     >
+      <span className="issue-check" aria-hidden="true">
+        {selected && <Icon name="check" size={10} />}
+      </span>
       <PriorityIcon level={d.priorities.get(issue.priority.id) ?? 0} title={issue.priority.name} />
       <span className="issue-id">#{issue.id}</span>
       <StatusIcon category={category} title={issue.status.name} />
@@ -247,6 +259,7 @@ export function IssueList() {
       ) : (
         <ListBody issues={issues} view={view} route={route} />
       )}
+      <SelectionBar />
     </section>
   );
 }
@@ -258,6 +271,8 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set(["status:canceled"]));
   const focusedId = useApp((s) => s.focusedIssueId);
   const setFocusedId = useApp((s) => s.focusIssue);
+  const selection = useApp((s) => s.selection);
+  const setSelection = useApp((s) => s.setSelection);
   const meta = useApp((s) => s.meta);
   const me = useApp((s) => s.account?.userId);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -287,11 +302,18 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
     overscan: 12,
   });
 
-  // Keyboard: ↑/↓ or j/k move, Enter opens.
+  const order = useMemo(() => issueRows.map((r) => r.id), [issueRows]);
+
+  // Keyboard: ↑/↓ or j/k move, Enter opens, Shift+↑/↓ pick as they move, Cmd/Ctrl+A picks all.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (overlay || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
-      if (!issueRows.length) return;
+      if (overlay || isTyping(e.target) || !issueRows.length) return;
+      if (matchesShortcut(e, "mod+a")) {
+        e.preventDefault();
+        setSelection(order);
+        return;
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
       const pos = issueRows.findIndex((r) => r.id === focusedId);
       let next: number | null = null;
       if (e.key === "ArrowDown" || e.key === "j") next = pos < 0 ? 0 : Math.min(issueRows.length - 1, pos + 1);
@@ -308,12 +330,22 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
         scrollRef.current.focus({ preventScroll: true });
       }
       const target = issueRows[next]!;
+      if (e.shiftKey && focusedId !== null) {
+        const picked = useApp.getState().selection;
+        setSelection([...picked, focusedId, target.id]);
+      }
       setFocusedId(target.id);
       virtualizer.scrollToIndex(target.index, { align: "auto" });
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [issueRows, focusedId, overlay, openIssue, setFocusedId, virtualizer]);
+  }, [issueRows, order, focusedId, overlay, openIssue, setFocusedId, setSelection, virtualizer]);
+
+  // Issues that drop out of the list (filtered, moved, closed) stop being picked.
+  useEffect(() => {
+    const picked = useApp.getState().selection;
+    if (picked.some((id) => !order.includes(id))) setSelection(picked.filter((id) => order.includes(id)));
+  }, [order, setSelection]);
 
   // Coming back from an issue, scroll its row into view.
   useEffect(() => {
@@ -337,6 +369,7 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
       className="issue-scroll"
       role="listbox"
       aria-label="Issues"
+      aria-multiselectable="true"
       aria-activedescendant={focusedId ? `issue-row-${focusedId}` : undefined}
       tabIndex={0}
     >
@@ -371,7 +404,20 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
                     ((route.view === "team" || route.view === "cycle") && row.issue.project.id !== route.teamId)
                   }
                   showCycle={route.view !== "cycle"}
-                  onOpen={() => openIssue(row.issue.id)}
+                  selected={selection.includes(row.issue.id)}
+                  selecting={selection.length > 0}
+                  onOpen={(e) => {
+                    const anchor = selection.length ? selection[selection.length - 1]! : focusedId;
+                    const onBox = e.target instanceof Element && e.target.closest(".issue-check");
+                    const picked = onBox
+                      ? clickSelection(order, selection, anchor, row.issue.id, { shiftKey: e.shiftKey, metaKey: true, ctrlKey: true })
+                      : clickSelection(order, selection, anchor, row.issue.id, e);
+                    if (picked) {
+                      e.preventDefault();
+                      setSelection(picked);
+                      setFocusedId(row.issue.id);
+                    } else openIssue(row.issue.id);
+                  }}
                   onFocus={() => focusedId !== row.issue.id && setFocusedId(row.issue.id)}
                 />
               )}
