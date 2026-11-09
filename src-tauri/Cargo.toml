@@ -24,6 +24,9 @@ tauri = { version = "2.12", features = [] }
 tokio.workspace = true
 thiserror.workspace = true
 
+[dev-dependencies]
+tauri = { version = "2.12", features = ["test"] }
+
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3.6", features = ["apple-native"] }
 

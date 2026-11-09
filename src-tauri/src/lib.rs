@@ -2,11 +2,12 @@
 
 mod account;
 mod commands;
+mod menu;
 mod session;
 
 use std::sync::atomic::Ordering;
 
-use tauri::{Manager, WindowEvent};
+use tauri::{Emitter, Manager, WindowEvent};
 
 use commands::AppState;
 
@@ -29,8 +30,16 @@ fn app_info() -> AppInfo {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // A menu bar is part of a Mac app; Windows apps like this one don't have one.
+    #[cfg(target_os = "macos")]
+    let builder = builder.menu(menu::build);
+
+    builder
         .manage(AppState::default())
+        .on_menu_event(|app, event| {
+            let _ = app.emit(menu::EVENT_MENU, event.id().as_ref());
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             tauri::async_runtime::block_on(async {
@@ -74,6 +83,19 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn menu_builds() {
+        let app = tauri::test::mock_app();
+        let built = menu::build(app.handle()).expect("menu");
+        let titles: Vec<String> = built
+            .items()
+            .unwrap()
+            .iter()
+            .filter_map(|i| i.as_submenu().map(|s| s.text().unwrap()))
+            .collect();
+        assert_eq!(titles, ["Redline", "File", "Edit", "View", "Window"]);
+    }
 
     #[test]
     fn app_info_reports_version_and_platform() {

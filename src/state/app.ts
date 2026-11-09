@@ -103,6 +103,7 @@ export const useApp = create<AppState>()((set, get) => {
         if (removed.includes(get().openIssueId ?? -1)) set({ openIssueId: null });
       }),
       backend.onMetadataChanged(async () => set({ meta: await backend.getMetadata() })),
+      backend.onMenu((id) => handleMenu(id)),
     ]);
     if (gen !== generation) {
       subscriptions.forEach((u) => u());
@@ -112,6 +113,28 @@ export const useApp = create<AppState>()((set, get) => {
     // The shell may have synced before we started listening.
     const sync = await backend.getSyncState();
     if (sync && gen === generation) set({ sync });
+  }
+
+  /** The macOS menu bar's commands. */
+  function handleMenu(id: string) {
+    const state = get();
+    switch (id) {
+      case "new-issue":
+        state.setComposerOpen(true);
+        break;
+      case "command-palette":
+        set({ paletteOpen: true, picker: null });
+        break;
+      case "my-issues":
+        state.navigate({ view: "my-issues", tab: "assigned" });
+        break;
+      case "sync-now":
+        void state.syncNow();
+        break;
+      case "sign-out":
+        void state.signOut();
+        break;
+    }
   }
 
   return {

@@ -281,5 +281,8 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     async onMetadataChanged() {
       return () => {};
     },
+    async onMenu() {
+      return () => {};
+    },
   };
 }

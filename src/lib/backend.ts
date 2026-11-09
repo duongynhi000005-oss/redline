@@ -33,6 +33,8 @@ export interface Backend {
   onSyncState(handler: (state: SyncState) => void): Promise<Unlisten>;
   onIssuesChanged(handler: (change: IssuesChanged) => void): Promise<Unlisten>;
   onMetadataChanged(handler: () => void): Promise<Unlisten>;
+  /** Menu bar choices (macOS), by id. */
+  onMenu(handler: (id: string) => void): Promise<Unlisten>;
 }
 
 export function isTauri(): boolean {

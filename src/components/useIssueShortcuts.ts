@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { isTyping, matchesShortcut } from "../lib/platform";
+import { isMac, isTyping, matchesShortcut } from "../lib/platform";
 import type { PickerKind } from "../state/app";
 import { targetIssueId, useApp } from "../state/app";
 
@@ -27,6 +27,19 @@ export function useIssueShortcuts() {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const state = useApp.getState();
+      // On macOS the menu bar owns these; elsewhere the page does.
+      if (!isMac && !state.composerOpen) {
+        if (matchesShortcut(e, "mod+n")) {
+          e.preventDefault();
+          state.setComposerOpen(true);
+          return;
+        }
+        if (matchesShortcut(e, "mod+r")) {
+          e.preventDefault();
+          void state.syncNow();
+          return;
+        }
+      }
       if (state.paletteOpen || state.picker || state.composerOpen || isTyping(e.target) || e.repeat) return;
       if (matchesShortcut(e, "c")) {
         e.preventDefault();

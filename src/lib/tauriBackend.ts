@@ -19,4 +19,5 @@ export const tauriBackend: Backend = {
   onSyncState: (handler) => listen<SyncState>("sync-state", (e) => handler(e.payload)),
   onIssuesChanged: (handler) => listen<IssuesChanged>("issues-changed", (e) => handler(e.payload)),
   onMetadataChanged: (handler) => listen("metadata-changed", () => handler()),
+  onMenu: (handler) => listen<string>("menu", (e) => handler(e.payload)),
 };
