@@ -2210,6 +2210,352 @@ h2 {
   }
 }
 
+/* Calendar: a month of weeks, issues across their days. */
+
+.calendar {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  outline: none;
+}
+
+.calendar.dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.calendar.dragging .calendar-bar {
+  pointer-events: none;
+}
+
+.calendar-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.calendar-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px 8px 22px;
+}
+
+.calendar-toolbar h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.header-button.icon-only {
+  padding: 0 6px;
+}
+
+.header-button .flip {
+  transform: scaleX(-1);
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+}
+
+.calendar-weekdays span {
+  padding: 0 8px 6px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.calendar-weeks {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+}
+
+.calendar-week {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  min-height: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.calendar-week:last-child {
+  border-bottom: none;
+}
+
+.calendar-day {
+  position: relative;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+
+.calendar-day:last-child {
+  border-right: none;
+}
+
+.calendar-day.outside {
+  background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
+}
+
+.calendar-day.outside .calendar-date {
+  color: var(--text-tertiary);
+}
+
+.calendar-day.drop-over {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.calendar-day-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+  min-width: 0;
+}
+
+.calendar-date {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-day.today .calendar-date {
+  background: var(--danger);
+  color: #fff;
+}
+
+.calendar-cycle {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.calendar-cycle svg {
+  flex: none;
+  width: 12px;
+  height: 12px;
+}
+
+.calendar-more {
+  position: absolute;
+  left: 6px;
+  z-index: 2;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.calendar-more:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.calendar-popover {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 5;
+  width: max(100%, 260px);
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow);
+}
+
+.calendar-week .calendar-day:nth-child(n + 6) .calendar-popover {
+  left: auto;
+  right: 4px;
+}
+
+.calendar-popover-title {
+  padding: 4px 8px 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.calendar-popover-issue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.calendar-popover-issue svg,
+.calendar-undated-issue svg {
+  flex: none;
+}
+
+.calendar-popover-issue:hover {
+  background: var(--bg-hover);
+}
+
+.calendar-popover-issue span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-bar {
+  --bar: var(--status-backlog);
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px 0 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--bar) 18%, var(--bg));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bar) 45%, transparent);
+  font-size: 12px;
+  cursor: grab;
+}
+
+.calendar-bar.cat-triage {
+  --bar: var(--status-triage);
+}
+.calendar-bar.cat-started {
+  --bar: var(--status-started);
+}
+.calendar-bar.cat-completed {
+  --bar: var(--status-completed);
+}
+
+.calendar-bar svg {
+  flex: none;
+}
+
+.calendar-bar.before {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.calendar-bar.after {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.calendar-bar.closed .calendar-bar-title {
+  color: var(--text-secondary);
+}
+
+.calendar-bar.focused {
+  box-shadow: inset 0 0 0 1.5px var(--bar);
+}
+
+.calendar-bar.dragging {
+  opacity: 0.85;
+  box-shadow:
+    inset 0 0 0 1.5px var(--bar),
+    0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.calendar-bar-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calendar-undated {
+  flex: none;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border);
+}
+
+.calendar-undated-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 14px 2px;
+  font-weight: 500;
+}
+
+.calendar-undated-hint {
+  margin: 0;
+  padding: 0 14px 8px;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.calendar-undated-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 6px 8px;
+}
+
+.calendar-undated-issue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: grab;
+}
+
+.calendar-undated-issue .issue-id {
+  min-width: 0;
+}
+
+.calendar-undated-issue.focused {
+  background: var(--bg-hover);
+}
+
+@media (forced-colors: active) {
+  .calendar-bar {
+    border: 1px solid CanvasText;
+  }
+
+  .calendar-bar.focused,
+  .calendar-undated-issue.focused,
+  .calendar-day.drop-over {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .calendar-day.today .calendar-date {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+  }
+}
+
 /* Native materials and floating panels.
    The window's backdrop (Liquid Glass or vibrancy on macOS, Mica on Windows 11)
    shows through the sidebar; each view floats over it as a rounded panel.

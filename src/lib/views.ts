@@ -8,8 +8,8 @@ import type { Issue, Metadata } from "./types";
 
 export type Grouping = "status" | "assignee" | "priority" | "cycle" | "none";
 export type Ordering = "priority" | "updated" | "created";
-/** How a list is laid out: rows, a board of columns, or bars on a timeline. */
-export type Layout = "list" | "board" | "timeline";
+/** How a list is laid out: rows, a board of columns, bars on a timeline, or a month calendar. */
+export type Layout = "list" | "board" | "timeline" | "calendar";
 /** How much time a timeline shows at once. */
 export type Zoom = "week" | "month" | "quarter";
 
@@ -37,6 +37,7 @@ export const LAYOUTS: { value: Layout; label: string; shortcut: string }[] = [
   { value: "list", label: "List", shortcut: "mod+1" },
   { value: "board", label: "Board", shortcut: "mod+2" },
   { value: "timeline", label: "Timeline", shortcut: "mod+3" },
+  { value: "calendar", label: "Calendar", shortcut: "mod+4" },
 ];
 
 export const ZOOMS: { value: Zoom; label: string }[] = [

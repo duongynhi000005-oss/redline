@@ -64,18 +64,21 @@ export function DisplayMenu({ route }: { route: Route }) {
             }
           }}
         >
-          <label className="display-row">
-            <span>{view.layout === "board" ? "Columns" : "Grouping"}</span>
-            <select
-              value={view.layout === "board" && view.grouping === "none" ? "status" : view.grouping}
-              onChange={(e) => updateView(key, { grouping: e.target.value as Grouping })}>
-              {GROUPINGS.filter((g) => view.layout !== "board" || g.value !== "none").map((g) => (
-                <option key={g.value} value={g.value}>
-                  {g.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          {view.layout !== "calendar" && (
+            <label className="display-row">
+              <span>{view.layout === "board" ? "Columns" : "Grouping"}</span>
+              <select
+                value={view.layout === "board" && view.grouping === "none" ? "status" : view.grouping}
+                onChange={(e) => updateView(key, { grouping: e.target.value as Grouping })}
+              >
+                {GROUPINGS.filter((g) => view.layout !== "board" || g.value !== "none").map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="display-row">
             <span>Ordering</span>
             <select value={view.ordering} onChange={(e) => updateView(key, { ordering: e.target.value as Ordering })}>
