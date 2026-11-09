@@ -459,6 +459,8 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   const watchers = new Map<number, Named[]>();
   // Comments changed or removed, by journal id.
   const commentEdits = new Map<number, { notes: string; at: string }>();
+  // Comments added here, by issue.
+  const comments = new Map<number, Journal[]>();
   for (const issue of issues.values()) {
     const list = [issue.author, issue.assigned_to].filter((p): p is Named => !!p);
     watchers.set(
@@ -697,7 +699,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
         attachments: (files.get(id) ?? []).map((f) => f.attachment),
         ...(may(issue.project.id, "view_changesets") ? { changesets: commits.get(id) ?? [] } : {}),
       },
-      journals: buildJournals(issue).flatMap((j) => {
+      journals: [...buildJournals(issue), ...(comments.get(id) ?? [])].flatMap((j) => {
         const edit = commentEdits.get(j.id);
         if (!edit) return [j];
         // Redmine drops an entry left with no comment and no changes.
@@ -750,7 +752,14 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       await wait(null);
       const issue = issues.get(id);
       if (!issue) throw { code: "not_found", message: "Not found in Redmine." };
-      issues.set(id, applyChanges(issue, changes));
+      const next = applyChanges(issue, changes);
+      issues.set(id, next);
+      if (changes.notes?.trim()) {
+        const list = comments.get(id) ?? [];
+        const user = people.find((p) => p.id === meta.user?.id) ?? people[0]!;
+        const journal = { id: id * 100 + 50 + list.length, user, notes: changes.notes, created_on: next.updated_on, private_notes: false, details: [] };
+        comments.set(id, [...list, journal]);
+      }
       changeHandlers.forEach((h) => h({ changed: [id], removed: [] }));
       return details(id);
     },

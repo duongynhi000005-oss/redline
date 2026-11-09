@@ -220,6 +220,12 @@ export interface AppState {
   removeRelation(relation: Relation): Promise<boolean>;
   /** Takes what a fresh read of an issue says that a list doesn't: relations, watchers, your subscription. */
   takeDetails(details: IssueDetails): void;
+  /**
+   * Redmine's read of an issue right after a change made here. The open
+   * issue shows it, because the change's own timestamp can't say whether
+   * the activity it already loaded is older.
+   */
+  freshDetails: IssueDetails | null;
   /** Adds or removes a subscriber (a Redmine watcher). */
   setWatcher(issueId: number, userId: number, watching: boolean): Promise<boolean>;
   /** Subscribes you to an issue, or unsubscribes you. */
@@ -285,6 +291,7 @@ function initial() {
   return {
     phase: "starting" as Phase,
     signInServer: "",
+    freshDetails: null,
     backend: null,
     account: null,
     meta: null,
@@ -316,6 +323,12 @@ function initial() {
 }
 
 export const useApp = create<AppState>()((set, get) => {
+  /** Takes Redmine's read of an issue after a change, and hands it to the open issue. */
+  function took(details: IssueDetails) {
+    get().takeDetails(details);
+    set({ freshDetails: details });
+  }
+
   async function leave(signInServer: string) {
     const backend = get().backend;
     generation++;
@@ -549,7 +562,7 @@ export const useApp = create<AppState>()((set, get) => {
           const [id, c] = next;
           try {
             const details = await backend.updateIssue(id, c);
-            set({ issues: new Map(get().issues).set(id, details.issue) });
+            set({ issues: new Map(get().issues).set(id, details.issue), freshDetails: details });
             done++;
           } catch (e) {
             const old = before.get(id);
@@ -594,7 +607,7 @@ export const useApp = create<AppState>()((set, get) => {
         const details = await backend.updateIssue(id, changes);
         const issues = new Map(get().issues);
         issues.set(id, details.issue);
-        set({ issues });
+        set({ issues, freshDetails: details });
         return details;
       } catch (e) {
         if (before) {
@@ -672,7 +685,7 @@ export const useApp = create<AppState>()((set, get) => {
       if (userId === account?.userId) next.watching = new Map(get().watching).set(issueId, watching);
       set(next);
       try {
-        get().takeDetails(await backend.setWatcher(issueId, userId, watching));
+        took(await backend.setWatcher(issueId, userId, watching));
         return true;
       } catch (e) {
         const issues = new Map(get().issues).set(issueId, before.issue);
@@ -716,7 +729,7 @@ export const useApp = create<AppState>()((set, get) => {
       const names = paths.map((p) => p.split(/[\\/]/).pop()).join(", ");
       set({ toast: `Attaching ${names}…` });
       try {
-        get().takeDetails(await backend.attachFiles(issueId, paths, notes));
+        took(await backend.attachFiles(issueId, paths, notes));
         set({ toast: paths.length === 1 ? `Attached ${names}` : `Attached ${paths.length} files` });
         return true;
       } catch (e) {
@@ -732,7 +745,7 @@ export const useApp = create<AppState>()((set, get) => {
       // Gone at once; back if Redmine refuses.
       set({ issues: new Map(issues).set(issueId, { ...issue, attachments: (issue.attachments ?? []).filter((a) => a.id !== attachment.id) }) });
       try {
-        get().takeDetails(await backend.deleteAttachment(issueId, attachment.id));
+        took(await backend.deleteAttachment(issueId, attachment.id));
       } catch (e) {
         const now = get().issues.get(issueId);
         if (now) set({ issues: new Map(get().issues).set(issueId, { ...now, attachments: issue.attachments }) });
@@ -1049,7 +1062,7 @@ export const useApp = create<AppState>()((set, get) => {
       if (!backend) return null;
       try {
         const details = await backend.updateComment(issueId, journalId, notes);
-        get().takeDetails(details);
+        took(details);
         return details;
       } catch (e) {
         set({ toast: `Couldn't ${notes.trim() ? "change" : "delete"} the comment: ${errorMessage(e)}` });
