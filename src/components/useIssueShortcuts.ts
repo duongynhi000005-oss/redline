@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { isMac, isTyping, matchesShortcut } from "../lib/platform";
 import type { PickerKind } from "../state/app";
-import { targetIssueId, useApp } from "../state/app";
+import { overlayOpen, targetIssueId, useApp } from "../state/app";
 
 /** Linear's single-key shortcuts for the open or highlighted issue. */
 export const ISSUE_SHORTCUTS: { shortcut: string; kind: PickerKind | "assign-me"; label: string }[] = [
@@ -45,7 +45,7 @@ export function useIssueShortcuts() {
           return;
         }
       }
-      if (state.paletteOpen || state.picker || state.filterMenu || state.composerOpen || state.settingsOpen || isTyping(e.target) || e.repeat) return;
+      if (overlayOpen(state) || isTyping(e.target) || e.repeat) return;
       if (matchesShortcut(e, "c")) {
         e.preventDefault();
         state.setComposerOpen(true);

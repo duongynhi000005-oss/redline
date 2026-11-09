@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { matchesShortcut, shortcutLabel } from "../lib/platform";
 import { errorMessage } from "../lib/types";
 import type { Route } from "../state/app";
@@ -16,10 +16,12 @@ export function defaultProjectId(route: Route, openProjectId: number | undefined
 export function NewIssue() {
   const open = useApp((s) => s.composerOpen);
   const setOpen = useApp((s) => s.setComposerOpen);
+  // Stable, so the dialog's Escape listener isn't swapped out mid-keypress.
+  const close = useCallback(() => setOpen(false), [setOpen]);
   if (!open) return null;
   return (
-    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
-      <NewIssueForm onClose={() => setOpen(false)} />
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+      <NewIssueForm onClose={close} />
     </div>
   );
 }

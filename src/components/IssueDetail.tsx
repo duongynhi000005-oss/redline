@@ -4,7 +4,7 @@ import { CATEGORY_LABEL, PRIORITY_LABEL, issueCategory, issueLabels, hueFor, rel
 import { isTyping, matchesShortcut, shortcutLabel } from "../lib/platform";
 import type { IssueDetails, Journal } from "../lib/types";
 import { errorMessage } from "../lib/types";
-import { useApp } from "../state/app";
+import { overlayOpen, useApp } from "../state/app";
 import { useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
@@ -126,8 +126,7 @@ export function IssueDetail({ id }: { id: number }) {
   const backend = useApp((s) => s.backend);
   const cached = useApp((s) => s.issues.get(id));
   const openIssue = useApp((s) => s.openIssue);
-  const paletteOpen = useApp((s) => s.paletteOpen);
-  const picker = useApp((s) => s.picker);
+  const overlay = useApp(overlayOpen);
   const openPicker = useApp((s) => s.openPicker);
   const d = useDerived();
   const [loaded, setLoaded] = useState<{ id: number; details?: IssueDetails; error?: string } | null>(null);
@@ -148,11 +147,12 @@ export function IssueDetail({ id }: { id: number }) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !paletteOpen && !picker && !isTyping(e.target)) openIssue(null);
+      // Escape closes whatever is on top first; the issue only when nothing is.
+      if (e.key === "Escape" && !overlay && !isTyping(e.target)) openIssue(null);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openIssue, paletteOpen, picker]);
+  }, [openIssue, overlay]);
 
   // The store's copy follows edits and syncs; the details add activity.
   const issue = cached ?? details?.issue;

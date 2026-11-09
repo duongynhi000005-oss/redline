@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { knownLabelValues } from "../lib/edit";
 import type { StatusCategory } from "../lib/model";
 import { CATEGORY_LABEL, CATEGORY_ORDER, defaultCategory } from "../lib/model";
@@ -9,10 +9,12 @@ import { StatusIcon } from "./icons";
 export function Settings() {
   const open = useApp((s) => s.settingsOpen);
   const setOpen = useApp((s) => s.setSettingsOpen);
+  // Stable, so the dialog's Escape listener isn't swapped out mid-keypress.
+  const close = useCallback(() => setOpen(false), [setOpen]);
   if (!open) return null;
   return (
-    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && setOpen(false)}>
-      <SettingsPanel onClose={() => setOpen(false)} />
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && close()}>
+      <SettingsPanel onClose={close} />
     </div>
   );
 }

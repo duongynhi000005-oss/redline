@@ -38,7 +38,10 @@ export function CommandPalette() {
     function onKey(e: KeyboardEvent) {
       if (matchesShortcut(e, "mod+k")) {
         e.preventDefault();
-        setOpen(!useApp.getState().paletteOpen);
+        const s = useApp.getState();
+        // The menu would land on top of a dialog and act on the view behind it.
+        if (s.composerOpen || s.settingsOpen) return;
+        setOpen(!s.paletteOpen);
       }
     }
     window.addEventListener("keydown", onKey);

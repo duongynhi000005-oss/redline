@@ -6,7 +6,7 @@ import { matchesFilters } from "../lib/filters";
 import { isTyping } from "../lib/platform";
 import type { Issue } from "../lib/types";
 import type { MyIssuesTab, Route, TeamTab } from "../state/app";
-import { routeKey, useApp } from "../state/app";
+import { overlayOpen, routeKey, useApp } from "../state/app";
 import type { Derived } from "../state/derived";
 import { groupByCategory, routeTitle, useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
@@ -98,13 +98,11 @@ export function IssueRow({
 export function IssueList() {
   const route = useApp((s) => s.route);
   const openIssue = useApp((s) => s.openIssue);
-  const paletteOpen = useApp((s) => s.paletteOpen);
+  const overlay = useApp(overlayOpen);
   const d = useDerived();
   const [collapsed, setCollapsed] = useState<Set<StatusCategory>>(new Set(["canceled"]));
   const focusedId = useApp((s) => s.focusedIssueId);
   const setFocusedId = useApp((s) => s.focusIssue);
-  const picker = useApp((s) => s.picker);
-  const filterMenu = useApp((s) => s.filterMenu);
   const openFilterMenu = useApp((s) => s.openFilterMenu);
   const filters = useApp((s) => s.filters[routeKey(s.route)]);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -138,7 +136,7 @@ export function IssueList() {
   // Keyboard: ↑/↓ or j/k move, Enter opens.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (paletteOpen || picker || filterMenu || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (overlay || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "f" && !e.shiftKey) {
         e.preventDefault();
         openFilterMenu(null);
@@ -162,7 +160,7 @@ export function IssueList() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [issueRows, focusedId, paletteOpen, picker, filterMenu, openFilterMenu, openIssue, setFocusedId, virtualizer]);
+  }, [issueRows, focusedId, overlay, openFilterMenu, openIssue, setFocusedId, virtualizer]);
 
   // Coming back from an issue, scroll its row into view.
   useEffect(() => {

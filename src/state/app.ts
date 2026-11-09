@@ -367,6 +367,13 @@ export function targetIssueId(s: Pick<AppState, "openIssueId" | "focusedIssueId"
   return s.openIssueId ?? s.focusedIssueId;
 }
 
+/** Whether a menu or dialog is up, so the views underneath ignore their shortcuts. */
+export function overlayOpen(
+  s: Pick<AppState, "paletteOpen" | "picker" | "filterMenu" | "composerOpen" | "settingsOpen">,
+): boolean {
+  return s.paletteOpen || s.picker !== null || s.filterMenu !== null || s.composerOpen || s.settingsOpen;
+}
+
 /** For tests: forget everything. */
 export function resetApp() {
   generation++;

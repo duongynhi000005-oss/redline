@@ -44,4 +44,16 @@ describe("settings", () => {
     await waitFor(() => expect(screen.queryAllByText("Performance")).toHaveLength(0));
     expect(loadSettings("https://redmine.example.com/", 1).labelFields).toEqual([2]);
   });
+
+  it("closes over an open issue with Escape and leaves the issue open", async () => {
+    const user = await start();
+    useApp.getState().openIssue(4);
+    await screen.findByRole("heading", { level: 1, name: "Dark mode follows the system setting" });
+    useApp.getState().setSettingsOpen(true);
+    await screen.findByRole("dialog", { name: "Settings" });
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Settings" })).not.toBeInTheDocument());
+    expect(screen.getByRole("heading", { level: 1, name: "Dark mode follows the system setting" })).toBeInTheDocument();
+  });
 });
