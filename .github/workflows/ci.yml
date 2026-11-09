@@ -1,0 +1,153 @@
+# Runs on every pull request and on main.
+# Branch protection should require only the "CI passed" check: it fails if
+# any job below fails, so jobs can be added or renamed without touching
+# GitHub settings.
+#
+# Until the app is scaffolded (no package.json or src-tauri/Cargo.toml yet),
+# the jobs detect that, skip their steps and pass, so main stays green.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  web:
+    name: Lint, typecheck and test (TypeScript)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check whether the UI is scaffolded
+        id: scaffold
+        shell: bash
+        run: |
+          if [ -f package.json ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No package.json yet, skipping TypeScript checks."
+          fi
+
+      - uses: actions/setup-node@v7
+        if: steps.scaffold.outputs.ready == 'true'
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install dependencies
+        if: steps.scaffold.outputs.ready == 'true'
+        run: npm ci
+
+      # TODO: these script names must exist in package.json. Adjust them to
+      # the front-end library's tooling once it's chosen (for example
+      # "ng lint" for Angular, or eslint + tsc --noEmit + vitest for React).
+      - name: Lint
+        if: steps.scaffold.outputs.ready == 'true'
+        run: npm run lint
+
+      - name: Type-check
+        if: steps.scaffold.outputs.ready == 'true'
+        run: npm run typecheck
+
+      - name: Unit tests
+        if: steps.scaffold.outputs.ready == 'true'
+        run: npm test
+
+  desktop:
+    name: Rust checks and Tauri build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check whether the app is scaffolded
+        id: scaffold
+        shell: bash
+        run: |
+          if [ -f package.json ] && [ -f src-tauri/Cargo.toml ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No Tauri app yet, skipping the desktop build."
+          fi
+
+      - uses: actions/setup-node@v7
+        if: steps.scaffold.outputs.ready == 'true'
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.scaffold.outputs.ready == 'true'
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        if: steps.scaffold.outputs.ready == 'true'
+        with:
+          workspaces: src-tauri -> target
+
+      - name: Install dependencies
+        if: steps.scaffold.outputs.ready == 'true'
+        run: npm ci
+
+      # Tauri embeds the built UI at compile time, so the UI must be built
+      # before clippy and cargo test can compile the Rust side.
+      # TODO: match this to the front-end build script once it's chosen.
+      - name: Build UI
+        if: steps.scaffold.outputs.ready == 'true'
+        run: npm run build
+
+      - name: Check Rust formatting
+        if: steps.scaffold.outputs.ready == 'true' && runner.os == 'macOS'
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        if: steps.scaffold.outputs.ready == 'true'
+        working-directory: src-tauri
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Rust tests
+        if: steps.scaffold.outputs.ready == 'true'
+        working-directory: src-tauri
+        run: cargo test --locked
+
+      # Compiles the full app for this platform without making installers,
+      # which keeps PR builds fast. Signed installers belong in a separate
+      # release workflow.
+      - name: Tauri build
+        if: steps.scaffold.outputs.ready == 'true'
+        run: npx tauri build --no-bundle
+
+  ci-passed:
+    name: CI passed
+    if: always()
+    needs: [web, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo "All CI jobs passed."
