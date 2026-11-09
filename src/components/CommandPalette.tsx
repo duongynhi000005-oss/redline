@@ -68,6 +68,9 @@ function PaletteContent() {
   const signOut = useApp((s) => s.signOut);
   const setComposerOpen = useApp((s) => s.setComposerOpen);
   const setSettingsOpen = useApp((s) => s.setSettingsOpen);
+  const openFilterMenu = useApp((s) => s.openFilterMenu);
+  const route = useApp((s) => s.route);
+  const detailOpen = useApp((s) => s.openIssueId !== null);
   const issues = useApp((s) => s.issues);
   const target = useApp((s) => targetIssueId(s));
   const d = useDerived();
@@ -78,6 +81,10 @@ function PaletteContent() {
     const list: Action[] = [
       { id: "new-issue", label: "Create new issue", group: "Issues", shortcut: "c", run: () => setComposerOpen(true) },
     ];
+    // Lists of issues can be filtered; the inbox and cycle overview can't.
+    if (route.view !== "inbox" && route.view !== "cycles" && !detailOpen) {
+      list.push({ id: "filter", label: "Filter…", group: "Issues", shortcut: "f", icon: <Icon name="filter" />, run: () => openFilterMenu(null) });
+    }
     if (target !== null) {
       for (const s of ISSUE_SHORTCUTS) {
         list.push({
@@ -126,7 +133,7 @@ function PaletteContent() {
       { id: "sign-out", label: "Sign out", group: "Redline", run: () => void signOut() },
     );
     return list;
-  }, [d, navigate, syncNow, signOut, target, setComposerOpen, setSettingsOpen]);
+  }, [d, navigate, syncNow, signOut, target, setComposerOpen, setSettingsOpen, openFilterMenu, route, detailOpen]);
 
   const q = query.trim();
   const visibleActions = q ? actions.filter((a) => matchesQuery(`${a.label} ${a.keywords ?? ""}`, q)) : actions;

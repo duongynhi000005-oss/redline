@@ -7,6 +7,7 @@ import type { ServerSettings } from "../lib/settings";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "../lib/settings";
 import type { Inbox } from "../lib/inbox";
 import { isMine, itemsFrom, loadInbox, mergeItems, saveInbox } from "../lib/inbox";
+import type { Filter, FilterField } from "../lib/filters";
 
 /** Where the main pane is. Teams are top-level Redmine projects. */
 export type Route =
@@ -19,6 +20,22 @@ export type Route =
 
 export type MyIssuesTab = "assigned" | "created";
 export type TeamTab = "all" | "active" | "backlog";
+
+/** Which list a set of filters belongs to. Tabs share their list's filters. */
+export function routeKey(route: Route): string {
+  switch (route.view) {
+    case "inbox":
+    case "my-issues":
+      return route.view;
+    case "team":
+    case "cycles":
+      return `${route.view}:${route.teamId}`;
+    case "project":
+      return `project:${route.projectId}`;
+    case "cycle":
+      return `cycle:${route.versionId}`;
+  }
+}
 
 export type Phase = "starting" | "signed-out" | "ready";
 
@@ -49,6 +66,10 @@ export interface AppState {
   settingsOpen: boolean;
   settings: ServerSettings;
   inbox: Inbox;
+  /** Each list's filters, by routeKey. Kept for the session. */
+  filters: Record<string, Filter[]>;
+  /** The filter menu, open on a field's values or on the list of fields. */
+  filterMenu: { field: FilterField | null } | null;
   /** A short message shown at the bottom of the window, like a failed edit. */
   toast: string | null;
 
@@ -69,6 +90,9 @@ export interface AppState {
   updateSettings(change: Partial<ServerSettings>): void;
   markInboxRead(keys: string[] | "all"): void;
   createIssue(fields: IssueChanges): Promise<Issue | null>;
+  setFilters(key: string, filters: Filter[]): void;
+  openFilterMenu(field: FilterField | null): void;
+  closeFilterMenu(): void;
 }
 
 const IDLE: SyncState = { state: "idle", lastSyncedAt: null, message: null };
@@ -95,6 +119,8 @@ function initial() {
     settingsOpen: false,
     settings: DEFAULT_SETTINGS,
     inbox: { since: new Date().toISOString(), items: [] } as Inbox,
+    filters: {} as Record<string, Filter[]>,
+    filterMenu: null as { field: FilterField | null } | null,
     toast: null as string | null,
   };
 }
@@ -306,6 +332,21 @@ export const useApp = create<AppState>()((set, get) => {
       set({ settings });
       const account = get().account;
       if (account) saveSettings(account.serverUrl, account.userId, settings);
+    },
+
+    setFilters(key, filters) {
+      const all = { ...get().filters };
+      if (filters.length) all[key] = filters;
+      else delete all[key];
+      set({ filters: all });
+    },
+
+    openFilterMenu(field) {
+      set({ filterMenu: { field }, paletteOpen: false, picker: null });
+    },
+
+    closeFilterMenu() {
+      set({ filterMenu: null });
     },
 
     async createIssue(fields) {

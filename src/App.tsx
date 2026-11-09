@@ -6,6 +6,7 @@ import { IssueDetail } from "./components/IssueDetail";
 import { IssueList } from "./components/IssueList";
 import { NewIssue } from "./components/NewIssue";
 import { Picker } from "./components/Picker";
+import { FilterMenu } from "./components/Filters";
 import { Settings } from "./components/Settings";
 import { useIssueShortcuts } from "./components/useIssueShortcuts";
 import { Sidebar } from "./components/Sidebar";
@@ -61,6 +62,7 @@ export function App({ backend }: { backend?: Backend }) {
       )}
       <CommandPalette />
       <Picker />
+      <FilterMenu />
       <NewIssue />
       <Settings />
       <Toast />

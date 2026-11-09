@@ -2,14 +2,16 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { StatusCategory } from "../lib/model";
 import { CATEGORY_LABEL, issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
+import { matchesFilters } from "../lib/filters";
 import { isTyping } from "../lib/platform";
 import type { Issue } from "../lib/types";
 import type { MyIssuesTab, Route, TeamTab } from "../state/app";
-import { useApp } from "../state/app";
+import { routeKey, useApp } from "../state/app";
 import type { Derived } from "../state/derived";
-import { groupByCategory, issuesForRoute, routeTitle, useDerived } from "../state/derived";
+import { groupByCategory, routeTitle, useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
-import { PriorityIcon, StatusIcon } from "./icons";
+import { FilterBar, useRouteIssues } from "./Filters";
+import { Icon, PriorityIcon, StatusIcon } from "./icons";
 
 type Row = { kind: "group"; category: StatusCategory; count: number } | { kind: "issue"; issue: Issue };
 
@@ -95,9 +97,6 @@ export function IssueRow({
 
 export function IssueList() {
   const route = useApp((s) => s.route);
-  const issues = useApp((s) => s.issues);
-  const meta = useApp((s) => s.meta);
-  const account = useApp((s) => s.account);
   const openIssue = useApp((s) => s.openIssue);
   const paletteOpen = useApp((s) => s.paletteOpen);
   const d = useDerived();
@@ -105,11 +104,15 @@ export function IssueList() {
   const focusedId = useApp((s) => s.focusedIssueId);
   const setFocusedId = useApp((s) => s.focusIssue);
   const picker = useApp((s) => s.picker);
+  const filterMenu = useApp((s) => s.filterMenu);
+  const openFilterMenu = useApp((s) => s.openFilterMenu);
+  const filters = useApp((s) => s.filters[routeKey(s.route)]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  const base = useRouteIssues(route);
   const groups = useMemo(
-    () => (meta ? groupByCategory(issuesForRoute(route, issues.values(), d, account?.userId, meta), d) : []),
-    [route, issues, d, account, meta],
+    () => groupByCategory(filters?.length ? base.filter((i) => matchesFilters(i, filters, d)) : base, d),
+    [base, filters, d],
   );
   const rows = useMemo(() => {
     const out: Row[] = [];
@@ -135,7 +138,12 @@ export function IssueList() {
   // Keyboard: ↑/↓ or j/k move, Enter opens.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (paletteOpen || picker || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (paletteOpen || picker || filterMenu || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "f" && !e.shiftKey) {
+        e.preventDefault();
+        openFilterMenu(null);
+        return;
+      }
       if (!issueRows.length) return;
       const pos = issueRows.findIndex((r) => r.id === focusedId);
       let next: number | null = null;
@@ -154,7 +162,7 @@ export function IssueList() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [issueRows, focusedId, paletteOpen, picker, openIssue, setFocusedId, virtualizer]);
+  }, [issueRows, focusedId, paletteOpen, picker, filterMenu, openFilterMenu, openIssue, setFocusedId, virtualizer]);
 
   // Coming back from an issue, scroll its row into view.
   useEffect(() => {
@@ -178,8 +186,18 @@ export function IssueList() {
         <h1>{routeTitle(route, d)}</h1>
         <span className="count">{total}</span>
         <Tabs route={route} />
+        <button type="button" className="header-button" title="Filter (F)" onClick={() => openFilterMenu(null)}>
+          <Icon name="filter" />
+          <span>Filter</span>
+        </button>
       </header>
-      {total === 0 ? (
+      <FilterBar route={route} shown={total} total={base.length} />
+      {total === 0 && filters?.length ? (
+        <div className="empty-state">
+          <p>No issues match these filters.</p>
+          <p className="muted">Remove a filter above, or press F to change them.</p>
+        </div>
+      ) : total === 0 ? (
         <div className="empty-state">
           <p>No issues here.</p>
           <p className="muted">

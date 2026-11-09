@@ -189,10 +189,31 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M7 4v3l2 1.3" {...stroke} />
         </Svg>
       );
+    case "filter":
+      return (
+        <Svg {...props}>
+          <path d="M2 3.5h10M4 7h6M5.8 10.5h2.4" {...stroke} />
+        </Svg>
+      );
+    case "close":
+      return (
+        <Svg {...props}>
+          <path d="m4 4 6 6M10 4l-6 6" {...stroke} />
+        </Svg>
+      );
+    case "plus":
+      return (
+        <Svg {...props}>
+          <path d="M7 3v8M3 7h8" {...stroke} />
+        </Svg>
+      );
   }
 }
 
 export type IconName =
+  | "filter"
+  | "close"
+  | "plus"
   | "inbox"
   | "my-issues"
   | "search"

@@ -45,7 +45,7 @@ export function useIssueShortcuts() {
           return;
         }
       }
-      if (state.paletteOpen || state.picker || state.composerOpen || state.settingsOpen || isTyping(e.target) || e.repeat) return;
+      if (state.paletteOpen || state.picker || state.filterMenu || state.composerOpen || state.settingsOpen || isTyping(e.target) || e.repeat) return;
       if (matchesShortcut(e, "c")) {
         e.preventDefault();
         state.setComposerOpen(true);
