@@ -258,11 +258,22 @@ pub struct Attachment {
     #[serde(default)]
     pub content_type: Option<String>,
     #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
     pub content_url: Option<String>,
     #[serde(default)]
     pub author: Option<Named>,
     #[serde(default)]
     pub created_on: Option<String>,
+}
+
+/// A file uploaded to Redmine, to attach with an issue change.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Upload {
+    pub token: String,
+    pub filename: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
 }
 
 /// A relation between two issues.
@@ -426,6 +437,9 @@ pub struct IssueChanges {
     pub notes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub private_notes: Option<bool>,
+    /// Files uploaded with [`crate::Client::upload`] to attach.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uploads: Option<Vec<Upload>>,
 }
 
 /// A custom field value to set. Use an array for multi-value fields.

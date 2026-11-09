@@ -320,3 +320,50 @@ async fn knows_what_the_role_allows_and_whether_the_user_watches() {
         ));
     }
 }
+
+#[tokio::test]
+async fn attaches_downloads_and_deletes_a_file() {
+    use redline_core::{NewFile, Store, Syncer};
+
+    let client = live!();
+    let id = issue_id(&client, "Show blocked issues on cards").await;
+    let syncer = Syncer::new(client, Store::in_memory().unwrap());
+    let name = format!("live-{}.txt", std::process::id());
+    let details = syncer
+        .attach_files(
+            id,
+            vec![NewFile {
+                filename: name.clone(),
+                content_type: Some("text/plain".into()),
+                bytes: b"Attached by the live test".to_vec(),
+            }],
+            None,
+        )
+        .await
+        .unwrap();
+    let attachment = details
+        .issue
+        .attachments
+        .unwrap_or_default()
+        .into_iter()
+        .find(|a| a.filename == name)
+        .expect("the new attachment is on the issue");
+    assert_eq!(attachment.filesize, 25);
+    assert_eq!(
+        syncer
+            .client()
+            .download_attachment(attachment.id)
+            .await
+            .unwrap(),
+        b"Attached by the live test"
+    );
+    let details = syncer.delete_attachment(id, attachment.id).await.unwrap();
+    assert!(
+        !details
+            .issue
+            .attachments
+            .unwrap_or_default()
+            .iter()
+            .any(|a| a.id == attachment.id)
+    );
+}

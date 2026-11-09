@@ -21,6 +21,22 @@ export const tauriBackend: Backend = {
   findMentions: (id) => invoke("find_mentions", { id }),
   setWatcher: (issueId, userId, watching) => invoke("set_watcher", { issueId, userId, watching }),
   openInRedmine: (path) => invoke("open_in_redmine", { path }),
+  attachmentData: async (id) => new Uint8Array(await invoke<ArrayBuffer>("attachment_data", { id })),
+  saveAttachment: (a) => invoke("save_attachment", { id: a.id, filename: a.filename }),
+  pickFiles: () => invoke("pick_files"),
+  attachFiles: (issueId, paths, notes) => invoke("attach_files", { issueId, paths, notes: notes ?? null }),
+  deleteAttachment: (issueId, attachmentId) => invoke("delete_attachment", { issueId, attachmentId }),
+  onFileDrop: async (handler) => {
+    const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+    return getCurrentWebview().onDragDropEvent(({ payload }) => {
+      // Positions come in physical pixels.
+      const scale = window.devicePixelRatio || 1;
+      if (payload.type === "leave") handler({ type: "leave" });
+      else if (payload.type === "drop") {
+        handler({ type: "drop", x: payload.position.x / scale, y: payload.position.y / scale, paths: payload.paths });
+      } else handler({ type: "over", x: payload.position.x / scale, y: payload.position.y / scale });
+    });
+  },
   onSyncState: (handler) => listen<SyncState>("sync-state", (e) => handler(e.payload)),
   onIssuesChanged: (handler) => listen<IssuesChanged>("issues-changed", (e) => handler(e.payload)),
   onMetadataChanged: (handler) => listen("metadata-changed", () => handler()),

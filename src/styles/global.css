@@ -570,6 +570,225 @@ h2 {
   background: var(--bg-hover);
 }
 
+/* Attachments */
+.attachments {
+  margin-top: 24px;
+}
+
+.attachment-grid {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(136px, 1fr));
+  gap: 10px;
+}
+
+.attachment {
+  position: relative;
+  min-width: 0;
+}
+
+.attachment-open {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  text-align: left;
+  overflow: hidden;
+}
+
+.attachment-open:hover {
+  border-color: var(--border-strong);
+}
+
+.attachment-thumb {
+  display: grid;
+  place-items: center;
+  height: 92px;
+  margin-bottom: 7px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+
+.attachment-thumb img,
+.attachment-thumb .attachment-image-placeholder {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.attachment-type {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.attachment-name,
+.attachment-meta {
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-name {
+  font-size: 12.5px;
+}
+
+.attachment-meta {
+  color: var(--text-tertiary);
+  font-size: 11.5px;
+}
+
+.attachment-actions {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--bg-elevated);
+  box-shadow: 0 0 0 1px var(--border);
+  opacity: 0;
+}
+
+.attachment:hover .attachment-actions,
+.attachment-actions:focus-within {
+  opacity: 1;
+}
+
+.attachment-image-placeholder {
+  display: inline-grid;
+  place-items: center;
+  min-width: 48px;
+  min-height: 48px;
+  background: var(--bg-hover);
+  color: var(--text-tertiary);
+}
+
+.markdown .inline-attachment {
+  max-width: 100%;
+  border-radius: 6px;
+}
+
+.preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.preview-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 8px 0 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.preview-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-body {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  padding: 16px;
+  overflow: auto;
+}
+
+.preview-body img {
+  max-width: min(1100px, calc(100vw - 96px));
+  max-height: calc(100vh - 140px);
+  object-fit: contain;
+}
+
+.detail {
+  position: relative;
+}
+
+.drop-overlay {
+  position: absolute;
+  inset: 8px;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 2px dashed var(--accent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent);
+  font-weight: 500;
+  pointer-events: none;
+}
+
+.comment-box.is-dropping {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus);
+}
+
+.comment-files {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 14px 0;
+}
+
+.chip-remove {
+  display: inline-grid;
+  place-items: center;
+  margin-right: -3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 7px;
+  color: var(--text-tertiary);
+}
+
+.chip-remove:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.comment-box-actions {
+  padding-left: 6px;
+}
+
+.comment-box-actions .muted {
+  flex: 1;
+}
+
 /* Subscribers (Redmine watchers) */
 .icon-button.is-on {
   color: var(--accent);

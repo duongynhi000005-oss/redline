@@ -3,6 +3,7 @@ import { applyChanges as applyEdit } from "./edit";
 import { INVERSE, mentionedIds } from "./relations";
 import type {
   Account,
+  Attachment,
   Issue,
   IssueChanges,
   IssueDetails,
@@ -182,7 +183,7 @@ function buildIssues(meta: Metadata): Issue[] {
       subject,
       description:
         i % 2 === 0
-          ? `## Why\n\nPeople expect this from a native app. See #${(id % subjects.length) + 1} for context.\n\n- [ ] Design\n- [x] Agree on scope\n\n@sam can you review?`
+          ? `## Why\n\nPeople expect this from a native app. See #${(id % subjects.length) + 1} for context.\n\n- [ ] Design\n- [x] Agree on scope\n\n@sam can you review?${id === 3 ? "\n\n![The mockup](mockup.svg)" : ""}`
           : null,
       is_private: false,
       done_ratio: 0,
@@ -257,6 +258,24 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     const list = [issue.author, issue.assigned_to].filter((p): p is Named => !!p);
     watchers.set(issue.id, list.filter((p, i) => list.findIndex((q) => q.id === p.id) === i));
   }
+  // Attachments and their content, by issue.
+  const encode = (text: string) => new TextEncoder().encode(text);
+  const mockup = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300"><rect width="480" height="300" rx="16" fill="#eef0fb"/><rect x="24" y="24" width="120" height="252" rx="10" fill="#d9dcf5"/><rect x="164" y="24" width="292" height="36" rx="8" fill="#5e6ad2"/><rect x="164" y="80" width="292" height="24" rx="6" fill="#ffffff"/><rect x="164" y="114" width="292" height="24" rx="6" fill="#ffffff"/><rect x="164" y="148" width="220" height="24" rx="6" fill="#ffffff"/></svg>`;
+  let nextAttachment = 100;
+  const files = new Map<number, { attachment: Attachment; bytes: Uint8Array }[]>();
+  const addFile = (issueId: number, filename: string, contentType: string, bytes: Uint8Array, author: Named, created_on: string) => {
+    const attachment: Attachment = { id: nextAttachment++, filename, filesize: bytes.length, content_type: contentType, author, created_on };
+    files.set(issueId, [...(files.get(issueId) ?? []), { attachment, bytes }]);
+    return attachment;
+  };
+  addFile(3, "mockup.svg", "image/svg+xml", encode(mockup), people[1]!, iso(3));
+  addFile(3, "profile.txt", "text/plain", encode("Frames: 60\nRows: 5,000\n"), people[0]!, iso(2));
+  addFile(1, "notes.txt", "text/plain", encode("Open with Cmd+K, close with Escape.\n"), people[1]!, iso(5));
+  const typeOf = (name: string) =>
+    ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml", txt: "text/plain", pdf: "application/pdf" })[
+      name.split(".").pop()?.toLowerCase() ?? ""
+    ] ?? "application/octet-stream";
+
   const may = (projectId: number, permission: string) =>
     meta.user!.memberships!.some(
       (m) => m.project.id === projectId && m.roles.some((r) => meta.roles!.find((x) => x.id === r.id)?.permissions.includes(permission)),
@@ -266,7 +285,10 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     if (!issue) throw { code: "not_found", message: "Not found in Redmine." };
     const list = watchers.get(id) ?? [];
     return {
-      issue: may(issue.project.id, "view_issue_watchers") ? { ...issue, watchers: list } : issue,
+      issue: {
+        ...(may(issue.project.id, "view_issue_watchers") ? { ...issue, watchers: list } : issue),
+        attachments: (files.get(id) ?? []).map((f) => f.attachment),
+      },
       journals: buildJournals(issue),
       allowedStatuses: meta.statuses.map((s) => ({ id: s.id, name: s.name, is_closed: s.is_closed })),
       watching: list.some((w) => w.id === meta.user!.id),
@@ -365,6 +387,43 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       return details(issueId);
     },
     async openInRedmine() {},
+    async attachmentData(id) {
+      await wait(null);
+      for (const list of files.values()) {
+        const hit = list.find((f) => f.attachment.id === id);
+        if (hit) return hit.bytes;
+      }
+      throw { code: "not_found", message: "Not found in Redmine." };
+    },
+    async saveAttachment() {
+      return wait(true);
+    },
+    async pickFiles() {
+      return wait(["/Users/dana/Desktop/screenshot.png"]);
+    },
+    async attachFiles(issueId, paths, notes) {
+      await wait(null);
+      if (!issues.has(issueId)) throw { code: "not_found", message: "Not found in Redmine." };
+      for (const path of paths) {
+        const name = path.split(/[\\/]/).pop()!;
+        addFile(issueId, name, typeOf(name), name.endsWith(".svg") ? encode(mockup) : encode(name), people[0]!, new Date().toISOString());
+      }
+      if (notes?.trim()) await this.updateIssue(issueId, { notes });
+      changeHandlers.forEach((h) => h({ changed: [issueId], removed: [] }));
+      return details(issueId);
+    },
+    async deleteAttachment(issueId, attachmentId) {
+      await wait(null);
+      files.set(
+        issueId,
+        (files.get(issueId) ?? []).filter((f) => f.attachment.id !== attachmentId),
+      );
+      changeHandlers.forEach((h) => h({ changed: [issueId], removed: [] }));
+      return details(issueId);
+    },
+    async onFileDrop() {
+      return () => {};
+    },
     async findMentions(id) {
       await wait(null);
       return [...issues.values()]

@@ -1,6 +1,9 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { inlineAttachment } from "../lib/attachments";
+import type { Attachment } from "../lib/types";
 import { useApp } from "../state/app";
+import { AttachmentImage } from "./Attachments";
 
 /**
  * Turns Redmine's #123 references and @login mentions into links Redline can
@@ -19,13 +22,19 @@ export function linkIssueRefs(text: string): string {
     .join("");
 }
 
-export function Markdown({ text }: { text: string }) {
+/** Markdown as Redmine shows it. Images named like one of `attachments` show that file. */
+export function Markdown({ text, attachments }: { text: string; attachments?: Attachment[] | null }) {
   const openIssue = useApp((s) => s.openIssue);
   return (
     <div className="markdown">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
+          img({ src, alt }) {
+            const attachment = inlineAttachment(attachments, typeof src === "string" ? src : undefined);
+            if (attachment) return <AttachmentImage attachment={attachment} alt={alt ?? attachment.filename} className="inline-attachment" />;
+            return <img src={typeof src === "string" ? src : undefined} alt={alt ?? ""} />;
+          },
           a({ href, children }) {
             const issue = href?.match(/^#issue-(\d+)$/);
             if (issue) {

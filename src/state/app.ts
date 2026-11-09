@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { Backend } from "../lib/backend";
-import type { Account, Issue, IssueChanges, IssueDetails, Metadata, Relation, SyncState } from "../lib/types";
+import type { Account, Attachment, Issue, IssueChanges, IssueDetails, Metadata, Relation, SyncState } from "../lib/types";
 import type { RelationChoice } from "../lib/relations";
 import { newRelation } from "../lib/relations";
 import { errorMessage, isBackendError } from "../lib/types";
@@ -104,6 +104,10 @@ export interface AppState {
   toggleSubscribe(issueId: number): Promise<void>;
   /** Opens a page of the Redmine server in the browser, such as "issues/12". */
   openInRedmine(path: string): void;
+  /** Uploads files to an issue, with an optional comment. True when Redmine took them. */
+  attachFiles(issueId: number, paths: string[], notes?: string): Promise<boolean>;
+  deleteAttachment(issueId: number, attachment: Attachment): Promise<void>;
+  saveAttachment(attachment: Attachment): Promise<void>;
   showToast(message: string | null): void;
   setComposerOpen(open: boolean): void;
   setSettingsOpen(open: boolean): void;
@@ -179,7 +183,11 @@ export const useApp = create<AppState>()((set, get) => {
         const fresh = changed.length ? await backend.getIssues(changed) : [];
         const issues = new Map(get().issues);
         removed.forEach((id) => issues.delete(id));
-        fresh.forEach((i) => issues.set(i.id, i));
+        // Attachments and watchers come only with an issue's details; keep them.
+        fresh.forEach((i) => {
+          const known = issues.get(i.id);
+          issues.set(i.id, known ? { ...i, attachments: i.attachments ?? known.attachments, watchers: i.watchers ?? known.watchers } : i);
+        });
         set({ issues });
         if (removed.includes(get().openIssueId ?? -1)) set({ openIssueId: null });
         void collectInbox(backend, fresh);
@@ -369,10 +377,12 @@ export const useApp = create<AppState>()((set, get) => {
       const id = details.issue.id;
       const known = issues.get(id);
       const patch: Partial<Issue> = {};
-      // Redmine doesn't touch updated_on when relations or watchers change.
-      for (const key of ["relations", "watchers"] as const) {
-        const fresh = details.issue[key];
-        if (known && fresh && JSON.stringify(known[key] ?? []) !== JSON.stringify(fresh)) patch[key] = fresh as never;
+      // Redmine doesn't touch updated_on when relations or watchers change; attachments
+      // only come with details.
+      for (const key of ["relations", "watchers", "attachments"] as const) {
+        // Watchers missing from details means the role can't see them (any more).
+        const fresh = key === "watchers" ? (details.issue.watchers ?? null) : details.issue[key];
+        if (known && fresh !== undefined && JSON.stringify(known[key] ?? null) !== JSON.stringify(fresh)) patch[key] = fresh as never;
       }
       const next: Partial<AppState> = {};
       if (known && Object.keys(patch).length) next.issues = new Map(issues).set(id, { ...known, ...patch });
@@ -435,6 +445,44 @@ export const useApp = create<AppState>()((set, get) => {
         return;
       }
       await get().setWatcher(issueId, account.userId, on);
+    },
+
+    async attachFiles(issueId, paths, notes) {
+      const { backend } = get();
+      if (!backend || !paths.length) return false;
+      const names = paths.map((p) => p.split(/[\\/]/).pop()).join(", ");
+      set({ toast: `Attaching ${names}…` });
+      try {
+        get().takeDetails(await backend.attachFiles(issueId, paths, notes));
+        set({ toast: paths.length === 1 ? `Attached ${names}` : `Attached ${paths.length} files` });
+        return true;
+      } catch (e) {
+        set({ toast: `Couldn't attach ${names}: ${errorMessage(e)}` });
+        return false;
+      }
+    },
+
+    async deleteAttachment(issueId, attachment) {
+      const { backend, issues } = get();
+      const issue = issues.get(issueId);
+      if (!backend || !issue) return;
+      // Gone at once; back if Redmine refuses.
+      set({ issues: new Map(issues).set(issueId, { ...issue, attachments: (issue.attachments ?? []).filter((a) => a.id !== attachment.id) }) });
+      try {
+        get().takeDetails(await backend.deleteAttachment(issueId, attachment.id));
+      } catch (e) {
+        const now = get().issues.get(issueId);
+        if (now) set({ issues: new Map(get().issues).set(issueId, { ...now, attachments: issue.attachments }) });
+        set({ toast: `Couldn't delete ${attachment.filename}: ${errorMessage(e)}` });
+      }
+    },
+
+    async saveAttachment(attachment) {
+      try {
+        if (await get().backend?.saveAttachment(attachment)) set({ toast: `Saved ${attachment.filename}` });
+      } catch (e) {
+        set({ toast: `Couldn't save ${attachment.filename}: ${errorMessage(e)}` });
+      }
     },
 
     openInRedmine(path) {

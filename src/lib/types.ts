@@ -157,6 +157,19 @@ export interface Issue {
   relations?: Relation[] | null;
   /** Only when the role may see them. */
   watchers?: Named[] | null;
+  /** Read with the issue's details, not with every sync. */
+  attachments?: Attachment[] | null;
+}
+
+export interface Attachment {
+  id: number;
+  filename: string;
+  filesize: number;
+  content_type?: string | null;
+  description?: string | null;
+  content_url?: string | null;
+  author?: Named | null;
+  created_on?: string | null;
 }
 
 export interface Metadata {

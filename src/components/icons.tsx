@@ -195,6 +195,30 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M8 2.5h3.5V6M11.3 2.7 6.5 7.5M10 8.5v2a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h2" {...stroke} />
         </Svg>
       );
+    case "attachment":
+      return (
+        <Svg {...props}>
+          <path d="m11.2 6.6-4.4 4.5a2.6 2.6 0 0 1-3.7-3.7l4.6-4.7a1.7 1.7 0 0 1 2.5 2.4L5.6 9.7a.8.8 0 0 1-1.2-1.2l4.1-4.2" {...stroke} />
+        </Svg>
+      );
+    case "download":
+      return (
+        <Svg {...props}>
+          <path d="M7 2.5v6.5M4.3 6.5 7 9.2l2.7-2.7M2.5 11.5h9" {...stroke} />
+        </Svg>
+      );
+    case "trash":
+      return (
+        <Svg {...props}>
+          <path d="M2.5 4h9M5.5 4V2.8h3V4M3.7 4l.6 7.2a.8.8 0 0 0 .8.8h3.8a.8.8 0 0 0 .8-.8l.6-7.2" {...stroke} />
+        </Svg>
+      );
+    case "file":
+      return (
+        <Svg {...props}>
+          <path d="M8 1.8H4a1 1 0 0 0-1 1v8.4a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.8L8 1.8Zm0 0v3h3" {...stroke} />
+        </Svg>
+      );
     case "cycle":
       return (
         <Svg {...props}>
@@ -290,6 +314,10 @@ export type IconName =
   | "sub-issue"
   | "blocked"
   | "mention"
+  | "attachment"
+  | "download"
+  | "trash"
+  | "file"
   | "filter"
   | "close"
   | "plus"

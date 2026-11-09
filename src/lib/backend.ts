@@ -1,6 +1,7 @@
 import type {
   Account,
   AppInfo,
+  Attachment,
   Issue,
   IssueChanges,
   IssueDetails,
@@ -12,6 +13,11 @@ import type {
 } from "./types";
 
 type Unlisten = () => void;
+
+export type FileDrop =
+  | { type: "over"; x: number; y: number }
+  | { type: "drop"; x: number; y: number; paths: string[] }
+  | { type: "leave" };
 
 /**
  * Everything the UI asks of the app. In the desktop app this is the Rust
@@ -41,6 +47,17 @@ export interface Backend {
   setWatcher(issueId: number, userId: number, watching: boolean): Promise<IssueDetails>;
   /** Opens a page of the Redmine server in the browser, such as "issues/12". */
   openInRedmine(path: string): Promise<void>;
+  /** An attachment's content, for previews. Cached once read. */
+  attachmentData(id: number): Promise<Uint8Array>;
+  /** Asks where to save an attachment and saves it. False when cancelled. */
+  saveAttachment(attachment: Attachment): Promise<boolean>;
+  /** Asks for files to attach and returns their paths; none when cancelled. */
+  pickFiles(): Promise<string[]>;
+  /** Uploads files and attaches them to an issue, with an optional comment. */
+  attachFiles(issueId: number, paths: string[], notes?: string): Promise<IssueDetails>;
+  deleteAttachment(issueId: number, attachmentId: number): Promise<IssueDetails>;
+  /** Files dragged over or dropped on the window, with where the pointer is in CSS pixels. */
+  onFileDrop(handler: (event: FileDrop) => void): Promise<Unlisten>;
   onSyncState(handler: (state: SyncState) => void): Promise<Unlisten>;
   onIssuesChanged(handler: (change: IssuesChanged) => void): Promise<Unlisten>;
   onMetadataChanged(handler: () => void): Promise<Unlisten>;
