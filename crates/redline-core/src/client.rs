@@ -274,6 +274,43 @@ impl Client {
         Ok(())
     }
 
+    /// Creates a project, such as a sub-team. Needs "Add subprojects" in the
+    /// parent, or "Create project" for a top-level one.
+    pub async fn create_project(&self, fields: &ProjectChanges) -> Result<Project> {
+        let body = self
+            .send_json(Method::POST, "projects.json", &json!({ "project": fields }))
+            .await?;
+        take(body, "project")
+    }
+
+    /// Changes a project's name, description, homepage or visibility. Needs
+    /// "Edit project".
+    pub async fn update_project(&self, id: u64, changes: &ProjectChanges) -> Result<()> {
+        self.send_json(
+            Method::PUT,
+            &format!("projects/{id}.json"),
+            &json!({ "project": changes }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Closes a project and its sub-projects (read-only in Redmine), or
+    /// reopens them. Needs "Close / reopen the project".
+    pub async fn set_project_closed(&self, id: u64, closed: bool) -> Result<()> {
+        let action = if closed { "close" } else { "reopen" };
+        let url = self.url(&format!("projects/{id}/{action}.json"))?;
+        self.send(|| self.http.put(url.clone())).await?;
+        Ok(())
+    }
+
+    /// Deletes a project with everything in it. Needs "Delete project".
+    pub async fn delete_project(&self, id: u64) -> Result<()> {
+        let url = self.url(&format!("projects/{id}.json"))?;
+        self.send(|| self.http.delete(url.clone())).await?;
+        Ok(())
+    }
+
     /// Deletes a version. Redmine refuses while issues still use it.
     pub async fn delete_version(&self, id: u64) -> Result<()> {
         let url = self.url(&format!("versions/{id}.json"))?;

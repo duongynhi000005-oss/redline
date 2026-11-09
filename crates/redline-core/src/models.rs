@@ -184,6 +184,28 @@ pub struct VersionChanges {
     pub wiki_page_title: Option<String>,
 }
 
+/// Fields to set when creating or changing a project (a team). Only `Some`
+/// fields are sent; an empty string clears a text field.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct ProjectChanges {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Set once, when the project is created.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identifier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub homepage: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_public: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent_id: Option<u64>,
+    /// Whether a new sub-project takes its parent's members.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inherit_members: Option<bool>,
+}
+
 fn default_true() -> bool {
     true
 }

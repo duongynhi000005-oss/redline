@@ -378,6 +378,59 @@ fn web_address(s: &str) -> bool {
     })
 }
 
+/// Creates a project, such as a sub-team.
+#[tauri::command]
+pub async fn create_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    fields: redline_core::models::ProjectChanges,
+) -> CmdResult<redline_core::models::Project> {
+    let project = syncer(&state).await?.create_project(&fields).await?;
+    let _ = app.emit(EVENT_METADATA_CHANGED, ());
+    Ok(project)
+}
+
+/// Changes a project's name, description, homepage or visibility.
+#[tauri::command]
+pub async fn update_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: u64,
+    changes: redline_core::models::ProjectChanges,
+) -> CmdResult<()> {
+    syncer(&state).await?.update_project(id, &changes).await?;
+    let _ = app.emit(EVENT_METADATA_CHANGED, ());
+    Ok(())
+}
+
+/// Closes or reopens a project and its sub-projects.
+#[tauri::command]
+pub async fn set_project_closed(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: u64,
+    closed: bool,
+) -> CmdResult<()> {
+    syncer(&state).await?.set_project_closed(id, closed).await?;
+    let _ = app.emit(EVENT_METADATA_CHANGED, ());
+    Ok(())
+}
+
+/// Deletes a project with everything in it, and drops its issues from the cache.
+#[tauri::command]
+pub async fn delete_project(app: AppHandle, state: State<'_, AppState>, id: u64) -> CmdResult<()> {
+    let removed = syncer(&state).await?.delete_project(id).await?;
+    let _ = app.emit(EVENT_METADATA_CHANGED, ());
+    let _ = app.emit(
+        EVENT_ISSUES_CHANGED,
+        IssuesChanged {
+            changed: Vec::new(),
+            removed,
+        },
+    );
+    Ok(())
+}
+
 /// Another user, as Redmine shows them to the signed-in user.
 #[tauri::command]
 pub async fn get_user(
