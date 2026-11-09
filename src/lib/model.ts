@@ -1,7 +1,7 @@
 // How Redmine's model is shown the Linear way: status categories, priority
 // levels, labels and cycles. See docs/architecture.md.
 
-import type { Issue, IssuePriority, IssueStatus, Metadata, Tracker, Version } from "./types";
+import type { Issue, IssuePriority, IssueStatus, Metadata, Project, Tracker, Version } from "./types";
 
 export type StatusCategory = "triage" | "backlog" | "unstarted" | "started" | "completed" | "canceled";
 
@@ -110,7 +110,6 @@ export function activeCycle(projectId: number, versions: Version[], today = new 
   );
 }
 
-/** Top-level projects are teams; subprojects belong to their top ancestor. */
 /** A project and its sub-projects, all the way down. */
 export function projectTree(rootId: number, projects: Iterable<{ id: number; parent?: { id: number } | null }>): Set<number> {
   const all = [...projects];
@@ -128,15 +127,35 @@ export function projectTree(rootId: number, projects: Iterable<{ id: number; par
   return ids;
 }
 
-export function teamOf(projectId: number, meta: Metadata): number {
-  const byId = new Map(meta.projects.map((p) => [p.id, p]));
-  let current = byId.get(projectId);
-  const seen = new Set<number>();
-  while (current?.parent && byId.has(current.parent.id) && !seen.has(current.id)) {
-    seen.add(current.id);
-    current = byId.get(current.parent.id);
+/**
+ * Each project's team, worked out once per project list. Lists call teamOf for
+ * every issue they show, so walking the projects on each call made a team's
+ * list slow on servers with hundreds of projects. Metadata is replaced, never
+ * changed in place, so the projects array identifies a version of it.
+ */
+const teamIndexes = new WeakMap<readonly Project[], Map<number, number>>();
+
+function teamIndex(projects: readonly Project[]): Map<number, number> {
+  let index = teamIndexes.get(projects);
+  if (index) return index;
+  const byId = new Map(projects.map((p) => [p.id, p]));
+  index = new Map();
+  for (const start of projects) {
+    let current = start;
+    const seen = new Set<number>();
+    while (current.parent && byId.has(current.parent.id) && !seen.has(current.id)) {
+      seen.add(current.id);
+      current = byId.get(current.parent.id)!;
+    }
+    index.set(start.id, current.id);
   }
-  return current?.id ?? projectId;
+  teamIndexes.set(projects, index);
+  return index;
+}
+
+/** Top-level projects are teams; subprojects belong to their top ancestor. */
+export function teamOf(projectId: number, meta: Metadata): number {
+  return teamIndex(meta.projects).get(projectId) ?? projectId;
 }
 
 export function initials(name: string): string {
