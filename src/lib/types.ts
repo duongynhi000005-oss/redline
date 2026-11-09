@@ -149,6 +149,10 @@ export interface Issue {
   done_ratio?: number | null;
   is_private: boolean;
   estimated_hours?: number | null;
+  /** Time logged on the issue; only for roles that may see time. */
+  spent_hours?: number | null;
+  /** With its sub-issues. */
+  total_spent_hours?: number | null;
   custom_fields: CustomFieldValue[];
   created_on: string;
   updated_on: string;
@@ -181,6 +185,47 @@ export interface Metadata {
   versions: Version[];
   memberships: Membership[];
   roles?: Role[];
+  /** What time can be logged as. */
+  time_entry_activities?: TimeEntryActivity[];
+}
+
+export interface TimeEntryActivity {
+  id: number;
+  name: string;
+  is_default: boolean;
+}
+
+export interface TimeEntry {
+  id: number;
+  project: Named;
+  issue?: { id: number } | null;
+  user: Named;
+  activity: Named;
+  hours: number;
+  comments?: string | null;
+  /** YYYY-MM-DD */
+  spent_on: string;
+  created_on?: string | null;
+  updated_on?: string | null;
+}
+
+/** Time to log, or the fields of an entry to change. */
+export interface TimeEntryChanges {
+  issue_id?: number;
+  project_id?: number;
+  spent_on?: string;
+  hours?: number;
+  activity_id?: number;
+  comments?: string;
+}
+
+export interface TimeQuery {
+  /** With its sub-projects. */
+  project_id?: number | null;
+  issue_id?: number | null;
+  user_id?: number | null;
+  from?: string | null;
+  to?: string | null;
 }
 
 export interface IssueDetails {

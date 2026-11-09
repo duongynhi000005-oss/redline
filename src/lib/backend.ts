@@ -10,6 +10,9 @@ import type {
   NewRelation,
   Relation,
   SyncState,
+  TimeEntry,
+  TimeEntryChanges,
+  TimeQuery,
 } from "./types";
 
 type Unlisten = () => void;
@@ -56,6 +59,11 @@ export interface Backend {
   /** Uploads files and attaches them to an issue, with an optional comment. */
   attachFiles(issueId: number, paths: string[], notes?: string): Promise<IssueDetails>;
   deleteAttachment(issueId: number, attachmentId: number): Promise<IssueDetails>;
+  /** Time entries, newest day first. Read from Redmine, not the cache. */
+  timeEntries(query: TimeQuery): Promise<TimeEntry[]>;
+  logTime(entry: TimeEntryChanges): Promise<TimeEntry>;
+  updateTimeEntry(id: number, changes: TimeEntryChanges): Promise<TimeEntry>;
+  deleteTimeEntry(id: number): Promise<void>;
   /** Files dragged over or dropped on the window, with where the pointer is in CSS pixels. */
   onFileDrop(handler: (event: FileDrop) => void): Promise<Unlisten>;
   onSyncState(handler: (state: SyncState) => void): Promise<Unlisten>;

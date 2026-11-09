@@ -33,7 +33,7 @@ browser, because Redmine has no API for it
 | Watchers | `include=watchers`, `POST/DELETE /issues/:id/watchers.json` | ✅ | Subscribe button (Shift+S) and a Subscribers list on every issue. The API needs the role's add/delete watcher permissions even for yourself, so Redline reads the roles' permissions and, where the role lacks them, opens the issue in Redmine to watch it there. Whether you watch is read with `watcher_id=me` even when the list is hidden. #38 |
 | Attachments | `include=attachments`, `POST /uploads.json`, `GET /attachments/download/:id`, `DELETE /attachments/:id.json` | ✅ | Tiles on the issue with image previews, save, delete, drop or pick files to upload (with a comment when dropped on the comment box). Inline images in descriptions and comments show the attachment. Files are cached on disk once read. #39 |
 | Associated revisions | `include=changesets` | ⬜ | Commits on the issue. #48 |
-| Spent time on an issue | `GET/POST/PUT/DELETE /time_entries.json` | ⬜ | Time on the issue, Log time (Cmd/Ctrl+Shift+T). #40 |
+| Spent time on an issue | `GET/POST/PUT/DELETE /time_entries.json` | ✅ | Spent property and a Time section on the issue: who logged what, when and as which activity, changed or deleted where the role allows. Log time with Cmd/Ctrl+Shift+T, typing 1.5, 1:30 or 1h 30m. #40 |
 | Copy issue | No API | ⬜ | "Duplicate issue" creates a copy with the same fields and a "copied to" relation. #42 |
 | Delete issue | `DELETE /issues/:id.json` (needs permission) | ⬜ | Issue menu, with confirmation. #42 |
 | Bulk edit | No bulk API; one request per issue | ⬜ | Multi-select (X) then a picker, sent politely one by one. #43 |
@@ -49,7 +49,7 @@ browser, because Redmine has no API for it
 | Calendar | No API; built from start and due dates | ✅ | Calendar view: a month of weeks with issues across their days, cycle ends, drag to reschedule, undated issues to drag on. #37 |
 | Issue categories | `GET/POST/PUT/DELETE /projects/:id/issue_categories.json` | 🟡 cached, not shown | Category property, filter and grouping ("Component"). #42 |
 | Saved queries | `GET /queries.json`, run with `query_id` | ⬜ | Sidebar > Views: each Redmine query as a list Redline fetches. #44 |
-| Time tracking (spent time, reports) | `GET/POST/PUT/DELETE /time_entries.json`, activities from `/enumerations/time_entry_activities.json` | ⬜ | Team > Time: entries grouped by day, person or issue, with totals. #40 |
+| Time tracking (spent time, reports) | `GET/POST/PUT/DELETE /time_entries.json`, activities from `/enumerations/time_entry_activities.json` | ✅ | Team > Time: this week, last week, this month or the last 30 days, a bar per day, entries grouped by day, person or issue with totals, and only your own on request. Redmine's report pivot (by custom field, CSV export) stays in Redmine for now. #40 |
 
 ## Projects and people
 

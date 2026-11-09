@@ -106,6 +106,10 @@ pub fn run() {
             commands::pick_files,
             commands::attach_files,
             commands::delete_attachment,
+            commands::time_entries,
+            commands::log_time,
+            commands::update_time_entry,
+            commands::delete_time_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Redline");

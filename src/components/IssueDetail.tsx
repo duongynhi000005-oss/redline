@@ -5,12 +5,14 @@ import { isTyping, matchesShortcut, shortcutLabel } from "../lib/platform";
 import { blockingIssues, mentionsIn, relatedGroups, subIssues } from "../lib/relations";
 import type { Attachment, Issue, IssueDetails, Journal, Relation } from "../lib/types";
 import { errorMessage } from "../lib/types";
-import { allowed } from "../lib/permissions";
+import { allowed, timeAccess } from "../lib/permissions";
+import { formatHours } from "../lib/time";
 import { overlayOpen, useApp } from "../state/app";
 import { useDerived } from "../state/derived";
 import { Attachments } from "./Attachments";
 import { Avatar } from "./Avatar";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
+import { IssueTime } from "./IssueTime";
 import { Markdown } from "./Markdown";
 
 function Property({ label, children, onEdit, shortcut }: { label: string; children: React.ReactNode; onEdit?: () => void; shortcut?: string }) {
@@ -361,6 +363,8 @@ export function IssueDetail({ id }: { id: number }) {
   const toggleSubscribe = useApp((s) => s.toggleSubscribe);
   const openInRedmine = useApp((s) => s.openInRedmine);
   const attachFiles = useApp((s) => s.attachFiles);
+  const openTimeDialog = useApp((s) => s.openTimeDialog);
+  const meta = useApp((s) => s.meta);
   const [commentFiles, setCommentFiles] = useState<{ id: number; files: string[] }>({ id, files: [] });
   const [dropTarget, setDropTarget] = useState<"issue" | "comment" | null>(null);
   const d = useDerived();
@@ -446,6 +450,8 @@ export function IssueDetail({ id }: { id: number }) {
   const category = issueCategory(issue, d.categories);
   const level = d.priorities.get(issue.priority.id) ?? 0;
   const labels = issueLabels(issue, d.labelFields);
+  const time = timeAccess(meta, issue.project.id);
+  const spent = issue.total_spent_hours ?? issue.spent_hours;
   // Fields not shown as labels get a row of their own.
   const otherFields = issue.custom_fields.filter(
     (f) => f.value && f.value.length !== 0 && (d.labelFields ? !d.labelFields.has(f.id) : !f.multiple),
@@ -575,7 +581,13 @@ export function IssueDetail({ id }: { id: number }) {
               <span>{issue.tracker.name}</span>
             </Property>
             {issue.due_date && <Property label="Due">{issue.due_date}</Property>}
-            {issue.estimated_hours != null && <Property label="Estimate">{issue.estimated_hours} h</Property>}
+            {issue.estimated_hours != null && <Property label="Estimate">{formatHours(issue.estimated_hours)}</Property>}
+            {time.view && (
+              <Property label="Spent" shortcut="mod+shift+t" onEdit={time.log ? () => openTimeDialog(issue.id) : undefined}>
+                <Icon name="time" />
+                <span>{spent ? formatHours(spent) : "None"}</span>
+              </Property>
+            )}
             {issue.done_ratio ? <Property label="Done">{issue.done_ratio}%</Property> : null}
             {otherFields.map((f) => (
               <Property key={f.id} label={f.name}>
@@ -584,6 +596,7 @@ export function IssueDetail({ id }: { id: number }) {
             ))}
           </dl>
           <Subscribers issue={issue} />
+          {time.view && <IssueTime issue={issue} canLog={time.log} />}
         </aside>
       </div>
     </section>

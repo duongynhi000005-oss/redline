@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use reqwest::{Method, RequestBuilder, Response, StatusCode};
-use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::Semaphore;
 use url::Url;
@@ -52,6 +52,19 @@ pub struct IssueQuery {
     pub watched_by_me: bool,
     pub offset: u64,
     pub limit: Option<u32>,
+}
+
+/// Filters for listing time entries. Everything is optional.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct TimeQuery {
+    /// A project and, as Redmine does, its sub-projects.
+    pub project_id: Option<u64>,
+    pub issue_id: Option<u64>,
+    pub user_id: Option<u64>,
+    /// First day, YYYY-MM-DD.
+    pub from: Option<String>,
+    /// Last day, YYYY-MM-DD.
+    pub to: Option<String>,
 }
 
 /// Talks to one Redmine server as one user.
@@ -153,6 +166,72 @@ impl Client {
             self.get("enumerations/issue_priorities.json", &[]).await?,
             "issue_priorities",
         )
+    }
+
+    /// The kinds of work time can be logged as. Any user may read them.
+    pub async fn time_entry_activities(&self) -> Result<Vec<TimeEntryActivity>> {
+        take(
+            self.get("enumerations/time_entry_activities.json", &[])
+                .await?,
+            "time_entry_activities",
+        )
+    }
+
+    /// Time entries matching `query`, newest day first, every page.
+    pub async fn time_entries(&self, query: &TimeQuery) -> Result<Vec<TimeEntry>> {
+        let mut params = Vec::new();
+        if let Some(id) = query.project_id {
+            params.push(("project_id", id.to_string()));
+        }
+        if let Some(id) = query.issue_id {
+            params.push(("issue_id", id.to_string()));
+        }
+        if let Some(id) = query.user_id {
+            params.push(("user_id", id.to_string()));
+        }
+        if let Some(from) = &query.from {
+            params.push(("from", from.clone()));
+        }
+        if let Some(to) = &query.to {
+            params.push(("to", to.clone()));
+        }
+        self.get_all("time_entries.json", "time_entries", &params)
+            .await
+    }
+
+    pub async fn time_entry(&self, id: u64) -> Result<TimeEntry> {
+        take(
+            self.get(&format!("time_entries/{id}.json"), &[]).await?,
+            "time_entry",
+        )
+    }
+
+    /// Logs time and returns the entry as Redmine stored it.
+    pub async fn create_time_entry(&self, entry: &TimeEntryChanges) -> Result<TimeEntry> {
+        let body = self
+            .send_json(
+                Method::POST,
+                "time_entries.json",
+                &json!({ "time_entry": entry }),
+            )
+            .await?;
+        take(body, "time_entry")
+    }
+
+    pub async fn update_time_entry(&self, id: u64, changes: &TimeEntryChanges) -> Result<()> {
+        self.send_json(
+            Method::PUT,
+            &format!("time_entries/{id}.json"),
+            &json!({ "time_entry": changes }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    pub async fn delete_time_entry(&self, id: u64) -> Result<()> {
+        let url = self.url(&format!("time_entries/{id}.json"))?;
+        self.send(|| self.http.delete(url.clone())).await?;
+        Ok(())
     }
 
     /// The members of a project. This is how Redline knows who can be

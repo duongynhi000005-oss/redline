@@ -1,6 +1,17 @@
 import { create } from "zustand";
 import type { Backend } from "../lib/backend";
-import type { Account, Attachment, Issue, IssueChanges, IssueDetails, Metadata, Relation, SyncState } from "../lib/types";
+import type {
+  Account,
+  Attachment,
+  Issue,
+  IssueChanges,
+  IssueDetails,
+  Metadata,
+  Relation,
+  SyncState,
+  TimeEntry,
+  TimeEntryChanges,
+} from "../lib/types";
 import type { RelationChoice } from "../lib/relations";
 import { newRelation } from "../lib/relations";
 import { errorMessage, isBackendError } from "../lib/types";
@@ -21,6 +32,7 @@ export type Route =
   | { view: "team"; teamId: number; tab: TeamTab }
   | { view: "project"; projectId: number }
   | { view: "cycles"; teamId: number }
+  | { view: "time"; teamId: number }
   | { view: "cycle"; teamId: number; versionId: number };
 
 export type MyIssuesTab = "assigned" | "created";
@@ -34,6 +46,7 @@ export function routeKey(route: Route): string {
       return route.view;
     case "team":
     case "cycles":
+    case "time":
       return `${route.view}:${route.teamId}`;
     case "project":
       return `project:${route.projectId}`;
@@ -81,6 +94,10 @@ export interface AppState {
   toast: string | null;
   /** Whether you watch each issue, as far as Redmine has said. */
   watching: Map<number, boolean>;
+  /** The Log time dialog: for an issue, or to change one entry. */
+  timeDialog: { issueId: number; entry?: TimeEntry } | null;
+  /** Bumped when time is logged, changed or deleted, so lists of time reload. */
+  timeVersion: number;
 
   start(backend: Backend): Promise<void>;
   signIn(serverUrl: string, apiKey: string): Promise<void>;
@@ -108,6 +125,11 @@ export interface AppState {
   attachFiles(issueId: number, paths: string[], notes?: string): Promise<boolean>;
   deleteAttachment(issueId: number, attachment: Attachment): Promise<void>;
   saveAttachment(attachment: Attachment): Promise<void>;
+  openTimeDialog(issueId: number, entry?: TimeEntry): void;
+  closeTimeDialog(): void;
+  /** Logs time, or changes an entry. True when Redmine took it. */
+  saveTime(issueId: number, changes: TimeEntryChanges, entryId?: number): Promise<boolean>;
+  deleteTimeEntry(entry: TimeEntry): Promise<void>;
   showToast(message: string | null): void;
   setComposerOpen(open: boolean): void;
   setSettingsOpen(open: boolean): void;
@@ -140,6 +162,8 @@ function initial() {
     focusedIssueId: null as number | null,
     paletteOpen: false,
     picker: null as PickerState | null,
+    timeDialog: null as AppState["timeDialog"],
+    timeVersion: 0,
     composerOpen: false,
     settingsOpen: false,
     settings: DEFAULT_SETTINGS,
@@ -183,10 +207,12 @@ export const useApp = create<AppState>()((set, get) => {
         const fresh = changed.length ? await backend.getIssues(changed) : [];
         const issues = new Map(get().issues);
         removed.forEach((id) => issues.delete(id));
-        // Attachments and watchers come only with an issue's details; keep them.
+        // Attachments and watchers come only with an issue's details; keep them. Null
+        // watchers means the details showed the role can't see them, whatever the cache says.
         fresh.forEach((i) => {
           const known = issues.get(i.id);
-          issues.set(i.id, known ? { ...i, attachments: i.attachments ?? known.attachments, watchers: i.watchers ?? known.watchers } : i);
+          const watchers = known?.watchers === null ? null : (i.watchers ?? known?.watchers);
+          issues.set(i.id, known ? { ...i, attachments: i.attachments ?? known.attachments, watchers } : i);
         });
         set({ issues });
         if (removed.includes(get().openIssueId ?? -1)) set({ openIssueId: null });
@@ -377,9 +403,9 @@ export const useApp = create<AppState>()((set, get) => {
       const id = details.issue.id;
       const known = issues.get(id);
       const patch: Partial<Issue> = {};
-      // Redmine doesn't touch updated_on when relations or watchers change; attachments
-      // only come with details.
-      for (const key of ["relations", "watchers", "attachments"] as const) {
+      // Redmine doesn't touch updated_on when relations, watchers or logged time change;
+      // attachments only come with details.
+      for (const key of ["relations", "watchers", "attachments", "spent_hours", "total_spent_hours"] as const) {
         // Watchers missing from details means the role can't see them (any more).
         const fresh = key === "watchers" ? (details.issue.watchers ?? null) : details.issue[key];
         if (known && fresh !== undefined && JSON.stringify(known[key] ?? null) !== JSON.stringify(fresh)) patch[key] = fresh as never;
@@ -477,6 +503,37 @@ export const useApp = create<AppState>()((set, get) => {
       }
     },
 
+    openTimeDialog(issueId, entry) {
+      set({ timeDialog: { issueId, entry }, paletteOpen: false, picker: null });
+    },
+
+    closeTimeDialog() {
+      set({ timeDialog: null });
+    },
+
+    async saveTime(issueId, changes, entryId) {
+      const { backend } = get();
+      if (!backend) return false;
+      try {
+        if (entryId) await backend.updateTimeEntry(entryId, changes);
+        else await backend.logTime({ ...changes, issue_id: issueId });
+        set((s) => ({ timeVersion: s.timeVersion + 1 }));
+        return true;
+      } catch (e) {
+        set({ toast: `Couldn't ${entryId ? "change" : "log"} the time: ${errorMessage(e)}` });
+        return false;
+      }
+    },
+
+    async deleteTimeEntry(entry) {
+      try {
+        await get().backend?.deleteTimeEntry(entry.id);
+        set((s) => ({ timeVersion: s.timeVersion + 1 }));
+      } catch (e) {
+        set({ toast: `Couldn't delete the time: ${errorMessage(e)}` });
+      }
+    },
+
     async saveAttachment(attachment) {
       try {
         if (await get().backend?.saveAttachment(attachment)) set({ toast: `Saved ${attachment.filename}` });
@@ -568,9 +625,9 @@ export function viewFor(s: Pick<AppState, "views">, key: string): ViewOptions {
 
 /** Whether a menu or dialog is up, so the views underneath ignore their shortcuts. */
 export function overlayOpen(
-  s: Pick<AppState, "paletteOpen" | "picker" | "filterMenu" | "composerOpen" | "settingsOpen">,
+  s: Pick<AppState, "paletteOpen" | "picker" | "filterMenu" | "composerOpen" | "settingsOpen" | "timeDialog">,
 ): boolean {
-  return s.paletteOpen || s.picker !== null || s.filterMenu !== null || s.composerOpen || s.settingsOpen;
+  return s.paletteOpen || s.picker !== null || s.filterMenu !== null || s.composerOpen || s.settingsOpen || s.timeDialog !== null;
 }
 
 /** For tests: forget everything. */

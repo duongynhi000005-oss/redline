@@ -226,6 +226,19 @@ export function Icon({ name, ...props }: IconProps & { name: IconName }) {
           <path d="M7 4v3l2 1.3" {...stroke} />
         </Svg>
       );
+    case "time":
+      return (
+        <Svg {...props}>
+          <circle cx="7" cy="8" r="4.6" {...stroke} />
+          <path d="M5.6 1.8h2.8M7 1.8v1.6M7 8V5.7M10.6 3.8l.9-.9" {...stroke} />
+        </Svg>
+      );
+    case "edit":
+      return (
+        <Svg {...props}>
+          <path d="M9.4 2.6a1.2 1.2 0 0 1 1.7 1.7L5 10.4l-2.3.6.6-2.3 6.1-6.1Z" {...stroke} />
+        </Svg>
+      );
     case "filter":
       return (
         <Svg {...props}>
@@ -339,4 +352,6 @@ export type IconName =
   | "external"
   | "bell"
   | "bell-filled"
-  | "cycle";
+  | "cycle"
+  | "time"
+  | "edit";

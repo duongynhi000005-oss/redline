@@ -548,3 +548,111 @@ async fn uploads_attaches_downloads_and_deletes_files() {
     );
     syncer.delete_attachment(3, 7).await.unwrap();
 }
+
+#[tokio::test]
+async fn lists_logs_changes_and_deletes_time() {
+    use redline_core::TimeQuery;
+    use redline_core::models::TimeEntryChanges;
+    use redline_core::{Store, Syncer};
+
+    let entry = |hours: f64| {
+        json!({"time_entry": {
+            "id": 40, "project": {"id": 1, "name": "Web"}, "issue": {"id": 3},
+            "user": {"id": 5, "name": "Dana"}, "activity": {"id": 9, "name": "Development"},
+            "hours": hours, "comments": "Pairing", "spent_on": "2026-11-09"
+        }})
+    };
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/time_entries.json"))
+        .and(query_param("project_id", "1"))
+        .and(query_param("from", "2026-11-02"))
+        .and(query_param("to", "2026-11-08"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "time_entries": [entry(1.5)["time_entry"]], "total_count": 1, "offset": 0, "limit": 100
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/time_entries.json"))
+        .and(body_json(json!({"time_entry": {
+            "issue_id": 3, "spent_on": "2026-11-09", "hours": 1.5, "activity_id": 9, "comments": "Pairing"
+        }})))
+        .respond_with(ResponseTemplate::new(201).set_body_json(entry(1.5)))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/time_entries/40.json"))
+        .and(body_json(json!({"time_entry": {"hours": 2.0}})))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/time_entries/40.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(entry(2.0)))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/time_entries/40.json"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // Each change re-reads the issue for its spent time.
+    let mut spent = issue(3);
+    spent["spent_hours"] = json!(2.0);
+    Mock::given(method("GET"))
+        .and(path("/issues/3.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({"issue": spent})))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/issues.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [], "total_count": 0, "offset": 0, "limit": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let store = Store::in_memory().unwrap();
+    let syncer = Syncer::new(client(&server), store.clone());
+    let listed = syncer
+        .client()
+        .time_entries(&TimeQuery {
+            project_id: Some(1),
+            from: Some("2026-11-02".into()),
+            to: Some("2026-11-08".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(listed[0].hours, 1.5);
+    let logged = syncer
+        .log_time(&TimeEntryChanges {
+            issue_id: Some(3),
+            spent_on: Some("2026-11-09".into()),
+            hours: Some(1.5),
+            activity_id: Some(9),
+            comments: Some("Pairing".into()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(logged.activity.name, "Development");
+    assert_eq!(store.issue(3).unwrap().unwrap().spent_hours, Some(2.0));
+    let changed = syncer
+        .update_time_entry(
+            40,
+            &TimeEntryChanges {
+                hours: Some(2.0),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(changed.hours, 2.0);
+    assert_eq!(syncer.delete_time_entry(40).await.unwrap(), Some(3));
+}

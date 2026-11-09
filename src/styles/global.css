@@ -789,6 +789,317 @@ h2 {
   flex: 1;
 }
 
+/* Time tracking */
+
+.issue-time {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.time-entries {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.time-entries li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.time-entries li > .avatar {
+  margin-top: 1px;
+}
+
+.time-entry-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.time-entry-line {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+
+.time-entry-line strong {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-entry-who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-entry-sub {
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-entry-comment {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.time-entry-actions,
+.time-row-actions {
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+}
+
+.time-entries li:hover .time-entry-actions,
+.time-entry-actions:focus-within,
+.time-row:hover .time-row-actions,
+.time-row-actions:focus-within {
+  opacity: 1;
+}
+
+.time-dialog {
+  width: min(520px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px 14px;
+}
+
+.time-dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.time-dialog-header h1 {
+  font-size: 15px;
+}
+
+.time-dialog-issue {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-dialog-fields {
+  display: flex;
+  gap: 10px;
+}
+
+.time-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+.time-field-hours {
+  flex: 1;
+}
+
+.time-field input,
+.time-field select,
+.time-dialog-comment {
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.time-field-hours input {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.time-field input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.time-dialog-hint,
+.time-dialog .form-error {
+  margin: -4px 0 0;
+  font-size: 11.5px;
+}
+
+.time-dialog-footer {
+  gap: 8px;
+}
+
+.header-button[aria-pressed="true"] {
+  background: var(--bg-active);
+  color: var(--text);
+}
+
+.time-grouping select {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.time-scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.time-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 92px;
+  padding: 14px 22px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.time-bar {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  border-radius: 4px;
+  background: var(--bg-hover);
+}
+
+.time-bar.weekend {
+  background: color-mix(in srgb, var(--bg-hover) 50%, transparent);
+}
+
+.time-bar-fill {
+  min-height: 0;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.time-bar.today .time-bar-fill {
+  background: var(--accent);
+}
+
+.time-bar-label {
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  transform: translateY(100%);
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.time-chart:has(.time-bar-label) {
+  height: 104px;
+  padding-bottom: 22px;
+}
+
+.time-group-header {
+  height: 34px;
+  font-size: 13px;
+}
+
+.time-group-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.time-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 16px 0 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.time-row:hover {
+  background: var(--bg-hover);
+}
+
+.time-row-hours {
+  width: 56px;
+  flex: none;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-row-issue {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+button.time-row-issue:hover {
+  text-decoration: underline;
+}
+
+.time-row-comment {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.time-row-issue + .chip,
+.time-row-issue + .time-row-comment + .chip {
+  margin-left: auto;
+}
+
+.time-row-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 140px;
+  flex: none;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.time-row-date {
+  width: 96px;
+  flex: none;
+  text-align: right;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.time-row-actions {
+  width: 44px;
+  flex: none;
+  justify-content: flex-end;
+}
+
 /* Subscribers (Redmine watchers) */
 .icon-button.is-on {
   color: var(--accent);

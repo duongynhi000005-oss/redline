@@ -55,6 +55,8 @@ teammate = User.find_by(login: "sam") || User.new.tap do |u|
 end
 
 developer = Role.find_by(name: "Developer") || Role.givable.first
+# Many teams let people fix their own time; Redmine's defaults don't.
+developer.add_permission!(:edit_own_time_entries) unless developer.has_permission?(:edit_own_time_entries)
 
 labels = IssueCustomField.find_by(name: "Area") || IssueCustomField.create!(
   name: "Area", field_format: "list", multiple: true, is_for_all: true, is_filter: true,
@@ -176,6 +178,29 @@ unless web.issues.exists?(subject: "Plan the board view")
   drag.save!
   end
   say "added board and timeline issues"
+end
+
+# Time logged over the last two weeks, for the Time view.
+if TimeEntry.where(comments: "Palette shortcuts").none?
+  web = Project.find_by(identifier: "web")
+  sam = User.find_by(login: "sam")
+  development = TimeEntryActivity.find_by(name: "Development")
+  design = TimeEntryActivity.find_by(name: "Design")
+  if web && sam && development
+    development.update!(is_default: true) unless TimeEntryActivity.where(is_default: true).exists?
+    issues = web.issues.order(:id).limit(8).to_a
+    design ||= development
+    [[0, user, 0, 1.5, development, "Palette shortcuts"], [1, user, 0, 0.75, development, "Reproduced after sleep"],
+     [2, sam, 1, 3, development, "Virtualized rows"], [0, sam, 1, 0.5, design, "Review"],
+     [3, user, 2, 2, design, "Theme tokens"], [4, sam, 3, 1.25, development, ""],
+     [5, user, 4, 4, development, "Shortcut and menu item"], [6, user, 7, 2.5, development, ""],
+     [7, sam, 8, 1, development, "Retry queue"], [2, user, 9, 0.5, design, "Row spacing"]].each do |index, who, days_ago, hours, activity, comments|
+      issue = issues[index] or next
+      TimeEntry.create!(project: web, issue: issue, user: who, author: who, activity: activity, hours: hours,
+                        spent_on: Date.today - days_ago, comments: comments)
+    end
+    say "logged time"
+  end
 end
 
 token = Token.find_by(user: user, action: "api") || Token.create!(user: user, action: "api")

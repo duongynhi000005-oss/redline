@@ -30,6 +30,10 @@ pub struct Metadata {
     pub memberships: Vec<Membership>,
     /// Roles and their permissions, so Redline offers only what Redmine allows.
     pub roles: Vec<Role>,
+    /// What time can be logged as, active ones only. Named as Redmine names it, like
+    /// the rest of the data the UI reads.
+    #[serde(rename = "time_entry_activities")]
+    pub time_entry_activities: Vec<TimeEntryActivity>,
 }
 
 /// A handle to the cache. Cheap to clone; all clones share one connection.
@@ -167,6 +171,12 @@ impl Store {
             [to_json(&meta.roles)?],
         )
         .map_err(storage)?;
+        tx.execute(
+            "INSERT INTO kv (key, value) VALUES ('time_entry_activities', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [to_json(&meta.time_entry_activities)?],
+        )
+        .map_err(storage)?;
         tx.commit().map_err(storage)
     }
 
@@ -181,6 +191,7 @@ impl Store {
             versions: rows(&conn, "SELECT json FROM versions ORDER BY id")?,
             memberships: rows(&conn, "SELECT json FROM memberships ORDER BY id")?,
             roles: kv_get(&conn, "roles")?.unwrap_or_default(),
+            time_entry_activities: kv_get(&conn, "time_entry_activities")?.unwrap_or_default(),
         })
     }
 
@@ -414,6 +425,22 @@ fn kv_get<T: DeserializeOwned>(conn: &Connection, key: &str) -> Result<Option<T>
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn metadata_names_fields_as_the_ui_reads_them() {
+        let meta = Metadata {
+            time_entry_activities: vec![TimeEntryActivity {
+                id: 9,
+                name: "Development".into(),
+                is_default: true,
+                active: true,
+            }],
+            ..Default::default()
+        };
+        let value = serde_json::to_value(&meta).unwrap();
+        assert_eq!(value["time_entry_activities"][0]["name"], "Development");
+        assert!(value.get("roles").is_some());
+    }
 
     pub(crate) fn issue(id: u64, updated_on: &str) -> Issue {
         serde_json::from_value(json!({

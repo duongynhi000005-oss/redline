@@ -6,7 +6,7 @@ import type { Route } from "../state/app";
 import { routeKey, targetIssueId, useApp } from "../state/app";
 import { LAYOUTS } from "../lib/views";
 import { RELATION_CHOICES } from "../lib/relations";
-import { ISSUE_SHORTCUTS, runIssueCommand } from "./useIssueShortcuts";
+import { ISSUE_SHORTCUTS, issueCommandAvailable, runIssueCommand } from "./useIssueShortcuts";
 import { useDerived } from "../state/derived";
 import { Icon, StatusIcon } from "./icons";
 
@@ -88,7 +88,7 @@ function PaletteContent() {
       { id: "new-issue", label: "Create new issue", group: "Issues", shortcut: "c", run: () => setComposerOpen(true) },
     ];
     // Lists of issues can be filtered; the inbox and cycle overview can't.
-    if (route.view !== "inbox" && route.view !== "cycles" && !detailOpen) {
+    if (route.view !== "inbox" && route.view !== "cycles" && route.view !== "time" && !detailOpen) {
       list.push({ id: "filter", label: "Filter…", group: "Issues", shortcut: "f", icon: <Icon name="filter" />, run: () => openFilterMenu(null) });
       for (const l of LAYOUTS) {
         list.push({
@@ -104,6 +104,7 @@ function PaletteContent() {
     }
     if (target !== null) {
       for (const s of ISSUE_SHORTCUTS) {
+        if (!issueCommandAvailable(s.kind, target)) continue;
         list.push({
           id: `issue-${s.kind}`,
           label: s.label,
@@ -151,6 +152,15 @@ function PaletteContent() {
         icon: <Icon name="cycle" />,
         run: go({ view: "cycles", teamId: team.id }),
       });
+      if (d.teamTime.has(team.id))
+        list.push({
+          id: `go-time-${team.id}`,
+          label: `Go to ${team.name} time`,
+          group: "Navigation",
+          icon: <Icon name="time" />,
+          keywords: "spent hours timesheet log",
+          run: go({ view: "time", teamId: team.id }),
+        });
       for (const p of d.teamProjects.get(team.id) ?? []) {
         list.push({
           id: `go-project-${p.id}`,
