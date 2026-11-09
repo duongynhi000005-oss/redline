@@ -43,6 +43,10 @@ export interface Backend {
   syncNow(): Promise<void>;
   updateIssue(id: number, changes: IssueChanges): Promise<IssueDetails>;
   createIssue(fields: IssueChanges): Promise<Issue>;
+  /** Deletes an issue; Redmine deletes its sub-issues and their logged time too. */
+  deleteIssue(id: number): Promise<void>;
+  /** Changes a comment's text; empty text removes the comment. */
+  updateComment(issueId: number, journalId: number, notes: string): Promise<IssueDetails>;
   /** Relates an issue to another. Both issues arrive again through onIssuesChanged. */
   addRelation(issueId: number, relation: NewRelation): Promise<Relation>;
   removeRelation(relation: Relation): Promise<void>;

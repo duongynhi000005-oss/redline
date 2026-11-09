@@ -733,3 +733,59 @@ async fn creates_changes_and_deletes_versions() {
     syncer.delete_version(7).await.unwrap();
     assert!(store.metadata().unwrap().versions.is_empty());
 }
+
+#[tokio::test]
+async fn deletes_an_issue_with_its_sub_issues_and_refreshes_its_neighbours() {
+    use redline_core::models::Issue;
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    Mock::given(method("DELETE"))
+        .and(path("/issues/1.json"))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+    // Redmine dropped the relation with the issue; the parent's totals are the same here.
+    let mut four = issue(4);
+    four["relations"] = json!([]);
+    Mock::given(method("GET"))
+        .and(path("/issues.json"))
+        .and(query_param("issue_id", "5,4"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [four, issue(5)], "total_count": 2, "offset": 0, "limit": 100
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("PUT"))
+        .and(path("/journals/9.json"))
+        .and(body_json(json!({"journal": {"notes": "Fixed typo"}})))
+        .respond_with(ResponseTemplate::new(204))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let relation = json!({"id": 3, "issue_id": 4, "issue_to_id": 1, "relation_type": "relates", "delay": null});
+    let mut cached = vec![issue(1), issue(2), issue(3), issue(4), issue(5)];
+    cached[0]["parent"] = json!({"id": 5});
+    cached[1]["parent"] = json!({"id": 1});
+    cached[2]["parent"] = json!({"id": 2});
+    cached[3]["relations"] = json!([relation]);
+    let cached: Vec<Issue> = serde_json::from_value(json!(cached)).unwrap();
+    let store = Store::in_memory().unwrap();
+    store.upsert_issues(&cached).unwrap();
+
+    let syncer = Syncer::new(client(&server), store.clone());
+    let (removed, changed) = syncer.delete_issue(1).await.unwrap();
+    assert_eq!(removed, vec![1, 2, 3]);
+    assert_eq!(store.issue_ids().unwrap(), vec![4, 5]);
+    assert_eq!(changed, vec![4]);
+    assert_eq!(store.issue(4).unwrap().unwrap().relations, Some(vec![]));
+
+    syncer
+        .client()
+        .update_journal(9, "Fixed typo")
+        .await
+        .unwrap();
+}

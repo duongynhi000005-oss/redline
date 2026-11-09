@@ -52,3 +52,9 @@ export function canEditTime(meta: Metadata | null, projectId: number, entryUserI
   if (allowed(meta, projectId, "edit_time_entries") !== false) return true;
   return entryUserId === me && allowed(meta, projectId, "edit_own_time_entries") !== false;
 }
+
+/** Whether the user can change or remove a comment. */
+export function canEditComment(meta: Metadata | null, projectId: number, authorId: number | undefined, me: number | undefined) {
+  if (allowed(meta, projectId, "edit_issue_notes") !== false) return true;
+  return authorId !== undefined && authorId === me && allowed(meta, projectId, "edit_own_issue_notes") !== false;
+}

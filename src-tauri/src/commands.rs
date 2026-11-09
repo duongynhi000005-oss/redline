@@ -351,6 +351,32 @@ pub async fn add_relation(
     Ok(created)
 }
 
+/// Deletes an issue in Redmine, with its sub-issues.
+#[tauri::command]
+pub async fn delete_issue(app: AppHandle, state: State<'_, AppState>, id: u64) -> CmdResult<()> {
+    let syncer = syncer(&state).await?;
+    let (removed, changed) = syncer.delete_issue(id).await?;
+    let _ = app.emit(EVENT_ISSUES_CHANGED, IssuesChanged { changed, removed });
+    Ok(())
+}
+
+/// Changes or removes a comment and re-reads its issue.
+#[tauri::command]
+pub async fn update_comment(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    issue_id: u64,
+    journal_id: u64,
+    notes: String,
+) -> CmdResult<IssueDetails> {
+    let details = syncer(&state)
+        .await?
+        .update_comment(issue_id, journal_id, &notes)
+        .await?;
+    emit_changed(&app, vec![issue_id]);
+    Ok(details)
+}
+
 /// Removes a relation in Redmine and refreshes both issues.
 #[tauri::command]
 pub async fn remove_relation(

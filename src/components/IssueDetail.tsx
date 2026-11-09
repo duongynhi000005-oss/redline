@@ -5,7 +5,7 @@ import { isTyping, matchesShortcut, shortcutLabel } from "../lib/platform";
 import { blockingIssues, mentionsIn, relatedGroups, subIssues } from "../lib/relations";
 import type { Attachment, Issue, IssueDetails, Journal, Relation } from "../lib/types";
 import { errorMessage } from "../lib/types";
-import { allowed, timeAccess } from "../lib/permissions";
+import { allowed, canEditComment, timeAccess } from "../lib/permissions";
 import { fieldEnabled, fieldShape, fieldValues, knownLabelValues, moveTargets } from "../lib/edit";
 import { formatHours } from "../lib/time";
 import { overlayOpen, useApp } from "../state/app";
@@ -13,6 +13,7 @@ import { useDerived } from "../state/derived";
 import { Attachments } from "./Attachments";
 import { Avatar } from "./Avatar";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
+import { IssueMenu } from "./IssueActions";
 import { IssueTime } from "./IssueTime";
 import { Markdown } from "./Markdown";
 import { DateProperty, HoursProperty, Property } from "./Properties";
@@ -78,7 +79,141 @@ function longDate(iso: string) {
   return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
-function Activity({ journals, attachments }: { journals: Journal[]; attachments?: Attachment[] | null }) {
+/** A comment, with Edit and Delete for whoever may change it. */
+function Comment({
+  issue,
+  journal,
+  attachments,
+  onChanged,
+}: {
+  issue: Issue;
+  journal: Journal;
+  attachments?: Attachment[] | null;
+  onChanged: (details: IssueDetails) => void;
+}) {
+  const meta = useApp((s) => s.meta);
+  const me = useApp((s) => s.account?.userId);
+  const updateComment = useApp((s) => s.updateComment);
+  const [draft, setDraft] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const who = journal.user?.name ?? "Someone";
+  const editable = canEditComment(meta, issue.project.id, journal.user?.id, me);
+  const edited = !!journal.updated_on && journal.updated_on !== journal.created_on;
+
+  async function save(notes: string) {
+    setBusy(true);
+    const done = await updateComment(issue.id, journal.id, notes);
+    setBusy(false);
+    if (done) {
+      setDraft(null);
+      setConfirming(false);
+      onChanged(done);
+    }
+  }
+
+  return (
+    <article className="comment" aria-label={`Comment by ${who}`}>
+      <header>
+        <Avatar name={who} size={20} />
+        <strong>{who}</strong>
+        <time dateTime={journal.created_on} title={longDate(journal.created_on)}>
+          {relativeTime(journal.created_on)}
+        </time>
+        {edited && (
+          <span className="muted comment-edited" title={`Edited ${longDate(journal.updated_on!)}`}>
+            edited
+          </span>
+        )}
+        {journal.private_notes && <span className="chip chip-plain">Private</span>}
+        {editable && draft === null && (
+          <span className="comment-actions">
+            {confirming ? (
+              <>
+                <span className="muted">Delete this comment?</span>
+                <button type="button" className="link-button" onClick={() => setConfirming(false)}>
+                  Keep
+                </button>
+                <button type="button" className="link-button is-danger" disabled={busy} onClick={() => void save("")}>
+                  Delete
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Edit comment"
+                  title="Edit comment"
+                  onClick={() => setDraft(journal.notes ?? "")}
+                >
+                  <Icon name="edit" size={12} />
+                </button>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Delete comment"
+                  title="Delete comment"
+                  onClick={() => setConfirming(true)}
+                >
+                  <Icon name="trash" size={12} />
+                </button>
+              </>
+            )}
+          </span>
+        )}
+      </header>
+      {draft === null ? (
+        <Markdown text={journal.notes ?? ""} attachments={attachments} />
+      ) : (
+        <form
+          className="comment-edit"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (draft.trim()) void save(draft);
+          }}
+        >
+          <textarea
+            aria-label="Edit comment"
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (matchesShortcut(e, "mod+enter")) {
+                e.preventDefault();
+                if (draft.trim()) void save(draft);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                setDraft(null);
+              }
+            }}
+          />
+          <div className="comment-edit-actions">
+            <button type="button" className="button-secondary" onClick={() => setDraft(null)}>
+              Cancel
+            </button>
+            <button type="submit" className="button-primary" disabled={busy || !draft.trim() || draft === journal.notes}>
+              {busy ? "Saving…" : "Save"} <kbd className="kbd-on-accent">{shortcutLabel("mod+enter")}</kbd>
+            </button>
+          </div>
+        </form>
+      )}
+    </article>
+  );
+}
+
+function Activity({
+  issue,
+  journals,
+  attachments,
+  onChanged,
+}: {
+  issue: Issue;
+  journals: Journal[];
+  attachments?: Attachment[] | null;
+  onChanged: (details: IssueDetails) => void;
+}) {
   const meta = useApp((s) => s.meta)!;
   return (
     <ol className="activity">
@@ -97,19 +232,7 @@ function Activity({ journals, attachments }: { journals: Journal[]; attachments?
                 </time>
               </div>
             ))}
-            {j.notes && (
-              <article className="comment">
-                <header>
-                  <Avatar name={who} size={20} />
-                  <strong>{who}</strong>
-                  <time dateTime={j.created_on} title={longDate(j.created_on)}>
-                    {relativeTime(j.created_on)}
-                  </time>
-                  {j.private_notes && <span className="chip chip-plain">Private</span>}
-                </header>
-                <Markdown text={j.notes} attachments={attachments} />
-              </article>
-            )}
+            {j.notes && <Comment issue={issue} journal={j} attachments={attachments} onChanged={onChanged} />}
           </li>
         );
       })}
@@ -511,6 +634,7 @@ export function IssueDetail({ id }: { id: number }) {
         >
           <Icon name="external" />
         </button>
+        <IssueMenu issue={issue} />
       </header>
       <div className="detail-body">
         <div className="detail-content">
@@ -545,7 +669,12 @@ export function IssueDetail({ id }: { id: number }) {
             </time>
           </div>
           {details ? (
-            <Activity journals={details.journals} attachments={issue.attachments} />
+            <Activity
+              issue={issue}
+              journals={details.journals}
+              attachments={issue.attachments}
+              onChanged={(fresh) => setLoaded({ id: issue.id, details: fresh })}
+            />
           ) : (
             <p className="muted">{error ? `Couldn't load the activity: ${error}` : "Loading activity…"}</p>
           )}

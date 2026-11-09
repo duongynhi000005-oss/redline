@@ -1437,6 +1437,121 @@ button.time-row-issue:hover {
   font-weight: 500;
 }
 
+.comment-edited {
+  font-size: 12px;
+}
+
+.comment-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+  opacity: 0;
+}
+
+.comment:hover .comment-actions,
+.comment-actions:focus-within,
+.comment-actions:has(.link-button) {
+  opacity: 1;
+}
+
+.comment-actions .icon-button {
+  width: 22px;
+  height: 22px;
+}
+
+.link-button.is-danger {
+  color: var(--danger);
+}
+
+.comment-edit textarea {
+  display: block;
+  width: 100%;
+  min-height: 80px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+  outline: none;
+}
+
+.comment-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* The issue's "…" menu */
+
+.issue-menu {
+  position: relative;
+}
+
+.issue-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow);
+  z-index: 15;
+}
+
+.issue-menu-panel [role="menuitem"] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+}
+
+.issue-menu-panel [role="menuitem"]:hover,
+.issue-menu-panel [role="menuitem"]:focus-visible {
+  background: var(--bg-hover);
+  outline: none;
+}
+
+.issue-menu-panel [role="menuitem"].is-danger {
+  color: var(--danger);
+}
+
+.confirm-dialog {
+  width: min(440px, calc(100vw - 48px));
+  padding: 18px 18px 14px;
+}
+
+.confirm-dialog h1 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.confirm-dialog p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.confirm-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 /* Markdown */
 
 .markdown {

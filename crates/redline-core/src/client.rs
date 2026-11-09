@@ -373,6 +373,27 @@ impl Client {
         Ok(())
     }
 
+    /// Deletes an issue with its sub-issues and the time logged on them.
+    /// Needs the "Delete issues" permission.
+    pub async fn delete_issue(&self, id: u64) -> Result<()> {
+        let url = self.url(&format!("issues/{id}.json"))?;
+        self.send(|| self.http.delete(url.clone())).await?;
+        Ok(())
+    }
+
+    /// Changes a comment's text (Redmine 5.0+). Empty text removes the
+    /// comment, and the whole entry when it changed nothing else. Needs
+    /// "Edit notes", or "Edit own notes" for the user's own.
+    pub async fn update_journal(&self, id: u64, notes: &str) -> Result<()> {
+        self.send_json(
+            Method::PUT,
+            &format!("journals/{id}.json"),
+            &json!({ "journal": { "notes": notes } }),
+        )
+        .await?;
+        Ok(())
+    }
+
     /// Creates an issue and returns it as Redmine stored it.
     pub async fn create_issue(&self, fields: &IssueChanges) -> Result<Issue> {
         let body = self

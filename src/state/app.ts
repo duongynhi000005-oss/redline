@@ -18,7 +18,7 @@ import type { RelationChoice } from "../lib/relations";
 import { newRelation } from "../lib/relations";
 import { errorMessage, isBackendError } from "../lib/types";
 import { allowed } from "../lib/permissions";
-import { applyChanges } from "../lib/edit";
+import { applyChanges, copyFields } from "../lib/edit";
 import type { ServerSettings } from "../lib/settings";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "../lib/settings";
 import type { Inbox } from "../lib/inbox";
@@ -114,6 +114,8 @@ export interface AppState {
   timeDialog: { issueId: number; entry?: TimeEntry } | null;
   /** Creating a cycle in a team, or changing one. */
   versionDialog: { teamId: number; version?: Version } | null;
+  /** The issue whose deletion is being confirmed. */
+  deleteDialog: number | null;
   /** Bumped when time is logged, changed or deleted, so lists of time reload. */
   timeVersion: number;
 
@@ -160,6 +162,14 @@ export interface AppState {
   updateSettings(change: Partial<ServerSettings>): void;
   markInboxRead(keys: string[] | "all"): void;
   createIssue(fields: IssueChanges): Promise<Issue | null>;
+  /** Copies an issue, links the copy to it and opens the copy. */
+  duplicateIssue(id: number): Promise<Issue | null>;
+  /** Deletes an issue (and its sub-issues, as Redmine does). */
+  deleteIssue(id: number): Promise<boolean>;
+  openDeleteDialog(id: number): void;
+  closeDeleteDialog(): void;
+  /** Changes a comment, or removes it when the text is empty. */
+  updateComment(issueId: number, journalId: number, notes: string): Promise<IssueDetails | null>;
   setFilters(key: string, filters: Filter[]): void;
   updateView(key: string, change: Partial<ViewOptions>): void;
   openFilterMenu(field: FilterField | null): void;
@@ -188,6 +198,7 @@ function initial() {
     picker: null as PickerState | null,
     timeDialog: null as AppState["timeDialog"],
     versionDialog: null as AppState["versionDialog"],
+    deleteDialog: null as AppState["deleteDialog"],
     timeVersion: 0,
     composerOpen: false,
     settingsOpen: false,
@@ -674,6 +685,82 @@ export const useApp = create<AppState>()((set, get) => {
       set({ issues, focusedIssueId: issue.id, toast: `Created #${issue.id} ${issue.subject}` });
       return issue;
     },
+
+    async duplicateIssue(id) {
+      const { backend, issues } = get();
+      const source = issues.get(id);
+      if (!backend || !source) return null;
+      let copy: Issue;
+      try {
+        copy = await backend.createIssue(copyFields(source));
+      } catch (e) {
+        set({ toast: `Couldn't duplicate #${id}: ${errorMessage(e)}` });
+        return null;
+      }
+      set({ issues: new Map(get().issues).set(copy.id, copy) });
+      let toast = `Duplicated #${id} as #${copy.id}`;
+      try {
+        await backend.addRelation(id, { issue_to_id: copy.id, relation_type: "copied_to" });
+        await refreshIssues(backend, [id, copy.id]);
+      } catch (e) {
+        toast = `Duplicated #${id} as #${copy.id}, but couldn't link the two: ${errorMessage(e)}`;
+      }
+      set({ toast, openIssueId: copy.id, focusedIssueId: copy.id, paletteOpen: false });
+      return copy;
+    },
+
+    async deleteIssue(id) {
+      const { backend, issues } = get();
+      const issue = issues.get(id);
+      if (!backend) return false;
+      try {
+        await backend.deleteIssue(id);
+      } catch (e) {
+        set({ toast: `Couldn't delete #${id}: ${errorMessage(e)}` });
+        return false;
+      }
+      // Its sub-issues go with it; the change event confirms.
+      const gone = new Set([id]);
+      const next = new Map(get().issues);
+      for (let grew = true; grew; ) {
+        grew = false;
+        for (const i of next.values())
+          if (i.parent && gone.has(i.parent.id) && !gone.has(i.id)) {
+            gone.add(i.id);
+            grew = true;
+          }
+      }
+      gone.forEach((g) => next.delete(g));
+      const { openIssueId, focusedIssueId } = get();
+      set({
+        issues: next,
+        openIssueId: openIssueId !== null && gone.has(openIssueId) ? null : openIssueId,
+        focusedIssueId: focusedIssueId !== null && gone.has(focusedIssueId) ? null : focusedIssueId,
+        toast: `Deleted #${id}${issue ? ` ${issue.subject}` : ""}`,
+      });
+      return true;
+    },
+
+    openDeleteDialog(id) {
+      set({ deleteDialog: id, paletteOpen: false, picker: null });
+    },
+
+    closeDeleteDialog() {
+      set({ deleteDialog: null });
+    },
+
+    async updateComment(issueId, journalId, notes) {
+      const { backend } = get();
+      if (!backend) return null;
+      try {
+        const details = await backend.updateComment(issueId, journalId, notes);
+        get().takeDetails(details);
+        return details;
+      } catch (e) {
+        set({ toast: `Couldn't ${notes.trim() ? "change" : "delete"} the comment: ${errorMessage(e)}` });
+        return null;
+      }
+    },
   };
 });
 
@@ -689,9 +776,21 @@ export function viewFor(s: Pick<AppState, "views">, key: string): ViewOptions {
 
 /** Whether a menu or dialog is up, so the views underneath ignore their shortcuts. */
 export function overlayOpen(
-  s: Pick<AppState, "paletteOpen" | "picker" | "filterMenu" | "composerOpen" | "settingsOpen" | "timeDialog" | "versionDialog">,
+  s: Pick<
+    AppState,
+    "paletteOpen" | "picker" | "filterMenu" | "composerOpen" | "settingsOpen" | "timeDialog" | "versionDialog" | "deleteDialog"
+  >,
 ): boolean {
-  return s.paletteOpen || s.picker !== null || s.filterMenu !== null || s.composerOpen || s.settingsOpen || s.timeDialog !== null || s.versionDialog !== null;
+  return (
+    s.paletteOpen ||
+    s.picker !== null ||
+    s.filterMenu !== null ||
+    s.composerOpen ||
+    s.settingsOpen ||
+    s.timeDialog !== null ||
+    s.versionDialog !== null ||
+    s.deleteDialog !== null
+  );
 }
 
 /** For tests: forget everything. */
