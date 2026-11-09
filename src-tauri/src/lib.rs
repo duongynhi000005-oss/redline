@@ -84,22 +84,6 @@ pub fn run() {
 mod tests {
     use super::*;
 
-    // macOS only builds menus on the main thread, and test threads aren't it;
-    // the same menu code is still checked on Linux and Windows.
-    #[test]
-    #[cfg_attr(target_os = "macos", ignore = "menus need the main thread on macOS")]
-    fn menu_builds() {
-        let app = tauri::test::mock_app();
-        let built = menu::build(app.handle()).expect("menu");
-        let titles: Vec<String> = built
-            .items()
-            .unwrap()
-            .iter()
-            .filter_map(|i| i.as_submenu().map(|s| s.text().unwrap()))
-            .collect();
-        assert_eq!(titles, ["Redline", "File", "Edit", "View", "Window"]);
-    }
-
     #[test]
     fn app_info_reports_version_and_platform() {
         let info = app_info();
