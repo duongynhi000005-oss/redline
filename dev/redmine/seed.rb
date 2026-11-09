@@ -317,6 +317,11 @@ if web
     attachment.save!
     say "added file #{filename}"
   end
+  # The seed runs as root, but Redmine serves as its own user: hand back any
+  # folder the seed made under files/ so later uploads can be written there.
+  root = Attachment.storage_path
+  owner = File.stat(root)
+  FileUtils.chown_R(owner.uid, owner.gid, root)
 end
 
 # What the team overview shows: a description and a homepage for Web.
