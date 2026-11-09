@@ -276,5 +276,12 @@ if web
   end
 end
 
+# What the team overview shows: a description and a homepage for Web.
+web = Project.find_by(identifier: "web")
+if web && web.homepage.blank?
+  web.update!(description: "The **Redline** web team: the list, board and sync engine.", homepage: "https://example.com/web")
+  say "described Web"
+end
+
 token = Token.find_by(user: user, action: "api") || Token.create!(user: user, action: "api")
 puts "REDLINE_TEST_API_KEY=#{token.value}"

@@ -463,6 +463,7 @@ async fn subscribes_and_reads_back_whether_the_user_watches() {
                 mail: None,
                 admin: false,
                 created_on: None,
+                last_login_on: None,
                 memberships: Vec::new(),
             }),
             ..Default::default()
@@ -904,4 +905,25 @@ async fn searches_everything_a_page_at_a_time() {
     assert_eq!(page.total_count, 27);
     assert_eq!(page.items[0].kind, "wiki-page");
     assert_eq!(page.items[1].id, 7);
+}
+
+#[tokio::test]
+async fn reads_another_user_and_what_redmine_shows_of_them() {
+    let server = MockServer::start().await;
+    Mock::given(path("/users/2.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "user": {"id": 2, "firstname": "Sam", "lastname": "Teammate", "created_on": "2026-04-14T09:00:00Z"}
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(path("/users/9.json"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    let c = client(&server);
+    let sam = c.user(2).await.unwrap();
+    assert_eq!(sam.display_name(), "Sam Teammate");
+    assert_eq!(sam.mail, None);
+    assert_eq!(sam.login, "");
+    assert!(matches!(c.user(9).await, Err(Error::NotFound)));
 }

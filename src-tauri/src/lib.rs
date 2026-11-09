@@ -99,6 +99,8 @@ pub fn run() {
             commands::add_relation,
             commands::set_watcher,
             commands::open_in_redmine,
+            commands::open_homepage,
+            commands::get_user,
             commands::remove_relation,
             commands::delete_issue,
             commands::update_comment,

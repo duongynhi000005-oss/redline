@@ -37,6 +37,9 @@ pub struct User {
     pub admin: bool,
     #[serde(default)]
     pub created_on: Option<String>,
+    /// Shown to admins and to the user themselves.
+    #[serde(default)]
+    pub last_login_on: Option<String>,
     /// The user's own memberships, including roles from groups, with
     /// `include=memberships`. Tells Redline what the user may do where.
     #[serde(default)]
@@ -201,6 +204,8 @@ pub struct Project {
     pub identifier: String,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub homepage: Option<String>,
     #[serde(default)]
     pub parent: Option<Named>,
     /// 1 active, 5 closed, 9 archived.
@@ -686,6 +691,7 @@ mod tests {
             mail: None,
             admin: false,
             created_on: None,
+            last_login_on: None,
             memberships: Vec::new(),
         };
         assert_eq!(user.display_name(), "dev");

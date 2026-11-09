@@ -35,6 +35,8 @@ export type Route =
   | { view: "my-issues"; tab: MyIssuesTab }
   | { view: "team"; teamId: number; tab: TeamTab }
   | { view: "project"; projectId: number }
+  /** What a team or sub-team is, who is in it and where its Redmine areas are. */
+  | { view: "overview"; projectId: number }
   | { view: "cycles"; teamId: number }
   | { view: "time"; teamId: number }
   | { view: "cycle"; teamId: number; versionId: number }
@@ -42,6 +44,15 @@ export type Route =
   | { view: "query"; queryId: number }
   /** Redmine search, across issues, wiki, news, documents, forums and commits. */
   | { view: "search"; text: string };
+
+/** Where a person's card shows, and what gets focus back when it closes. */
+export interface PersonCardState {
+  userId: number;
+  name: string;
+  top: number;
+  left: number;
+  returnTo: HTMLElement;
+}
 
 export type MyIssuesTab = "assigned" | "created";
 export type TeamTab = "all" | "active" | "backlog";
@@ -58,6 +69,8 @@ export function routeKey(route: Route): string {
       return `${route.view}:${route.teamId}`;
     case "project":
       return `project:${route.projectId}`;
+    case "overview":
+      return `overview:${route.projectId}`;
     case "cycle":
       return `cycle:${route.versionId}`;
     case "query":
@@ -142,6 +155,8 @@ export interface AppState {
   versionDialog: { teamId: number; version?: Version } | null;
   /** The issue whose deletion is being confirmed. */
   deleteDialog: number | null;
+  /** A person's card, next to the avatar or name it was opened from. */
+  personCard: PersonCardState | null;
   /** Bumped when time is logged, changed or deleted, so lists of time reload. */
   timeVersion: number;
 
@@ -159,7 +174,6 @@ export interface AppState {
   /** Runs a saved query in Redmine and keeps what it finds in `queryRuns`. */
   runQuery(queryId: number): Promise<void>;
   toggleSelected(id: number): void;
-  /** Changes several issues, a few at a time, and sums up what Redmine refused. */
   /**
    * Changes several issues, a few at a time, and says in one message how it
    * went. `unchanged` counts picked issues that already had the change.
@@ -206,6 +220,9 @@ export interface AppState {
   deleteIssue(id: number): Promise<boolean>;
   openDeleteDialog(id: number): void;
   closeDeleteDialog(): void;
+  /** Shows who someone is, next to the element that was clicked. */
+  openPersonCard(userId: number, name: string, anchor: Element): void;
+  closePersonCard(): void;
   /** Changes a comment, or removes it when the text is empty. */
   updateComment(issueId: number, journalId: number, notes: string): Promise<IssueDetails | null>;
   setFilters(key: string, filters: Filter[]): void;
@@ -239,6 +256,7 @@ function initial() {
     timeDialog: null as AppState["timeDialog"],
     versionDialog: null as AppState["versionDialog"],
     deleteDialog: null as AppState["deleteDialog"],
+    personCard: null as AppState["personCard"],
     timeVersion: 0,
     composerOpen: false,
     settingsOpen: false,
@@ -393,7 +411,7 @@ export const useApp = create<AppState>()((set, get) => {
     },
 
     navigate(route) {
-      set({ route, openIssueId: null, focusedIssueId: null, selection: NO_SELECTION });
+      set({ route, openIssueId: null, focusedIssueId: null, selection: NO_SELECTION, personCard: null });
       // A query runs on the server, so each visit asks Redmine again.
       if (route.view === "query") void get().runQuery(route.queryId);
     },
@@ -878,6 +896,21 @@ export const useApp = create<AppState>()((set, get) => {
       set({ deleteDialog: null });
     },
 
+    openPersonCard(userId, name, anchor) {
+      const r = anchor.getBoundingClientRect();
+      set({
+        personCard: { userId, name, top: r.bottom + 6, left: r.left, returnTo: anchor as HTMLElement },
+        paletteOpen: false,
+        picker: null,
+      });
+    },
+
+    closePersonCard() {
+      const card = get().personCard;
+      set({ personCard: null });
+      if (card?.returnTo.isConnected) card.returnTo.focus();
+    },
+
     async updateComment(issueId, journalId, notes) {
       const { backend } = get();
       if (!backend) return null;
@@ -907,7 +940,15 @@ export function viewFor(s: Pick<AppState, "views">, key: string): ViewOptions {
 export function overlayOpen(
   s: Pick<
     AppState,
-    "paletteOpen" | "picker" | "filterMenu" | "composerOpen" | "settingsOpen" | "timeDialog" | "versionDialog" | "deleteDialog"
+    | "paletteOpen"
+    | "picker"
+    | "filterMenu"
+    | "composerOpen"
+    | "settingsOpen"
+    | "timeDialog"
+    | "versionDialog"
+    | "deleteDialog"
+    | "personCard"
   >,
 ): boolean {
   return (
@@ -918,7 +959,8 @@ export function overlayOpen(
     s.settingsOpen ||
     s.timeDialog !== null ||
     s.versionDialog !== null ||
-    s.deleteDialog !== null
+    s.deleteDialog !== null ||
+    s.personCard !== null
   );
 }
 

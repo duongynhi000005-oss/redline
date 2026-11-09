@@ -341,6 +341,52 @@ pub async fn open_in_redmine(
     })
 }
 
+/// Opens a team's homepage in the browser. Only the homepage Redmine gives
+/// for that project, and only a web address.
+#[tauri::command]
+pub async fn open_homepage(
+    state: State<'_, AppState>,
+    app: AppHandle,
+    project_id: u64,
+) -> CmdResult<()> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let meta = syncer(&state).await?.store().metadata()?;
+    let homepage = meta
+        .projects
+        .into_iter()
+        .find(|p| p.id == project_id)
+        .and_then(|p| p.homepage)
+        .map(|h| h.trim().to_string())
+        .filter(|h| web_address(h))
+        .ok_or_else(|| UiError::new("invalid", "This team has no homepage Redline can open."))?;
+    app.opener().open_url(&homepage, None::<&str>).map_err(|_| {
+        UiError::new(
+            "browser",
+            format!("Couldn't open your browser. The page is {homepage}"),
+        )
+    })
+}
+
+/// An http or https address with a host and nothing that isn't a URL.
+fn web_address(s: &str) -> bool {
+    let rest = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"));
+    rest.is_some_and(|r| {
+        !r.is_empty() && !r.starts_with('/') && s.chars().all(|c| c.is_ascii_graphic())
+    })
+}
+
+/// Another user, as Redmine shows them to the signed-in user.
+#[tauri::command]
+pub async fn get_user(
+    state: State<'_, AppState>,
+    id: u64,
+) -> CmdResult<redline_core::models::User> {
+    Ok(syncer(&state).await?.user(id).await?)
+}
+
 /// Relates two issues in Redmine and refreshes both in the cache.
 #[tauri::command]
 pub async fn add_relation(
@@ -718,7 +764,7 @@ fn safe_file_name(name: &str) -> String {
 
 #[cfg(test)]
 mod attachment_tests {
-    use super::safe_file_name;
+    use super::{safe_file_name, web_address};
 
     #[test]
     fn suggested_names_have_no_folders_or_reserved_characters() {
@@ -726,5 +772,16 @@ mod attachment_tests {
         assert_eq!(safe_file_name("a:b?.png"), "a_b_.png");
         assert_eq!(safe_file_name("  "), "attachment");
         assert_eq!(safe_file_name("report.pdf"), "report.pdf");
+    }
+
+    #[test]
+    fn homepages_are_web_addresses_only() {
+        assert!(web_address("https://example.com/team"));
+        assert!(web_address("http://example.com"));
+        assert!(!web_address("file:///etc/passwd"));
+        assert!(!web_address("javascript:alert(1)"));
+        assert!(!web_address("https://"));
+        assert!(!web_address("https:///path"));
+        assert!(!web_address("https://example.com/a b"));
     }
 }

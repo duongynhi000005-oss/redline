@@ -642,3 +642,31 @@ async fn runs_saved_queries_and_searches_everything() {
     assert!(results.items.iter().any(|r| r.kind.starts_with("issue")));
     assert!(results.total >= results.items.len() as u64);
 }
+
+#[tokio::test]
+async fn reads_a_team_and_its_members() {
+    let client = live!();
+    let projects = client.projects().await.unwrap();
+    let web = projects
+        .iter()
+        .find(|p| p.identifier == "web")
+        .expect("web");
+    assert_eq!(web.homepage.as_deref(), Some("https://example.com/web"));
+    assert!(web.description.as_deref().unwrap_or("").contains("Redline"));
+    assert_eq!(web.status, Some(1));
+    assert!(web.created_on.is_some());
+
+    let me = client.current_user().await.unwrap();
+    let members = client.memberships(web.id).await.unwrap();
+    let other = members
+        .iter()
+        .filter_map(|m| m.user.as_ref())
+        .find(|u| u.id != me.id)
+        .expect("a teammate");
+    let them = client.user(other.id).await.unwrap();
+    assert_eq!(them.id, other.id);
+    assert_eq!(them.display_name(), other.name);
+    assert!(them.created_on.is_some());
+    // Admin-only fields stay hidden from a regular user.
+    assert!(!them.admin);
+}

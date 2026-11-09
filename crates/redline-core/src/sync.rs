@@ -25,7 +25,7 @@ use crate::error::{Error, Result};
 use crate::mentions;
 use crate::models::{
     Found, Issue, IssueChanges, IssueStatusRef, Journal, NewRelation, Relation, SearchResult,
-    TimeEntry, TimeEntryChanges, Upload, Version, VersionChanges,
+    TimeEntry, TimeEntryChanges, Upload, User, Version, VersionChanges,
 };
 use crate::store::{Metadata, Store};
 
@@ -374,6 +374,11 @@ impl Syncer {
 
     /// One version as Redmine shows it on its own page, with the spent and
     /// estimated hours that the project's list of versions leaves out.
+    /// Another user, as Redmine shows them to this user.
+    pub async fn user(&self, id: u64) -> Result<User> {
+        self.client.user(id).await
+    }
+
     pub async fn version(&self, id: u64) -> Result<Version> {
         self.client.version(id).await
     }
