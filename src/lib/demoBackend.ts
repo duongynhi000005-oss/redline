@@ -1,4 +1,5 @@
 import type { Backend } from "./backend";
+import { applyChanges as applyEdit } from "./edit";
 import type {
   Account,
   Issue,
@@ -211,37 +212,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     };
   };
 
-  const applyChanges = (issue: Issue, c: IssueChanges): Issue => {
-    const next: Issue = { ...issue, updated_on: new Date().toISOString().replace(/\.\d{3}Z$/, "Z") };
-    if (c.subject !== undefined) next.subject = c.subject;
-    if (c.description !== undefined) next.description = c.description;
-    if (c.status_id !== undefined) {
-      const s = meta.statuses.find((x) => x.id === c.status_id);
-      if (s) next.status = { id: s.id, name: s.name, is_closed: s.is_closed };
-    }
-    if (c.priority_id !== undefined) {
-      const p = meta.priorities.find((x) => x.id === c.priority_id);
-      if (p) next.priority = { id: p.id, name: p.name };
-    }
-    if (c.assigned_to_id !== undefined) {
-      next.assigned_to = c.assigned_to_id === null ? null : (people.find((p) => p.id === c.assigned_to_id) ?? null);
-    }
-    if (c.fixed_version_id !== undefined) {
-      const v = meta.versions.find((x) => x.id === c.fixed_version_id);
-      next.fixed_version = v ? { id: v.id, name: v.name } : null;
-    }
-    if (c.project_id !== undefined) {
-      const p = meta.projects.find((x) => x.id === c.project_id);
-      if (p) next.project = { id: p.id, name: p.name };
-    }
-    if (c.custom_fields) {
-      next.custom_fields = next.custom_fields.map((f) => {
-        const change = c.custom_fields!.find((x) => x.id === f.id);
-        return change ? { ...f, value: change.value } : f;
-      });
-    }
-    return next;
-  };
+  const applyChanges = (issue: Issue, c: IssueChanges): Issue => applyEdit(issue, c, meta);
 
   return {
     appInfo: () => wait({ version: "0.1.0-demo", platform: /Mac/.test(navigator.platform) ? "macos" : "windows" }),

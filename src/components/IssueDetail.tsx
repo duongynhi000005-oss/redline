@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { describeDetail } from "../lib/journal";
 import { CATEGORY_LABEL, PRIORITY_LABEL, issueCategory, issueLabels, hueFor, relativeTime } from "../lib/model";
-import { isTyping } from "../lib/platform";
+import { isTyping, shortcutLabel } from "../lib/platform";
 import type { IssueDetails, Journal } from "../lib/types";
 import { errorMessage } from "../lib/types";
 import { useApp } from "../state/app";
@@ -10,11 +10,25 @@ import { Avatar } from "./Avatar";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
 import { Markdown } from "./Markdown";
 
-function Property({ label, children }: { label: string; children: React.ReactNode }) {
+function Property({ label, children, onEdit, shortcut }: { label: string; children: React.ReactNode; onEdit?: () => void; shortcut?: string }) {
   return (
     <div className="property">
       <dt>{label}</dt>
-      <dd>{children}</dd>
+      <dd>
+        {onEdit ? (
+          <button
+            type="button"
+            className="property-button"
+            onClick={onEdit}
+            aria-label={`${label}: change`}
+            title={shortcut ? `Change ${label.toLowerCase()} (${shortcutLabel(shortcut)})` : undefined}
+          >
+            {children}
+          </button>
+        ) : (
+          children
+        )}
+      </dd>
     </div>
   );
 }
@@ -67,6 +81,8 @@ export function IssueDetail({ id }: { id: number }) {
   const cached = useApp((s) => s.issues.get(id));
   const openIssue = useApp((s) => s.openIssue);
   const paletteOpen = useApp((s) => s.paletteOpen);
+  const picker = useApp((s) => s.picker);
+  const openPicker = useApp((s) => s.openPicker);
   const d = useDerived();
   const [loaded, setLoaded] = useState<{ id: number; details?: IssueDetails; error?: string } | null>(null);
   const details = loaded?.id === id ? (loaded.details ?? null) : null;
@@ -86,14 +102,14 @@ export function IssueDetail({ id }: { id: number }) {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !paletteOpen && !isTyping(e.target)) openIssue(null);
+      if (e.key === "Escape" && !paletteOpen && !picker && !isTyping(e.target)) openIssue(null);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [openIssue, paletteOpen]);
+  }, [openIssue, paletteOpen, picker]);
 
-  // The list's copy can be newer, right after an edit or a sync.
-  const issue = details && cached && cached.updated_on > details.issue.updated_on ? cached : (details?.issue ?? cached);
+  // The store's copy follows edits and syncs; the details add activity.
+  const issue = cached ?? details?.issue;
   if (!issue) {
     return (
       <section className="main">
@@ -143,19 +159,19 @@ export function IssueDetail({ id }: { id: number }) {
         </div>
         <aside className="detail-properties" aria-label="Properties">
           <dl>
-            <Property label="Status">
+            <Property label="Status" shortcut="s" onEdit={() => openPicker("status", issue.id)}>
               <StatusIcon category={category} />
               <span title={CATEGORY_LABEL[category]}>{issue.status.name}</span>
             </Property>
-            <Property label="Priority">
+            <Property label="Priority" shortcut="p" onEdit={() => openPicker("priority", issue.id)}>
               <PriorityIcon level={level} />
               <span title={PRIORITY_LABEL[level]}>{issue.priority.name}</span>
             </Property>
-            <Property label="Assignee">
+            <Property label="Assignee" shortcut="a" onEdit={() => openPicker("assignee", issue.id)}>
               <Avatar name={issue.assigned_to?.name} />
               <span>{issue.assigned_to?.name ?? "Unassigned"}</span>
             </Property>
-            <Property label="Labels">
+            <Property label="Labels" shortcut="l" onEdit={() => openPicker("labels", issue.id)}>
               {labels.length ? (
                 <span className="chips">
                   {labels.map((l) => (
@@ -169,7 +185,7 @@ export function IssueDetail({ id }: { id: number }) {
                 <span className="muted">None</span>
               )}
             </Property>
-            <Property label="Cycle">
+            <Property label="Cycle" shortcut="shift+c" onEdit={() => openPicker("cycle", issue.id)}>
               <Icon name="cycle" />
               <span>{issue.fixed_version?.name ?? "None"}</span>
             </Property>

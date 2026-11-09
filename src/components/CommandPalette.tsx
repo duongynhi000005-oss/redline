@@ -3,7 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { issueCategory } from "../lib/model";
 import { matchesShortcut, shortcutLabel } from "../lib/platform";
 import type { Route } from "../state/app";
-import { useApp } from "../state/app";
+import { targetIssueId, useApp } from "../state/app";
+import { ISSUE_SHORTCUTS, runIssueCommand } from "./useIssueShortcuts";
 import { useDerived } from "../state/derived";
 import { Icon, StatusIcon } from "./icons";
 
@@ -66,14 +67,27 @@ function PaletteContent() {
   const syncNow = useApp((s) => s.syncNow);
   const signOut = useApp((s) => s.signOut);
   const issues = useApp((s) => s.issues);
+  const target = useApp((s) => targetIssueId(s));
   const d = useDerived();
   const [query, setQuery] = useState("");
 
   const actions = useMemo<Action[]>(() => {
     const go = (route: Route) => () => navigate(route);
-    const list: Action[] = [
+    const list: Action[] = [];
+    if (target !== null) {
+      for (const s of ISSUE_SHORTCUTS) {
+        list.push({
+          id: `issue-${s.kind}`,
+          label: s.label,
+          group: `Issue #${target}`,
+          shortcut: s.shortcut,
+          run: () => runIssueCommand(s.kind, target),
+        });
+      }
+    }
+    list.push(
       { id: "go-my", label: "Go to My issues", group: "Navigation", icon: <Icon name="my-issues" />, run: go({ view: "my-issues", tab: "assigned" }) },
-    ];
+    );
     for (const team of d.teams) {
       list.push({
         id: `go-team-${team.id}`,
@@ -99,7 +113,7 @@ function PaletteContent() {
       { id: "sign-out", label: "Sign out", group: "Redline", run: () => void signOut() },
     );
     return list;
-  }, [d, navigate, syncNow, signOut]);
+  }, [d, navigate, syncNow, signOut, target]);
 
   const q = query.trim();
   const visibleActions = q ? actions.filter((a) => matchesQuery(`${a.label} ${a.keywords ?? ""}`, q)) : actions;
@@ -131,17 +145,6 @@ function PaletteContent() {
       <Command.Input value={query} onValueChange={setQuery} placeholder="Type a command or search issues…" />
       <Command.List>
         <Command.Empty>No results.</Command.Empty>
-        {issueMatches.length > 0 && (
-          <Command.Group heading="Issues">
-            {issueMatches.map((issue) => (
-              <Command.Item key={issue.id} value={`issue-${issue.id}`} onSelect={() => run(() => openIssue(issue.id))}>
-                <StatusIcon category={issueCategory(issue, d.categories)} />
-                <span className="palette-id">#{issue.id}</span>
-                <span className="palette-label">{issue.subject}</span>
-              </Command.Item>
-            ))}
-          </Command.Group>
-        )}
         {groups.map((group) => (
           <Command.Group key={group} heading={group}>
             {visibleActions
@@ -155,6 +158,17 @@ function PaletteContent() {
               ))}
           </Command.Group>
         ))}
+        {issueMatches.length > 0 && (
+          <Command.Group heading="Issues">
+            {issueMatches.map((issue) => (
+              <Command.Item key={issue.id} value={`open-${issue.id}`} onSelect={() => run(() => openIssue(issue.id))}>
+                <StatusIcon category={issueCategory(issue, d.categories)} />
+                <span className="palette-id">#{issue.id}</span>
+                <span className="palette-label">{issue.subject}</span>
+              </Command.Item>
+            ))}
+          </Command.Group>
+        )}
       </Command.List>
     </>
   );

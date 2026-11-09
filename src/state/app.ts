@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { Backend } from "../lib/backend";
 import type { Account, Issue, IssueChanges, IssueDetails, Metadata, SyncState } from "../lib/types";
 import { errorMessage } from "../lib/types";
+import { applyChanges } from "../lib/edit";
 
 /** Where the main pane is. Teams are top-level Redmine projects. */
 export type Route =
@@ -14,6 +15,13 @@ export type TeamTab = "all" | "active" | "backlog";
 
 export type Phase = "starting" | "signed-out" | "ready";
 
+export type PickerKind = "status" | "priority" | "assignee" | "cycle" | "labels";
+
+export interface PickerState {
+  kind: PickerKind;
+  issueId: number;
+}
+
 export interface AppState {
   phase: Phase;
   backend: Backend | null;
@@ -24,7 +32,11 @@ export interface AppState {
   route: Route;
   /** The issue shown in the detail view, if any. */
   openIssueId: number | null;
+  /** The highlighted row in the issue list. */
+  focusedIssueId: number | null;
   paletteOpen: boolean;
+  /** The property picker open for an issue, like Linear's S, P and A menus. */
+  picker: PickerState | null;
   /** A short message shown at the bottom of the window, like a failed edit. */
   toast: string | null;
 
@@ -33,7 +45,10 @@ export interface AppState {
   signOut(): Promise<void>;
   navigate(route: Route): void;
   openIssue(id: number | null): void;
+  focusIssue(id: number | null): void;
   setPaletteOpen(open: boolean): void;
+  openPicker(kind: PickerKind, issueId: number): void;
+  closePicker(): void;
   syncNow(): Promise<void>;
   updateIssue(id: number, changes: IssueChanges): Promise<IssueDetails | null>;
   showToast(message: string | null): void;
@@ -55,8 +70,10 @@ function initial() {
     issues: new Map<number, Issue>(),
     sync: IDLE,
     route: { view: "my-issues", tab: "assigned" } as Route,
-    openIssueId: null,
+    openIssueId: null as number | null,
+    focusedIssueId: null as number | null,
     paletteOpen: false,
+    picker: null as PickerState | null,
     toast: null,
   };
 }
@@ -125,15 +142,28 @@ export const useApp = create<AppState>()((set, get) => {
     },
 
     navigate(route) {
-      set({ route, openIssueId: null });
+      set({ route, openIssueId: null, focusedIssueId: null });
     },
 
     openIssue(id) {
-      set({ openIssueId: id });
+      // Coming back to the list keeps the issue highlighted.
+      set(id === null ? { openIssueId: null } : { openIssueId: id, focusedIssueId: id });
+    },
+
+    focusIssue(id) {
+      set({ focusedIssueId: id });
     },
 
     setPaletteOpen(open) {
       set({ paletteOpen: open });
+    },
+
+    openPicker(kind, issueId) {
+      set({ picker: { kind, issueId }, paletteOpen: false });
+    },
+
+    closePicker() {
+      set({ picker: null });
     },
 
     async syncNow() {
@@ -141,8 +171,15 @@ export const useApp = create<AppState>()((set, get) => {
     },
 
     async updateIssue(id, changes) {
-      const backend = get().backend;
+      const { backend, meta } = get();
+      const before = get().issues.get(id);
       if (!backend) return null;
+      // Show the change at once; Redmine's answer replaces it.
+      if (before && meta) {
+        const issues = new Map(get().issues);
+        issues.set(id, applyChanges(before, changes, meta));
+        set({ issues });
+      }
       try {
         const details = await backend.updateIssue(id, changes);
         const issues = new Map(get().issues);
@@ -150,7 +187,12 @@ export const useApp = create<AppState>()((set, get) => {
         set({ issues });
         return details;
       } catch (e) {
-        set({ toast: errorMessage(e) });
+        if (before) {
+          const issues = new Map(get().issues);
+          issues.set(id, before);
+          set({ issues });
+        }
+        set({ toast: `Couldn't update #${id}: ${errorMessage(e)}` });
         return null;
       }
     },
@@ -160,6 +202,11 @@ export const useApp = create<AppState>()((set, get) => {
     },
   };
 });
+
+/** The issue that commands and shortcuts act on: the open one, else the highlighted row. */
+export function targetIssueId(s: Pick<AppState, "openIssueId" | "focusedIssueId">): number | null {
+  return s.openIssueId ?? s.focusedIssueId;
+}
 
 /** For tests: forget everything. */
 export function resetApp() {

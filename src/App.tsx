@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { CommandPalette } from "./components/CommandPalette";
 import { IssueDetail } from "./components/IssueDetail";
 import { IssueList } from "./components/IssueList";
+import { Picker } from "./components/Picker";
+import { useIssueShortcuts } from "./components/useIssueShortcuts";
 import { Sidebar } from "./components/Sidebar";
 import { SignIn } from "./components/SignIn";
 import type { Backend } from "./lib/backend";
@@ -29,6 +31,7 @@ export function App({ backend }: { backend?: Backend }) {
   const phase = useApp((s) => s.phase);
   const openIssueId = useApp((s) => s.openIssueId);
   const start = useApp((s) => s.start);
+  useIssueShortcuts();
 
   useEffect(() => {
     document.documentElement.dataset.platform = platform;
@@ -44,6 +47,7 @@ export function App({ backend }: { backend?: Backend }) {
       <Sidebar />
       {openIssueId !== null ? <IssueDetail id={openIssueId} /> : <IssueList />}
       <CommandPalette />
+      <Picker />
       <Toast />
     </div>
   );

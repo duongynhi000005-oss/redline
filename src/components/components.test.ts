@@ -9,6 +9,12 @@ describe("linkIssueRefs", () => {
     expect(linkIssueRefs("```\n#12\n```\n#4")).toBe("```\n#12\n```\n[#4](#issue-4)");
     expect(linkIssueRefs("# Heading\nissue#5")).toBe("# Heading\nissue#5");
   });
+
+  it("marks @mentions but not email addresses", () => {
+    expect(linkIssueRefs("@dev can you look?")).toBe("[@dev](#user-dev) can you look?");
+    expect(linkIssueRefs("Mail dev@example.com.")).toBe("Mail dev@example.com.");
+    expect(linkIssueRefs("Thanks @sam.")).toBe("Thanks [@sam](#user-sam).");
+  });
 });
 
 describe("matchesQuery", () => {

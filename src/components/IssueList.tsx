@@ -100,7 +100,9 @@ export function IssueList() {
   const paletteOpen = useApp((s) => s.paletteOpen);
   const d = useDerived();
   const [collapsed, setCollapsed] = useState<Set<StatusCategory>>(new Set(["canceled"]));
-  const [focusedId, setFocusedId] = useState<number | null>(null);
+  const focusedId = useApp((s) => s.focusedIssueId);
+  const setFocusedId = useApp((s) => s.focusIssue);
+  const picker = useApp((s) => s.picker);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const groups = useMemo(
@@ -131,7 +133,7 @@ export function IssueList() {
   // Keyboard: ↑/↓ or j/k move, Enter opens.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (paletteOpen || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (paletteOpen || picker || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (!issueRows.length) return;
       const pos = issueRows.findIndex((r) => r.id === focusedId);
       let next: number | null = null;
@@ -150,7 +152,15 @@ export function IssueList() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [issueRows, focusedId, paletteOpen, openIssue, virtualizer]);
+  }, [issueRows, focusedId, paletteOpen, picker, openIssue, setFocusedId, virtualizer]);
+
+  // Coming back from an issue, scroll its row into view.
+  useEffect(() => {
+    const row = issueRows.find((r) => r.id === useApp.getState().focusedIssueId);
+    if (row) virtualizer.scrollToIndex(row.index, { align: "auto" });
+    // Only on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleGroup = (c: StatusCategory) =>
     setCollapsed((prev) => {
