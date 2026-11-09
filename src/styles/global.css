@@ -69,7 +69,7 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--bg-sidebar);
   color: var(--text);
 }
 
@@ -163,7 +163,6 @@ h2 {
   display: flex;
   flex-direction: column;
   background: var(--bg-sidebar);
-  border-right: 1px solid var(--border);
 }
 
 .sidebar-top {
@@ -1516,4 +1515,64 @@ h2 {
   margin: 6px 0 0;
   font-size: 11.5px;
   color: var(--text-tertiary);
+}
+
+/* Native materials and floating panels.
+   The window's backdrop (Liquid Glass or vibrancy on macOS, Mica on Windows 11)
+   shows through the sidebar; each view floats over it as a rounded panel.
+   Without a material the same layout sits on a solid background. */
+
+:root {
+  --glass: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
+  --glass-blur: blur(28px) saturate(1.8);
+  --panel-shadow: 0 1px 2px rgba(0, 0, 0, 0.05), 0 0 0 1px var(--border);
+}
+
+:root[data-material="glass"],
+:root[data-material="vibrancy"],
+:root[data-material="mica"] {
+  --bg-sidebar: transparent;
+}
+
+.app > .main {
+  margin: 8px 8px 8px 0;
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: var(--panel-shadow);
+  overflow: hidden;
+}
+
+/* macOS 26 rounds windows and panels more. */
+:root[data-material="glass"] .app > .main {
+  border-radius: 14px;
+}
+
+.palette,
+.modal,
+.display-panel,
+.toast {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+/* Translucent panels only where the engine can blur what's behind them. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --glass: var(--bg-elevated);
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --glass: var(--bg-elevated);
+    --glass-blur: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --glass: var(--bg-elevated);
+    --glass-blur: none;
+  }
 }

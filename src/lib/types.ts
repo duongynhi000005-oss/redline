@@ -176,6 +176,8 @@ export interface IssuesChanged {
 export interface AppInfo {
   version: string;
   platform: string;
+  /** The native window backdrop: Liquid Glass, vibrancy, Mica, or none (solid). */
+  material?: "glass" | "vibrancy" | "mica" | "none";
 }
 
 /** An error from the backend, worded for people. */
