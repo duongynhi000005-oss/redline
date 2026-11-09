@@ -6,6 +6,7 @@ import type { Route } from "../state/app";
 import { routeKey, targetIssueId, useApp } from "../state/app";
 import { LAYOUTS } from "../lib/views";
 import { RELATION_CHOICES } from "../lib/relations";
+import { canManageVersions, cycleProjects } from "./Cycle";
 import { ISSUE_SHORTCUTS, issueCommandAvailable, runIssueCommand } from "./useIssueShortcuts";
 import { useDerived } from "../state/derived";
 import { Icon, StatusIcon } from "./icons";
@@ -78,6 +79,7 @@ function PaletteContent() {
   const route = useApp((s) => s.route);
   const detailOpen = useApp((s) => s.openIssueId !== null);
   const issues = useApp((s) => s.issues);
+  const meta = useApp((s) => s.meta);
   const target = useApp((s) => targetIssueId(s));
   const d = useDerived();
   const [query, setQuery] = useState("");
@@ -89,16 +91,63 @@ function PaletteContent() {
     ];
     // Lists of issues can be filtered; the inbox and cycle overview can't.
     if (route.view !== "inbox" && route.view !== "cycles" && route.view !== "time" && !detailOpen) {
-      list.push({ id: "filter", label: "Filter…", group: "Issues", shortcut: "f", icon: <Icon name="filter" />, run: () => openFilterMenu(null) });
+      list.push({
+        id: "filter",
+        label: "Filter…",
+        group: "Issues",
+        shortcut: "f",
+        icon: <Icon name="filter" />,
+        run: () => openFilterMenu(null),
+      });
       for (const l of LAYOUTS) {
         list.push({
           id: `layout-${l.value}`,
           label: `Show as ${l.label.toLowerCase()}`,
           group: "View",
           shortcut: l.shortcut,
-          keywords: l.value === "board" ? "kanban columns" : l.value === "timeline" ? "gantt roadmap schedule dates" : l.value === "calendar" ? "month due dates" : "rows",
+          keywords:
+            l.value === "board"
+              ? "kanban columns"
+              : l.value === "timeline"
+                ? "gantt roadmap schedule dates"
+                : l.value === "calendar"
+                  ? "month due dates"
+                  : "rows",
           icon: <Icon name={l.value} />,
           run: () => updateView(routeKey(route), { layout: l.value }),
+        });
+      }
+    }
+    // Cycles are Redmine versions: made, changed and closed from the team's cycles.
+    if (route.view === "cycles" || route.view === "cycle") {
+      const teamId = route.teamId;
+      if (cycleProjects(meta, teamId).length > 0)
+        list.push({
+          id: "cycle-new",
+          label: "New cycle…",
+          group: "Cycles",
+          icon: <Icon name="plus" />,
+          keywords: "version sprint milestone roadmap create",
+          run: () => useApp.getState().openVersionDialog(teamId),
+        });
+      const version = route.view === "cycle" ? meta?.versions.find((v) => v.id === route.versionId) : undefined;
+      if (version && canManageVersions(meta, version.project.id)) {
+        list.push({
+          id: "cycle-edit",
+          label: "Edit cycle…",
+          group: "Cycles",
+          icon: <Icon name="edit" />,
+          keywords: "version sprint rename due date wiki sharing delete",
+          run: () => useApp.getState().openVersionDialog(teamId, version),
+        });
+        const closing = version.status !== "closed";
+        list.push({
+          id: "cycle-close",
+          label: closing ? "Close cycle" : "Reopen cycle",
+          group: "Cycles",
+          icon: <Icon name="cycle" />,
+          keywords: "version sprint status complete",
+          run: () => void useApp.getState().saveVersion({ id: version.id }, { status: closing ? "closed" : "open" }),
         });
       }
     }
@@ -134,7 +183,13 @@ function PaletteContent() {
     }
     list.push(
       { id: "go-inbox", label: "Go to Inbox", group: "Navigation", icon: <Icon name="inbox" />, run: go({ view: "inbox" }) },
-      { id: "go-my", label: "Go to My issues", group: "Navigation", icon: <Icon name="my-issues" />, run: go({ view: "my-issues", tab: "assigned" }) },
+      {
+        id: "go-my",
+        label: "Go to My issues",
+        group: "Navigation",
+        icon: <Icon name="my-issues" />,
+        run: go({ view: "my-issues", tab: "assigned" }),
+      },
     );
     for (const team of d.teams) {
       list.push({
@@ -178,7 +233,20 @@ function PaletteContent() {
       { id: "sign-out", label: "Sign out", group: "Redline", run: () => void signOut() },
     );
     return list;
-  }, [d, navigate, syncNow, signOut, target, setComposerOpen, setSettingsOpen, openFilterMenu, updateView, route, detailOpen]);
+  }, [
+    d,
+    navigate,
+    syncNow,
+    signOut,
+    target,
+    setComposerOpen,
+    setSettingsOpen,
+    openFilterMenu,
+    updateView,
+    route,
+    detailOpen,
+    meta,
+  ]);
 
   const q = query.trim();
   const visibleActions = q ? actions.filter((a) => matchesQuery(`${a.label} ${a.keywords ?? ""}`, q)) : actions;

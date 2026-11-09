@@ -43,8 +43,8 @@ browser, because Redmine has no API for it
 
 | Redmine | API with a user key | Redline | Where it lives |
 | --- | --- | --- | --- |
-| Versions | `GET/POST/PUT/DELETE /projects/:id/versions.json` (writes need Manage versions) | 🟡 as cycles | Cycles, plus a version's details, notes and status; create and edit when allowed. #41 |
-| Roadmap | No API; built from versions and their issues | ⬜ | Team > Roadmap: open versions with progress, then closed ones. #41 |
+| Versions | `GET/POST/PUT/DELETE /projects/:id/versions.json` (writes need Manage versions) | ✅ as cycles | Team > Cycles. A cycle's page shows its status, due date, sharing, description, wiki page, progress and spent against estimated time. New cycle, edit, close or reopen, and delete where the role has Manage versions. #41 |
+| Roadmap | No API; built from versions and their issues | ✅ | Team > Cycles is the roadmap: open and locked versions with progress and due dates, then past ones. #41 |
 | Gantt | No API; built from start and due dates, parents and precedes/blocks relations | ✅ | Timeline view: bars from start to due date, drag to move or resize, arrows for precedes and blocks, three zoom levels. #36 |
 | Calendar | No API; built from start and due dates | ✅ | Calendar view: a month of weeks with issues across their days, cycle ends, drag to reschedule, undated issues to drag on. #37 |
 | Issue categories | `GET/POST/PUT/DELETE /projects/:id/issue_categories.json` | 🟡 cached, not shown | Category property, filter and grouping ("Component"). #42 |

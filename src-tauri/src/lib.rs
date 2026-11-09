@@ -110,6 +110,10 @@ pub fn run() {
             commands::log_time,
             commands::update_time_entry,
             commands::delete_time_entry,
+            commands::create_version,
+            commands::update_version,
+            commands::get_version,
+            commands::delete_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Redline");

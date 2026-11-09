@@ -428,3 +428,60 @@ async fn logs_changes_and_deletes_time() {
     );
     assert_eq!(syncer.delete_time_entry(entry.id).await.unwrap(), Some(id));
 }
+
+#[tokio::test]
+async fn versions_follow_the_role() {
+    use redline_core::models::VersionChanges;
+    use redline_core::{Store, Syncer};
+
+    let client = live!();
+    let syncer = Syncer::new(client, Store::in_memory().unwrap());
+    let meta = syncer.sync_metadata().await.unwrap();
+    // Versions come with the metadata, wiki page and all.
+    let web = meta
+        .projects
+        .iter()
+        .find(|p| p.identifier == "web")
+        .unwrap()
+        .id;
+    assert!(meta.versions.iter().any(|v| v.project.id == web));
+    let me = meta.user.clone().unwrap();
+    let roles: Vec<_> = me
+        .memberships
+        .iter()
+        .filter(|m| m.project.id == web)
+        .flat_map(|m| m.roles.iter().map(|r| r.id))
+        .collect();
+    let manages = meta
+        .roles
+        .iter()
+        .filter(|r| roles.contains(&r.id))
+        .any(|r| r.permissions.iter().any(|p| p == "manage_versions"));
+    let created = syncer
+        .create_version(
+            web,
+            &VersionChanges {
+                name: Some(format!("Live test {}", std::process::id())),
+                ..Default::default()
+            },
+        )
+        .await;
+    if !manages {
+        // Redmine's default Developer role can't manage versions.
+        assert!(matches!(created, Err(Error::Forbidden)));
+        return;
+    }
+    let created = created.unwrap();
+    let closed = syncer
+        .update_version(
+            created.id,
+            &VersionChanges {
+                status: Some("closed".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(closed.status, "closed");
+    syncer.delete_version(created.id).await.unwrap();
+}

@@ -13,6 +13,8 @@ import type {
   TimeEntry,
   TimeEntryChanges,
   TimeQuery,
+  Version,
+  VersionChanges,
 } from "./types";
 
 type Unlisten = () => void;
@@ -64,6 +66,12 @@ export interface Backend {
   logTime(entry: TimeEntryChanges): Promise<TimeEntry>;
   updateTimeEntry(id: number, changes: TimeEntryChanges): Promise<TimeEntry>;
   deleteTimeEntry(id: number): Promise<void>;
+  /** Versions, which Redline calls cycles. Each change updates the cached metadata. */
+  createVersion(projectId: number, changes: VersionChanges): Promise<Version>;
+  updateVersion(id: number, changes: VersionChanges): Promise<Version>;
+  deleteVersion(id: number): Promise<void>;
+  /** One version with its spent and estimated hours, which lists of versions leave out. */
+  getVersion(id: number): Promise<Version>;
   /** Files dragged over or dropped on the window, with where the pointer is in CSS pixels. */
   onFileDrop(handler: (event: FileDrop) => void): Promise<Unlisten>;
   onSyncState(handler: (state: SyncState) => void): Promise<Unlisten>;

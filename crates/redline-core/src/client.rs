@@ -234,6 +234,46 @@ impl Client {
         Ok(())
     }
 
+    pub async fn version(&self, id: u64) -> Result<Version> {
+        take(
+            self.get(&format!("versions/{id}.json"), &[]).await?,
+            "version",
+        )
+    }
+
+    /// Creates a version in a project and returns it as Redmine stored it.
+    pub async fn create_version(
+        &self,
+        project_id: u64,
+        changes: &VersionChanges,
+    ) -> Result<Version> {
+        let body = self
+            .send_json(
+                Method::POST,
+                &format!("projects/{project_id}/versions.json"),
+                &json!({ "version": changes }),
+            )
+            .await?;
+        take(body, "version")
+    }
+
+    pub async fn update_version(&self, id: u64, changes: &VersionChanges) -> Result<()> {
+        self.send_json(
+            Method::PUT,
+            &format!("versions/{id}.json"),
+            &json!({ "version": changes }),
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Deletes a version. Redmine refuses while issues still use it.
+    pub async fn delete_version(&self, id: u64) -> Result<()> {
+        let url = self.url(&format!("versions/{id}.json"))?;
+        self.send(|| self.http.delete(url.clone())).await?;
+        Ok(())
+    }
+
     /// The members of a project. This is how Redline knows who can be
     /// assigned, since listing all users needs an admin key.
     pub async fn memberships(&self, project_id: u64) -> Result<Vec<Membership>> {

@@ -78,6 +78,20 @@ export interface Version {
   status: "open" | "locked" | "closed" | string;
   due_date?: string | null;
   sharing?: string | null;
+  /** The wiki page that describes the version. */
+  wiki_page_title?: string | null;
+  estimated_hours?: number | null;
+  spent_hours?: number | null;
+}
+
+/** Fields to set when creating or changing a version; "" clears a field. */
+export interface VersionChanges {
+  name?: string;
+  description?: string;
+  status?: "open" | "locked" | "closed";
+  due_date?: string;
+  sharing?: "none" | "descendants" | "hierarchy" | "tree" | "system";
+  wiki_page_title?: string;
 }
 
 export interface CustomFieldValue {

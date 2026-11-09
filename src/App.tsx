@@ -9,6 +9,7 @@ import { Picker } from "./components/Picker";
 import { FilterMenu } from "./components/Filters";
 import { Settings } from "./components/Settings";
 import { TimeDialog } from "./components/TimeDialog";
+import { VersionDialog } from "./components/Cycle";
 import { TimeView } from "./components/TimeView";
 import { useIssueShortcuts } from "./components/useIssueShortcuts";
 import { Sidebar } from "./components/Sidebar";
@@ -77,6 +78,7 @@ export function App({ backend }: { backend?: Backend }) {
       <NewIssue />
       <Settings />
       <TimeDialog />
+      <VersionDialog />
       <Toast />
     </div>
   );

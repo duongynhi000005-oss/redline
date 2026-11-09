@@ -14,6 +14,7 @@ import type {
   Relation,
   SyncState,
   TimeEntry,
+  Version,
 } from "./types";
 
 // Sample data for running the UI in a plain browser (`npm run dev`) and in
@@ -139,19 +140,35 @@ function buildMetadata(): Metadata {
       { id: 5, name: "Immediate", is_default: false, active: true },
     ],
     versions: [
-      { id: 1, project: { id: 1, name: "Web" }, name: "Sprint 1", status: "closed", due_date: "2026-10-26" },
-      { id: 2, project: { id: 1, name: "Web" }, name: "Sprint 2", status: "open", due_date: "2026-11-16" },
-      { id: 3, project: { id: 1, name: "Web" }, name: "Sprint 3", status: "open", due_date: "2026-11-30" },
+      {
+        id: 1,
+        project: { id: 1, name: "Web" },
+        name: "Sprint 1",
+        status: "closed",
+        due_date: "2026-10-26",
+        sharing: "none",
+        description: "List view, sign-in and sync.",
+      },
+      {
+        id: 2,
+        project: { id: 1, name: "Web" },
+        name: "Sprint 2",
+        status: "open",
+        due_date: "2026-11-16",
+        sharing: "descendants",
+        description: "Keyboard first: the command palette and single-key shortcuts.",
+        wiki_page_title: "Sprint_2",
+      },
+      { id: 3, project: { id: 1, name: "Web" }, name: "Sprint 3", status: "open", due_date: "2026-11-30", sharing: "none" },
     ],
-    memberships: [1, 2]
-      .flatMap((projectId) =>
-        people.map((p, i) => ({
-          id: projectId * 10 + i,
-          project: { id: projectId, name: projectId === 1 ? "Web" : "Mobile" },
-          user: p,
-          roles: [{ id: 4, name: "Developer" }],
-        })),
-      ),
+    memberships: [1, 2].flatMap((projectId) =>
+      people.map((p, i) => ({
+        id: projectId * 10 + i,
+        project: { id: projectId, name: projectId === 1 ? "Web" : "Mobile" },
+        user: p,
+        roles: [{ id: 4, name: "Developer" }],
+      })),
+    ),
     // As in Redmine's defaults: managers handle watchers and anyone's time,
     // developers can't watch for others and fix only their own time.
     roles: [
@@ -167,9 +184,14 @@ function buildMetadata(): Metadata {
           "view_time_entries",
           "log_time",
           "edit_time_entries",
+          "manage_versions",
         ],
       },
-      { id: 4, name: "Developer", permissions: ["view_issues", "edit_issues", "view_time_entries", "log_time", "edit_own_time_entries"] },
+      {
+        id: 4,
+        name: "Developer",
+        permissions: ["view_issues", "edit_issues", "view_time_entries", "log_time", "edit_own_time_entries"],
+      },
     ],
     time_entry_activities: [
       { id: 8, name: "Design", is_default: false },
@@ -201,7 +223,8 @@ function buildIssues(meta: Metadata): Issue[] {
       priority: { id: meta.priorities[i % 5]!.id, name: meta.priorities[i % 5]!.name },
       author: people[(i + 1) % people.length]!,
       assigned_to: i % 4 === 3 ? null : people[i % people.length]!,
-      fixed_version: project.id === 1 && i % 3 !== 2 ? { id: i % 4 === 0 ? 1 : 2, name: i % 4 === 0 ? "Sprint 1" : "Sprint 2" } : null,
+      fixed_version:
+        project.id === 1 && i % 3 !== 2 ? { id: i % 4 === 0 ? 1 : 2, name: i % 4 === 0 ? "Sprint 1" : "Sprint 2" } : null,
       subject,
       description:
         i % 2 === 0
@@ -247,7 +270,7 @@ const DEMO_SERVER = "https://redmine.example.com/";
 export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: number } = {}): Backend {
   const latency = options.latencyMs ?? 0;
   const wait = <T>(value: T) => new Promise<T>((r) => setTimeout(() => r(value), latency));
-  const meta = buildMetadata();
+  let meta = buildMetadata();
   const issues = new Map(buildIssues(meta).map((i) => [i.id, i]));
   let nextRelationId = 1;
   const relate = (from: number, to: number, type: Relation["relation_type"]) => {
@@ -272,21 +295,49 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     : null;
   const syncHandlers = new Set<(s: SyncState) => void>();
   const changeHandlers = new Set<(c: IssuesChanged) => void>();
+  const metaHandlers = new Set<() => void>();
+  let nextVersion = 100;
+  /** Swaps in a new metadata object, so the app sees the change. */
+  const setVersions = (versions: Version[]) => {
+    meta = { ...meta, versions: versions.sort((a, b) => a.id - b.id) };
+    metaHandlers.forEach((h) => h());
+  };
+  const manageable = (projectId: number) => {
+    if (!may(projectId, "manage_versions"))
+      throw { code: "forbidden", message: "You don't have permission to do that in Redmine." };
+  };
   let lastSyncedAt = Date.now();
 
   // Who watches what; the demo user watches what they're assigned.
   const watchers = new Map<number, Named[]>();
   for (const issue of issues.values()) {
     const list = [issue.author, issue.assigned_to].filter((p): p is Named => !!p);
-    watchers.set(issue.id, list.filter((p, i) => list.findIndex((q) => q.id === p.id) === i));
+    watchers.set(
+      issue.id,
+      list.filter((p, i) => list.findIndex((q) => q.id === p.id) === i),
+    );
   }
   // Attachments and their content, by issue.
   const encode = (text: string) => new TextEncoder().encode(text);
   const mockup = `<svg xmlns="http://www.w3.org/2000/svg" width="480" height="300" viewBox="0 0 480 300"><rect width="480" height="300" rx="16" fill="#eef0fb"/><rect x="24" y="24" width="120" height="252" rx="10" fill="#d9dcf5"/><rect x="164" y="24" width="292" height="36" rx="8" fill="#5e6ad2"/><rect x="164" y="80" width="292" height="24" rx="6" fill="#ffffff"/><rect x="164" y="114" width="292" height="24" rx="6" fill="#ffffff"/><rect x="164" y="148" width="220" height="24" rx="6" fill="#ffffff"/></svg>`;
   let nextAttachment = 100;
   const files = new Map<number, { attachment: Attachment; bytes: Uint8Array }[]>();
-  const addFile = (issueId: number, filename: string, contentType: string, bytes: Uint8Array, author: Named, created_on: string) => {
-    const attachment: Attachment = { id: nextAttachment++, filename, filesize: bytes.length, content_type: contentType, author, created_on };
+  const addFile = (
+    issueId: number,
+    filename: string,
+    contentType: string,
+    bytes: Uint8Array,
+    author: Named,
+    created_on: string,
+  ) => {
+    const attachment: Attachment = {
+      id: nextAttachment++,
+      filename,
+      filesize: bytes.length,
+      content_type: contentType,
+      author,
+      created_on,
+    };
     files.set(issueId, [...(files.get(issueId) ?? []), { attachment, bytes }]);
     return attachment;
   };
@@ -294,9 +345,15 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   addFile(3, "profile.txt", "text/plain", encode("Frames: 60\nRows: 5,000\n"), people[0]!, iso(2));
   addFile(1, "notes.txt", "text/plain", encode("Open with Cmd+K, close with Escape.\n"), people[1]!, iso(5));
   const typeOf = (name: string) =>
-    ({ png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", svg: "image/svg+xml", txt: "text/plain", pdf: "application/pdf" })[
-      name.split(".").pop()?.toLowerCase() ?? ""
-    ] ?? "application/octet-stream";
+    ({
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif",
+      svg: "image/svg+xml",
+      txt: "text/plain",
+      pdf: "application/pdf",
+    })[name.split(".").pop()?.toLowerCase() ?? ""] ?? "application/octet-stream";
 
   // Time logged over the last two weeks.
   let nextTimeEntry = 500;
@@ -338,7 +395,9 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
 
   const may = (projectId: number, permission: string) =>
     meta.user!.memberships!.some(
-      (m) => m.project.id === projectId && m.roles.some((r) => meta.roles!.find((x) => x.id === r.id)?.permissions.includes(permission)),
+      (m) =>
+        m.project.id === projectId &&
+        m.roles.some((r) => meta.roles!.find((x) => x.id === r.id)?.permissions.includes(permission)),
     );
   const details = (id: number): IssueDetails => {
     const issue = issues.get(id);
@@ -358,7 +417,8 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
   const applyChanges = (issue: Issue, c: IssueChanges): Issue => applyEdit(issue, c, meta);
 
   return {
-    appInfo: () => wait({ version: "0.1.0-demo", platform: /Mac/.test(navigator.platform) ? "macos" : "windows", material: "none" }),
+    appInfo: () =>
+      wait({ version: "0.1.0-demo", platform: /Mac/.test(navigator.platform) ? "macos" : "windows", material: "none" }),
     getAccount: () => wait(account),
     async signIn(serverUrl, apiKey) {
       await wait(null);
@@ -415,8 +475,10 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
     async addRelation(issueId, relation) {
       await wait(null);
       const other = relation.issue_to_id;
-      if (!issues.has(issueId) || !issues.has(other)) throw { code: "rejected", message: "Redmine refused the change: Related issue is invalid" };
-      if (other === issueId) throw { code: "rejected", message: "Redmine refused the change: Related issue cannot be the same issue" };
+      if (!issues.has(issueId) || !issues.has(other))
+        throw { code: "rejected", message: "Redmine refused the change: Related issue is invalid" };
+      if (other === issueId)
+        throw { code: "rejected", message: "Redmine refused the change: Related issue cannot be the same issue" };
       // Redmine stores inverse types the other way round, as here.
       const inverse = ["blocked", "duplicated", "follows", "copied_from"].includes(relation.relation_type);
       const created = inverse
@@ -466,7 +528,14 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       if (!issues.has(issueId)) throw { code: "not_found", message: "Not found in Redmine." };
       for (const path of paths) {
         const name = path.split(/[\\/]/).pop()!;
-        addFile(issueId, name, typeOf(name), name.endsWith(".svg") ? encode(mockup) : encode(name), people[0]!, new Date().toISOString());
+        addFile(
+          issueId,
+          name,
+          typeOf(name),
+          name.endsWith(".svg") ? encode(mockup) : encode(name),
+          people[0]!,
+          new Date().toISOString(),
+        );
       }
       if (notes?.trim()) await this.updateIssue(issueId, { notes });
       changeHandlers.forEach((h) => h({ changed: [issueId], removed: [] }));
@@ -540,6 +609,60 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       }
       return next;
     },
+    async createVersion(projectId, changes) {
+      await wait(null);
+      manageable(projectId);
+      if (!changes.name?.trim()) throw { code: "validation", message: "Name cannot be blank" };
+      const project = meta.projects.find((p) => p.id === projectId)!;
+      const version: Version = {
+        id: nextVersion++,
+        project: { id: project.id, name: project.name },
+        name: changes.name.trim(),
+        description: changes.description ?? "",
+        status: changes.status ?? "open",
+        due_date: changes.due_date || null,
+        sharing: changes.sharing ?? "none",
+        wiki_page_title: changes.wiki_page_title || null,
+      };
+      setVersions([...meta.versions, version]);
+      return version;
+    },
+    async updateVersion(id, changes) {
+      await wait(null);
+      const version = meta.versions.find((v) => v.id === id);
+      if (!version) throw { code: "not_found", message: "Not found" };
+      manageable(version.project.id);
+      if (changes.name !== undefined && !changes.name.trim()) throw { code: "validation", message: "Name cannot be blank" };
+      const next: Version = {
+        ...version,
+        ...changes,
+        due_date: changes.due_date === undefined ? version.due_date : changes.due_date || null,
+        wiki_page_title: changes.wiki_page_title === undefined ? version.wiki_page_title : changes.wiki_page_title || null,
+      };
+      setVersions(meta.versions.map((v) => (v.id === id ? next : v)));
+      return next;
+    },
+    async getVersion(id) {
+      await wait(null);
+      const version = meta.versions.find((v) => v.id === id);
+      if (!version) throw { code: "not_found", message: "That version is gone from Redmine." };
+      const mine = [...issues.values()].filter((i) => i.fixed_version?.id === id);
+      const estimated = mine.reduce((sum, i) => sum + (i.estimated_hours ?? 0), 0);
+      const spent = timeEntries
+        .filter((e) => e.issue && mine.some((i) => i.id === e.issue!.id))
+        .reduce((sum, e) => sum + e.hours, 0);
+      return { ...version, estimated_hours: estimated, spent_hours: spent };
+    },
+    async deleteVersion(id) {
+      await wait(null);
+      const version = meta.versions.find((v) => v.id === id);
+      if (!version) return;
+      manageable(version.project.id);
+      if ([...issues.values()].some((i) => i.fixed_version?.id === id)) {
+        throw { code: "validation", message: "This version is used by issues and can't be deleted" };
+      }
+      setVersions(meta.versions.filter((v) => v.id !== id));
+    },
     async deleteTimeEntry(id) {
       await wait(null);
       const i = timeEntries.findIndex((e) => e.id === id);
@@ -562,7 +685,9 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       await wait(null);
       return [...issues.values()]
         .filter((i) => i.id !== id)
-        .filter((i) => [i.description ?? "", ...buildJournals(i).map((j) => j.notes ?? "")].some((t) => mentionedIds(t).includes(id)))
+        .filter((i) =>
+          [i.description ?? "", ...buildJournals(i).map((j) => j.notes ?? "")].some((t) => mentionedIds(t).includes(id)),
+        )
         .map((i) => i.id);
     },
     async onSyncState(handler) {
@@ -574,8 +699,9 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       changeHandlers.add(handler);
       return () => changeHandlers.delete(handler);
     },
-    async onMetadataChanged() {
-      return () => {};
+    async onMetadataChanged(handler) {
+      metaHandlers.add(handler);
+      return () => metaHandlers.delete(handler);
     },
     async onMenu() {
       return () => {};

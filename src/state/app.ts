@@ -11,6 +11,8 @@ import type {
   SyncState,
   TimeEntry,
   TimeEntryChanges,
+  Version,
+  VersionChanges,
 } from "../lib/types";
 import type { RelationChoice } from "../lib/relations";
 import { newRelation } from "../lib/relations";
@@ -96,6 +98,8 @@ export interface AppState {
   watching: Map<number, boolean>;
   /** The Log time dialog: for an issue, or to change one entry. */
   timeDialog: { issueId: number; entry?: TimeEntry } | null;
+  /** Creating a cycle in a team, or changing one. */
+  versionDialog: { teamId: number; version?: Version } | null;
   /** Bumped when time is logged, changed or deleted, so lists of time reload. */
   timeVersion: number;
 
@@ -126,6 +130,12 @@ export interface AppState {
   deleteAttachment(issueId: number, attachment: Attachment): Promise<void>;
   saveAttachment(attachment: Attachment): Promise<void>;
   openTimeDialog(issueId: number, entry?: TimeEntry): void;
+  openVersionDialog(teamId: number, version?: Version): void;
+  closeVersionDialog(): void;
+  /** Creates a version in `projectId`, or changes version `id`. The version, or null when Redmine refused. */
+  saveVersion(target: { projectId: number } | { id: number }, changes: VersionChanges): Promise<Version | null>;
+  /** True when Redmine deleted it. */
+  deleteVersion(version: Version): Promise<boolean>;
   closeTimeDialog(): void;
   /** Logs time, or changes an entry. True when Redmine took it. */
   saveTime(issueId: number, changes: TimeEntryChanges, entryId?: number): Promise<boolean>;
@@ -163,6 +173,7 @@ function initial() {
     paletteOpen: false,
     picker: null as PickerState | null,
     timeDialog: null as AppState["timeDialog"],
+    versionDialog: null as AppState["versionDialog"],
     timeVersion: 0,
     composerOpen: false,
     settingsOpen: false,
@@ -503,6 +514,45 @@ export const useApp = create<AppState>()((set, get) => {
       }
     },
 
+    openVersionDialog(teamId, version) {
+      set({ versionDialog: { teamId, version }, paletteOpen: false, picker: null });
+    },
+
+    closeVersionDialog() {
+      set({ versionDialog: null });
+    },
+
+    async saveVersion(target, changes) {
+      const { backend } = get();
+      if (!backend) return null;
+      try {
+        const version =
+          "id" in target ? await backend.updateVersion(target.id, changes) : await backend.createVersion(target.projectId, changes);
+        // Show it at once; the metadata event brings the server's copy too.
+        const meta = get().meta;
+        if (meta) set({ meta: { ...meta, versions: [...meta.versions.filter((v) => v.id !== version.id), version].sort((a, b) => a.id - b.id) } });
+        return version;
+      } catch (e) {
+        set({ toast: `Couldn't ${"id" in target ? "change" : "create"} the cycle: ${errorMessage(e)}` });
+        return null;
+      }
+    },
+
+    async deleteVersion(version) {
+      const { backend } = get();
+      if (!backend) return false;
+      try {
+        await backend.deleteVersion(version.id);
+        const { meta, route } = get();
+        if (meta) set({ meta: { ...meta, versions: meta.versions.filter((v) => v.id !== version.id) } });
+        if (route.view === "cycle" && route.versionId === version.id) get().navigate({ view: "cycles", teamId: route.teamId });
+        return true;
+      } catch (e) {
+        set({ toast: `Couldn't delete ${version.name}: ${errorMessage(e)}` });
+        return false;
+      }
+    },
+
     openTimeDialog(issueId, entry) {
       set({ timeDialog: { issueId, entry }, paletteOpen: false, picker: null });
     },
@@ -625,9 +675,9 @@ export function viewFor(s: Pick<AppState, "views">, key: string): ViewOptions {
 
 /** Whether a menu or dialog is up, so the views underneath ignore their shortcuts. */
 export function overlayOpen(
-  s: Pick<AppState, "paletteOpen" | "picker" | "filterMenu" | "composerOpen" | "settingsOpen" | "timeDialog">,
+  s: Pick<AppState, "paletteOpen" | "picker" | "filterMenu" | "composerOpen" | "settingsOpen" | "timeDialog" | "versionDialog">,
 ): boolean {
-  return s.paletteOpen || s.picker !== null || s.filterMenu !== null || s.composerOpen || s.settingsOpen || s.timeDialog !== null;
+  return s.paletteOpen || s.picker !== null || s.filterMenu !== null || s.composerOpen || s.settingsOpen || s.timeDialog !== null || s.versionDialog !== null;
 }
 
 /** For tests: forget everything. */

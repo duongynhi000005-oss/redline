@@ -11,7 +11,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
 
 use crate::account::{self, Account};
-use crate::session::{EVENT_ISSUES_CHANGED, IssuesChanged, Session, SyncState};
+use crate::session::{
+    EVENT_ISSUES_CHANGED, EVENT_METADATA_CHANGED, IssuesChanged, Session, SyncState,
+};
 
 #[derive(Default)]
 pub struct AppState {
@@ -367,6 +369,50 @@ pub async fn remove_relation(
 pub async fn find_mentions(state: State<'_, AppState>, id: u64) -> CmdResult<Vec<u64>> {
     let syncer = syncer(&state).await?;
     Ok(syncer.mentions_of(id).await?)
+}
+
+// ----- Versions (cycles) ---------------------------------------------------
+
+#[tauri::command]
+pub async fn create_version(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    project_id: u64,
+    changes: redline_core::models::VersionChanges,
+) -> CmdResult<redline_core::models::Version> {
+    let version = syncer(&state)
+        .await?
+        .create_version(project_id, &changes)
+        .await?;
+    let _ = app.emit(EVENT_METADATA_CHANGED, ());
+    Ok(version)
+}
+
+#[tauri::command]
+pub async fn update_version(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: u64,
+    changes: redline_core::models::VersionChanges,
+) -> CmdResult<redline_core::models::Version> {
+    let version = syncer(&state).await?.update_version(id, &changes).await?;
+    let _ = app.emit(EVENT_METADATA_CHANGED, ());
+    Ok(version)
+}
+
+#[tauri::command]
+pub async fn get_version(
+    state: State<'_, AppState>,
+    id: u64,
+) -> CmdResult<redline_core::models::Version> {
+    Ok(syncer(&state).await?.version(id).await?)
+}
+
+#[tauri::command]
+pub async fn delete_version(app: AppHandle, state: State<'_, AppState>, id: u64) -> CmdResult<()> {
+    syncer(&state).await?.delete_version(id).await?;
+    let _ = app.emit(EVENT_METADATA_CHANGED, ());
+    Ok(())
 }
 
 // ----- Time ---------------------------------------------------------------

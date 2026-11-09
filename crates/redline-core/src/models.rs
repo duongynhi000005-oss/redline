@@ -158,6 +158,25 @@ pub struct TimeEntryChanges {
     pub comments: Option<String>,
 }
 
+/// Fields to set when creating or changing a version. Only `Some` fields are
+/// sent; an empty string clears a date or text field.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct VersionChanges {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// "open", "locked" or "closed".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub due_date: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sharing: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub wiki_page_title: Option<String>,
+}
+
 fn default_true() -> bool {
     true
 }
@@ -228,6 +247,13 @@ pub struct Version {
     /// "none", "descendants", "hierarchy", "tree" or "system".
     #[serde(default)]
     pub sharing: Option<String>,
+    /// The wiki page that describes the version, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub wiki_page_title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_hours: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spent_hours: Option<f64>,
     #[serde(default)]
     pub created_on: Option<String>,
     #[serde(default)]
