@@ -1,4 +1,4 @@
-import { createDemoBackend } from "./demoBackend";
+import { createDemoBackend, demoIssues } from "./demoBackend";
 import { matchesFilters, toggleFilterValue } from "./filters";
 import { derive } from "../state/derived";
 
@@ -7,7 +7,7 @@ describe("filters", () => {
     const backend = createDemoBackend({ signedIn: true });
     const meta = await backend.getMetadata();
     const d = derive(meta);
-    const issues = await backend.listIssues();
+    const issues = demoIssues();
     const ui = issues.filter((i) => matchesFilters(i, [{ field: "label", values: ["Area:UI"] }], d));
     expect(ui.length).toBeGreaterThan(0);
     expect(ui.every((i) => i.custom_fields.some((f) => Array.isArray(f.value) && f.value.includes("UI")))).toBe(true);

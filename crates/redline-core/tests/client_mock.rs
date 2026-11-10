@@ -255,35 +255,53 @@ async fn sends_a_change_again_when_redmine_hit_a_conflict() {
 }
 
 #[tokio::test]
-async fn sync_pages_and_moves_the_cursor_forward() {
+async fn polls_changes_since_a_cursor_one_page_at_a_time() {
+    use redline_core::models::Issue;
     use redline_core::{Store, Syncer};
 
     let server = MockServer::start().await;
     let ids: Vec<u64> = (1..=3).collect();
     Mock::given(path("/issues.json"))
+        .and(query_param("sort", "updated_on:desc,id:desc"))
+        .and(query_param("limit", "1"))
         .respond_with(move |r: &wiremock::Request| issue_list(&ids, r))
+        .expect(1)
         .mount(&server)
         .await;
-    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
-    let report = syncer.sync_issues().await.unwrap();
-    assert!(report.initial);
-    assert!(!report.remaining);
-    assert_eq!(report.changed, vec![3, 2, 1], "newest first");
+    let store = Store::in_memory().unwrap();
+    // A cached issue, behind what Redmine has.
+    let stale: Issue = serde_json::from_value(issue(2)).unwrap();
+    store.upsert_issues(&[stale]).unwrap();
+    let syncer = Syncer::new(client(&server), store.clone());
+    // The first look only notes where things are: the newest change.
+    assert!(syncer.poll_changes().await.unwrap().is_empty());
+    server.verify().await;
 
-    // The next delta asks from a minute before the newest change.
+    // The next asks from a minute before it, for one page of changes.
     server.reset().await;
+    let mut three = issue(3);
+    three["updated_on"] = json!("2026-11-02T00:00:02Z");
+    let mut two = issue(2);
+    two["subject"] = json!("Renamed");
+    two["updated_on"] = json!("2026-11-02T00:05:00Z");
     Mock::given(path("/issues.json"))
-        .and(query_param("updated_on", ">=2026-11-01T23:59:02Z"))
-        .and(query_param("sort", "updated_on,id"))
+        .and(query_param("f[]", "updated_on"))
+        .and(query_param("op[updated_on]", ">="))
+        .and(query_param("v[updated_on][]", "2026-11-01T23:59:02Z"))
+        .and(query_param("sort", "updated_on:desc,id:desc"))
+        .and(query_param("limit", "100"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "issues": [], "total_count": 0, "offset": 0, "limit": 100
+            "issues": [two, three], "total_count": 2, "offset": 0, "limit": 100
         })))
         .expect(1)
         .mount(&server)
         .await;
-    let report = syncer.sync_issues().await.unwrap();
-    assert!(!report.initial);
-    assert!(report.changed.is_empty());
+    let changed = syncer.poll_changes().await.unwrap();
+    // #3 was there at the first look; only #2 changed since.
+    assert_eq!(changed.iter().map(|i| i.id).collect::<Vec<_>>(), vec![2]);
+    // The cache brings what it keeps up to date and adds nothing.
+    assert_eq!(store.issue_ids().unwrap(), vec![2]);
+    assert_eq!(store.issue(2).unwrap().unwrap().subject, "Renamed");
 }
 
 #[tokio::test]
@@ -823,7 +841,7 @@ async fn deletes_an_issue_with_its_sub_issues_and_refreshes_its_neighbours() {
 }
 
 #[tokio::test]
-async fn runs_a_saved_query_in_its_own_order_and_caches_the_issues() {
+async fn runs_a_saved_query_in_its_own_order_without_caching_the_list() {
     use redline_core::{Store, Syncer};
 
     let server = MockServer::start().await;
@@ -863,11 +881,14 @@ async fn runs_a_saved_query_in_its_own_order_and_caches_the_issues() {
 
     let store = Store::in_memory().unwrap();
     let syncer = Syncer::new(client(&server), store.clone());
-    let (found, changed) = syncer.query_issues(4, Some(1)).await.unwrap();
-    assert_eq!(found.items, vec![9, 3, 5]);
+    let found = syncer.query_issues(4, Some(1)).await.unwrap();
+    assert_eq!(
+        found.items.iter().map(|i| i.id).collect::<Vec<_>>(),
+        vec![9, 3, 5]
+    );
     assert_eq!(found.total, 3);
-    assert_eq!(changed.len(), 3);
-    assert!(store.issue(5).unwrap().is_some());
+    // A list isn't kept; only issues opened are.
+    assert!(store.issue(5).unwrap().is_none());
     let requests = server.received_requests().await.unwrap();
     assert!(
         requests
@@ -1373,172 +1394,18 @@ fn issue_list(ids: &[u64], request: &wiremock::Request) -> ResponseTemplate {
 }
 
 #[tokio::test]
-async fn first_sync_reads_the_newest_issues_first_then_the_rest() {
-    use redline_core::{Store, Syncer};
-
-    let server = MockServer::start().await;
-    let ids: Vec<u64> = (1..=450).collect();
-    let served = ids.clone();
-    Mock::given(path("/issues.json"))
-        .respond_with(move |r: &wiremock::Request| issue_list(&served, r))
-        .mount(&server)
-        .await;
-
-    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
-
-    // One step with no older pages: just the newest hundred.
-    let report = syncer.sync_issues_paced(0, |_| {}).await.unwrap();
-    assert!(report.initial);
-    assert!(report.remaining);
-    assert_eq!(report.changed, (351..=450).rev().collect::<Vec<u64>>());
-
-    // The rest, a page at a time: open issues newest first, overlapping by
-    // 10, then closed ones (none here).
-    let mut progress = Vec::new();
-    let report = syncer
-        .sync_older_issues(usize::MAX, |p| {
-            progress.push((p.fetched, p.total, p.changed.len()))
-        })
-        .await
-        .unwrap();
-    assert!(!report.remaining);
-    let mut changed = report.changed.clone();
-    changed.sort_unstable();
-    assert_eq!(changed, (1..=350).collect::<Vec<u64>>(), "each issue once");
-    assert_eq!(syncer.store().count_issues().unwrap(), 450);
-    assert_eq!(
-        progress,
-        vec![
-            (100, 450, 0),
-            (190, 450, 90),
-            (280, 450, 90),
-            (370, 450, 90),
-            (450, 450, 80),
-            (450, 450, 0)
-        ]
-    );
-
-    // Done: the next sync is a delta.
-    let report = syncer.sync_issues().await.unwrap();
-    assert!(!report.initial);
-    assert!(!report.remaining);
-}
-
-#[tokio::test]
-async fn an_issue_edited_during_the_first_sync_skips_no_other_issue() {
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
-
-    use redline_core::{Store, Syncer};
-
-    let server = MockServer::start().await;
-    let edited = Arc::new(AtomicBool::new(false));
-    let seen = edited.clone();
-    Mock::given(path("/issues.json"))
-        .respond_with(move |r: &wiremock::Request| {
-            // Issue 5 is edited right after the first page is read: it moves
-            // to the end, and every issue after it moves back one place.
-            let mut ids: Vec<u64> = (1..=300).collect();
-            if seen.swap(true, Ordering::SeqCst) {
-                ids.retain(|&id| id != 5);
-                ids.push(5);
-            }
-            issue_list(&ids, r)
-        })
-        .mount(&server)
-        .await;
-
-    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
-    syncer.sync_issues().await.unwrap();
-    assert!(edited.load(Ordering::SeqCst));
-    let mut cached = syncer.store().issue_ids().unwrap();
-    cached.sort_unstable();
-    assert_eq!(cached, (1..=300).collect::<Vec<u64>>());
-}
-
-#[tokio::test]
-async fn a_sync_that_fails_part_way_resumes_from_what_it_read() {
-    use redline_core::{Store, Syncer};
-
-    let server = MockServer::start().await;
-    let ids: Vec<u64> = (1..=300).collect();
-    let served = ids.clone();
-    Mock::given(path("/issues.json"))
-        .and(query_param("status_id", "open"))
-        .and(query_param("offset", "180"))
-        .respond_with(ResponseTemplate::new(404))
-        .mount(&server)
-        .await;
-    Mock::given(path("/issues.json"))
-        .respond_with(move |r: &wiremock::Request| issue_list(&served, r))
-        .mount(&server)
-        .await;
-
-    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
-    let err = syncer.sync_issues().await;
-    assert!(err.is_err());
-    assert_eq!(
-        syncer.store().count_issues().unwrap(),
-        190,
-        "the pages before the failure are cached"
-    );
-
-    // The next sync asks for changes, then carries on from the page that
-    // failed instead of starting over.
-    server.reset().await;
-    Mock::given(path("/issues.json"))
-        .and(wiremock::matchers::query_param_contains("updated_on", ">="))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "issues": [], "total_count": 0, "offset": 0, "limit": 100
-        })))
-        .mount(&server)
-        .await;
-    let served = ids.clone();
-    Mock::given(path("/issues.json"))
-        .respond_with(move |r: &wiremock::Request| issue_list(&served, r))
-        .mount(&server)
-        .await;
-    let report = syncer.sync_issues().await.unwrap();
-    assert!(report.initial, "still the first sync");
-    assert!(!report.remaining);
-    let asked: Vec<String> = server
-        .received_requests()
-        .await
-        .unwrap()
-        .iter()
-        .map(|r| {
-            let q: std::collections::BTreeMap<_, _> = r.url.query_pairs().collect();
-            format!(
-                "{} {}",
-                q.get("status_id")
-                    .map(|v| v.to_string())
-                    .unwrap_or_default(),
-                q.get("offset").map(|v| v.to_string()).unwrap_or_default()
-            )
-        })
-        .collect();
-    assert_eq!(asked, vec!["* 0", "open 180", "open 270", "closed 0"]);
-    assert_eq!(syncer.store().count_issues().unwrap(), 300);
-}
-
-#[tokio::test]
 async fn a_key_redmine_stopped_accepting_keeps_the_cache() {
+    use redline_core::models::Issue;
     use redline_core::{Store, Syncer};
 
     let server = MockServer::start().await;
-    Mock::given(path("/issues.json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "issues": [issue(1), issue(2)], "total_count": 2, "offset": 0, "limit": 100
-        })))
-        .up_to_n_times(1)
-        .mount(&server)
-        .await;
-    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
-    syncer.sync_issues().await.unwrap();
+    let store = Store::in_memory().unwrap();
+    let cached: Vec<Issue> = serde_json::from_value(json!([issue(1), issue(2)])).unwrap();
+    store.upsert_issues(&cached).unwrap();
+    let syncer = Syncer::new(client(&server), store.clone());
 
     // Redmine treats a revoked key as anonymous: lists come back empty with
     // a 200, and only the current user says the key is refused.
-    server.reset().await;
     Mock::given(path("/issues.json"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "issues": [], "total_count": 0, "offset": 0, "limit": 100
@@ -1550,28 +1417,185 @@ async fn a_key_redmine_stopped_accepting_keeps_the_cache() {
         .mount(&server)
         .await;
     assert!(matches!(syncer.check_key().await, Err(Error::Unauthorized)));
-    assert!(matches!(
-        syncer.prune_deleted().await,
-        Err(Error::Unauthorized)
-    ));
-    assert_eq!(syncer.store().issue_ids().unwrap(), vec![1, 2]);
+    syncer.poll_changes().await.unwrap();
+    syncer.poll_changes().await.unwrap();
+    assert_eq!(store.issue_ids().unwrap(), vec![1, 2]);
+}
 
-    // With a key Redmine accepts, an empty answer really means deleted.
-    server.reset().await;
+#[tokio::test]
+async fn finds_issues_the_way_redmines_issue_list_asks() {
+    use redline_core::models::Issue;
+    use redline_core::{Condition, IssueFilter, Store, Syncer};
+
+    let server = MockServer::start().await;
+    let mut fresh = issue(2);
+    fresh["subject"] = json!("Renamed");
     Mock::given(path("/issues.json"))
+        .and(query_param("set_filter", "1"))
+        .and(query_param("project_id", "1"))
+        .and(query_param("op[status_id]", "o"))
+        .and(query_param("op[assigned_to_id]", "="))
+        .and(query_param("v[assigned_to_id][]", "me"))
+        .and(query_param("op[subproject_id]", "*"))
+        .and(query_param("sort", "priority:desc,updated_on:desc"))
+        .and(query_param("offset", "100"))
+        .and(query_param("limit", "100"))
+        .and(query_param("include", "relations"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "issues": [issue(1)], "total_count": 1, "offset": 0, "limit": 100
+            "issues": [issue(1), fresh], "total_count": 102, "offset": 100, "limit": 100
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let store = Store::in_memory().unwrap();
+    let stale: Issue = serde_json::from_value(issue(2)).unwrap();
+    store.upsert_issues(&[stale]).unwrap();
+    let syncer = Syncer::new(client(&server), store.clone());
+    let filter = IssueFilter {
+        project_id: Some(1),
+        conditions: vec![
+            Condition::new("status_id", "o", &[]),
+            Condition::new("assigned_to_id", "=", &["me"]),
+        ],
+        sort: Some("priority:desc,updated_on:desc".into()),
+    };
+    let page = syncer.find_issues(&filter, 100).await.unwrap();
+    assert_eq!(page.total, 102);
+    assert_eq!(
+        page.items.iter().map(|i| i.id).collect::<Vec<_>>(),
+        vec![1, 2]
+    );
+    // Lists aren't kept, but what the cache keeps is brought up to date.
+    assert_eq!(store.issue_ids().unwrap(), vec![2]);
+    assert_eq!(store.issue(2).unwrap().unwrap().subject, "Renamed");
+}
+
+#[tokio::test]
+async fn counts_issues_with_one_small_request() {
+    use redline_core::{Condition, IssueFilter, Store, Syncer};
+
+    let server = MockServer::start().await;
+    Mock::given(path("/issues.json"))
+        .and(query_param("op[fixed_version_id]", "="))
+        .and(query_param("v[fixed_version_id][]", "7"))
+        .and(query_param("op[status_id]", "*"))
+        .and(query_param("limit", "1"))
+        .and(query_param("sort", "id"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [issue(1)], "total_count": 42, "offset": 0, "limit": 1
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
+    let filter = IssueFilter {
+        conditions: vec![Condition::new("fixed_version_id", "=", &["7"])],
+        ..Default::default()
+    };
+    assert_eq!(syncer.count_issues(&filter).await.unwrap(), 42);
+}
+
+#[tokio::test]
+async fn refuses_filters_redmine_wouldnt_take_without_asking() {
+    use redline_core::{Condition, IssueFilter, Store, Syncer};
+
+    let server = MockServer::start().await;
+    Mock::given(path("/issues.json"))
+        .respond_with(ResponseTemplate::new(200))
+        .expect(0)
+        .mount(&server)
+        .await;
+    let syncer = Syncer::new(client(&server), Store::in_memory().unwrap());
+    let bad = [
+        IssueFilter {
+            conditions: vec![Condition::new("password", "=", &["x"])],
+            ..Default::default()
+        },
+        IssueFilter {
+            conditions: vec![Condition::new("subject", "&&", &["x"])],
+            ..Default::default()
+        },
+        IssueFilter {
+            sort: Some("id;drop".into()),
+            ..Default::default()
+        },
+    ];
+    for filter in &bad {
+        assert!(matches!(
+            syncer.find_issues(filter, 0).await,
+            Err(Error::Invalid(_))
+        ));
+    }
+    // Custom fields by number are fine.
+    let custom = IssueFilter {
+        conditions: vec![Condition::new("cf_12", "=", &["ui"])],
+        ..Default::default()
+    };
+    assert!(custom.params().is_ok());
+}
+
+#[tokio::test]
+async fn reads_only_the_issues_the_cache_lacks_and_keeps_them() {
+    use redline_core::models::Issue;
+    use redline_core::{Store, Syncer};
+
+    let server = MockServer::start().await;
+    Mock::given(path("/issues.json"))
+        .and(query_param("issue_id", "2,3"))
+        .and(query_param("status_id", "*"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "issues": [issue(2), issue(3)], "total_count": 2, "offset": 0, "limit": 100
+        })))
+        .expect(1)
+        .mount(&server)
+        .await;
+    let store = Store::in_memory().unwrap();
+    let one: Issue = serde_json::from_value(issue(1)).unwrap();
+    store.upsert_issues(&[one]).unwrap();
+    let syncer = Syncer::new(client(&server), store.clone());
+    let found = syncer.issues_by_id(&[1, 2, 3]).await.unwrap();
+    assert_eq!(
+        found.iter().map(|i| i.id).collect::<Vec<_>>(),
+        vec![1, 2, 3]
+    );
+    assert_eq!(store.issue_ids().unwrap(), vec![1, 2, 3]);
+}
+
+#[tokio::test]
+async fn slows_down_for_any_answer_that_says_too_many() {
+    let server = MockServer::start().await;
+    // Some servers and proxies say it other ways than 429: 420, 509, or a
+    // refusal that comes with Retry-After.
+    for status in [420, 509] {
+        Mock::given(path("/trackers.json"))
+            .respond_with(ResponseTemplate::new(status))
+            .up_to_n_times(1)
+            .mount(&server)
+            .await;
+    }
+    Mock::given(path("/trackers.json"))
+        .respond_with(ResponseTemplate::new(403).insert_header("Retry-After", "0"))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(path("/trackers.json"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "trackers": [{"id": 1, "name": "Bug"}]
         })))
         .mount(&server)
         .await;
-    Mock::given(path("/users/current.json"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "user": {"id": 5, "login": "dev", "firstname": "Dana", "lastname": "Developer"}
-        })))
+    let client = client(&server);
+    assert_eq!(client.trackers().await.unwrap()[0].name, "Bug");
+    assert_eq!(server.received_requests().await.unwrap().len(), 4);
+
+    // A plain refusal is still a refusal.
+    server.reset().await;
+    Mock::given(path("/trackers.json"))
+        .respond_with(ResponseTemplate::new(403))
+        .expect(1)
         .mount(&server)
         .await;
-    assert_eq!(syncer.prune_deleted().await.unwrap(), vec![2]);
-    assert_eq!(syncer.store().issue_ids().unwrap(), vec![1]);
+    assert!(client.trackers().await.is_err());
 }
 
 fn proxied(server: &MockServer) -> Client {

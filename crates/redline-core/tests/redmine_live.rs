@@ -245,65 +245,109 @@ async fn reads_metadata_in_parts_like_all_at_once() {
 }
 
 #[tokio::test]
-async fn syncs_into_a_local_cache() {
-    use redline_core::{Store, Syncer};
+async fn loads_lists_counts_and_changes_the_way_redmines_pages_do() {
+    use redline_core::{Condition, IssueFilter, Store, Syncer};
 
     let client = live!();
     let syncer = Syncer::new(client.clone(), Store::in_memory().unwrap());
 
     let meta = syncer.sync_metadata().await.unwrap();
     assert_eq!(meta.user.as_ref().unwrap().login, "dev");
-    assert!(meta.projects.iter().any(|p| p.identifier == "web"));
+    let web = meta
+        .projects
+        .iter()
+        .find(|p| p.identifier == "web")
+        .expect("web")
+        .id;
     assert!(!meta.memberships.is_empty());
     assert!(meta.versions.iter().any(|v| v.name == "Sprint 2"));
     assert_eq!(syncer.store().metadata().unwrap(), meta);
 
-    let first = syncer.sync_issues().await.unwrap();
-    assert!(first.initial);
-    assert!(first.changed.len() >= 9);
-    let cached = syncer.store().count_issues().unwrap();
-    assert_eq!(cached as usize, first.changed.len());
+    // A team's open issues, by priority, with its sub-teams'.
+    let open = IssueFilter {
+        project_id: Some(web),
+        conditions: vec![Condition::new("status_id", "o", &[])],
+        sort: Some("priority:desc,updated_on:desc".into()),
+    };
+    let page = syncer.find_issues(&open, 0).await.unwrap();
+    assert!(!page.items.is_empty());
+    assert!(page.items.iter().all(|i| i.status.is_closed != Some(true)));
+    assert_eq!(syncer.count_issues(&open).await.unwrap(), page.total);
+    // Lists aren't kept.
+    assert_eq!(syncer.store().count_issues().unwrap(), 0);
 
-    // Nothing changed on the server, so the next delta changes nothing.
-    let second = syncer.sync_issues().await.unwrap();
-    assert!(!second.initial);
-    assert!(second.changed.is_empty(), "{:?}", second.changed);
+    // Every operator the app uses is one Redmine takes.
+    let me = client.current_user().await.unwrap().id;
+    let mine = IssueFilter {
+        conditions: vec![Condition::new("assigned_to_id", "=", &["me"])],
+        ..Default::default()
+    };
+    for issue in syncer.find_issues(&mine, 0).await.unwrap().items {
+        assert_eq!(issue.assigned_to.map(|a| a.id), Some(me));
+    }
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    for filter in [
+        IssueFilter {
+            conditions: vec![Condition::new("subject", "~", &["board"])],
+            ..Default::default()
+        },
+        IssueFilter {
+            conditions: vec![Condition::new("parent_id", "~", &["1"])],
+            ..Default::default()
+        },
+        IssueFilter {
+            conditions: vec![Condition::new("updated_on", "><", &["2000-01-01", &today])],
+            ..Default::default()
+        },
+        IssueFilter {
+            conditions: vec![Condition::new("fixed_version_id", "!*", &[])],
+            ..Default::default()
+        },
+    ] {
+        syncer.count_issues(&filter).await.unwrap();
+    }
 
-    // An edit shows up in the next delta.
-    let id = syncer.store().issues().unwrap().last().unwrap().id;
+    // The first look for changes notes where things are; an edit shows up
+    // in the next.
+    syncer.poll_changes().await.unwrap();
+    let id = page.items[0].id;
     client
         .update_issue(
             id,
             &redline_core::models::IssueChanges {
-                notes: Some("Touched by the sync test".into()),
+                notes: Some("Touched by the loading test".into()),
                 ..Default::default()
             },
         )
         .await
         .unwrap();
-    let third = syncer.sync_issues().await.unwrap();
-    assert!(third.changed.contains(&id), "{third:?}");
+    let changed = syncer.poll_changes().await.unwrap();
+    assert!(changed.iter().any(|i| i.id == id), "{changed:?}");
 
+    // Opening an issue keeps it.
     let details = syncer.issue_details(id).await.unwrap();
     assert!(
         details
             .journals
             .iter()
-            .any(|j| j.notes.as_deref() == Some("Touched by the sync test"))
+            .any(|j| j.notes.as_deref() == Some("Touched by the loading test"))
     );
     assert!(syncer.cached_issue_details(id).unwrap().is_some());
-
-    assert!(syncer.prune_deleted().await.unwrap().is_empty());
+    assert_eq!(syncer.store().issue_ids().unwrap(), vec![id]);
 }
 
 async fn issue_id(client: &Client, subject: &str) -> u64 {
-    let page = client
-        .issues(&IssueQuery {
-            limit: Some(100),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
+    // Ask for it by subject, as Redmine's own list would, so a server with
+    // many more issues than the seed still finds it.
+    let filter = redline_core::IssueFilter {
+        project_id: None,
+        conditions: vec![
+            redline_core::Condition::new("subject", "~", &[subject]),
+            redline_core::Condition::new("status_id", "*", &[]),
+        ],
+        sort: None,
+    };
+    let page = client.find_issues(&filter, 0, 100, &[]).await.unwrap();
     page.items
         .iter()
         .find(|i| i.subject == subject)
@@ -704,19 +748,17 @@ async fn runs_saved_queries_and_searches_everything() {
     assert!(mine.project_id.is_none());
 
     let syncer = Syncer::new(client.clone(), Store::in_memory().unwrap());
-    let (found, _) = syncer.query_issues(bugs.id, bugs.project_id).await.unwrap();
+    let found = syncer.query_issues(bugs.id, bugs.project_id).await.unwrap();
     assert!(!found.items.is_empty());
     assert_eq!(found.total, found.items.len() as u64);
-    for id in &found.items {
-        let issue = syncer.store().issue(*id).unwrap().expect("cached");
+    for issue in &found.items {
         assert_ne!(issue.status.is_closed, Some(true));
         assert_eq!(issue.tracker.id, 1);
     }
 
-    let (mine_found, _) = syncer.query_issues(mine.id, None).await.unwrap();
+    let mine_found = syncer.query_issues(mine.id, None).await.unwrap();
     let me = client.current_user().await.unwrap().id;
-    for id in &mine_found.items {
-        let issue = syncer.store().issue(*id).unwrap().unwrap();
+    for issue in &mine_found.items {
         assert_eq!(issue.assigned_to.as_ref().map(|a| a.id), Some(me));
     }
 

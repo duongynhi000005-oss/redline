@@ -1,30 +1,97 @@
 import { Command } from "cmdk";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Filter, FilterField, FilterOption } from "../lib/filters";
-import { FILTER_FIELDS, describeFilter, filterOptions, toggleFilterValue } from "../lib/filters";
+import { FILTER_FIELDS, describeFilter, filterOptions, scopeValues, toggleFilterValue } from "../lib/filters";
+import { filterKey, sortFor, withFilters } from "../lib/issueFilter";
 import type { PriorityLevel, StatusCategory } from "../lib/model";
-import { hueFor } from "../lib/model";
+import { hueFor, projectTree, teamOf } from "../lib/model";
 import type { Issue } from "../lib/types";
-import type { Route } from "../state/app";
+import type { ListRun, Route } from "../state/app";
 import { routeKey, useApp, viewFor } from "../state/app";
-import { issuesForRoute, useDerived } from "../state/derived";
+import { issuesForRoute, routeFilter, useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
 import { matchesQuery } from "./CommandPalette";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
 
-/** The issues a list shows before its filters, which the filter menu offers values from. */
-export function useRouteIssues(route: Route): Issue[] {
+/** A list's issues as far as Redmine has sent them, and how to read more. */
+export interface RouteList {
+  /** What Redmine found so far, plus issues changed since that match, before the list's own filtering. */
+  issues: Issue[];
+  /** The list's run, for lists Redmine filters (not saved queries). */
+  run?: ListRun;
+  /** False when Redmine can't apply all the filters, so its count is too high. */
+  exact: boolean;
+  /** Reads the next page, when there is one. */
+  loadMore(): void;
+  /** Reads the list again from the start, after an error. */
+  retry(): void;
+}
+
+/**
+ * A list route's issues, read from Redmine a page at a time with the view's
+ * filters and order, the way Redmine's own issue list reads them. Issues
+ * changed since show up wherever they match. Saved queries are run by
+ * Redmine as they are.
+ */
+export function useRouteList(route: Route): RouteList {
   const issues = useApp((s) => s.issues);
   const meta = useApp((s) => s.meta);
   const account = useApp((s) => s.account);
-  const run = useApp((s) => (route.view === "query" ? s.queryRuns.get(route.queryId) : undefined));
+  const fresh = useApp((s) => s.fresh);
+  const query = useApp((s) => (route.view === "query" ? s.queryRuns.get(route.queryId) : undefined));
+  const view = useApp((s) => viewFor(s, routeKey(route)));
+  const loadList = useApp((s) => s.loadList);
   const d = useDerived();
-  return useMemo(() => {
+  const spec = useMemo(() => {
+    if (!meta) return null;
+    const base = routeFilter(route, d, meta);
+    if (!base) return null;
+    const { filter, exact } = withFilters({ ...base, sort: sortFor(view.ordering) }, view.filters, d, meta);
+    return { filter, exact, key: filterKey(filter) };
+  }, [route, d, meta, view.ordering, view.filters]);
+  const run = useApp((s) => (spec ? s.lists.get(spec.key) : undefined));
+  const missing = spec !== null && run === undefined;
+  useEffect(() => {
+    if (spec && missing) void loadList(spec.key, spec.filter);
+  }, [spec, missing, loadList]);
+  const list = useMemo(() => {
     if (!meta) return [];
     // A saved query's issues are what Redmine found, in its order.
-    if (route.view === "query") return (run?.ids ?? []).flatMap((id) => issues.get(id) ?? []);
-    return issuesForRoute(route, issues.values(), d, account?.userId, meta);
-  }, [route, issues, d, account, meta, run]);
+    if (route.view === "query") return (query?.ids ?? []).flatMap((id) => issues.get(id) ?? []);
+    if (!run) return [];
+    const ids = new Set(run.ids);
+    for (const id of fresh) ids.add(id);
+    const found = [...ids].flatMap((id) => issues.get(id) ?? []);
+    return issuesForRoute(route, found, d, account?.userId, meta);
+  }, [route, issues, d, account, meta, query, run, fresh]);
+  return {
+    issues: list,
+    run,
+    exact: spec?.exact ?? true,
+    loadMore: () => {
+      if (spec) void loadList(spec.key, spec.filter, true);
+    },
+    retry: () => {
+      if (spec) void loadList(spec.key, spec.filter);
+    },
+  };
+}
+
+/** The projects a route's lists cover, or null for every project. */
+function routeScope(route: Route, meta: NonNullable<ReturnType<typeof useApp.getState>["meta"]>): Set<number> | null {
+  switch (route.view) {
+    case "team":
+    case "cycle":
+      return projectTree(route.teamId, meta.projects);
+    case "project":
+      return projectTree(route.projectId, meta.projects);
+    case "query": {
+      const q = meta.queries?.find((x) => x.id === route.queryId);
+      return q?.project_id ? projectTree(teamOf(q.project_id, meta), meta.projects) : null;
+    }
+    default:
+      return null;
+  }
 }
 
 /** Fields that would tell the list nothing new are left out. */
@@ -66,8 +133,11 @@ function useFilterOptions(field: FilterField | null, route: Route): FilterOption
   const meta = useApp((s) => s.meta);
   const me = useApp((s) => s.account?.userId);
   const d = useDerived();
-  const base = useRouteIssues(route);
-  return useMemo(() => (field && meta ? filterOptions(field, base, meta, d, me) : []), [field, base, meta, d, me]);
+  const { issues } = useRouteList(route);
+  return useMemo(
+    () => (field && meta ? filterOptions(field, issues, meta, d, me, scopeValues(field, routeScope(route, meta), meta, d, me)) : []),
+    [field, issues, meta, d, me, route],
+  );
 }
 
 /** Linear's F menu: pick a field, then tick the values to keep. */
@@ -159,7 +229,7 @@ function FilterMenuContent({ field }: { field: FilterField | null }) {
         onKeyDown={onKeyDown}
       />
       <Command.List>
-        <Command.Empty>{options.length ? "No matches." : "No values in this view."}</Command.Empty>
+        <Command.Empty>{options.length ? "No matches." : "No values to filter by yet."}</Command.Empty>
         {visible.map((o) => (
           <Command.Item
             key={o.value}
@@ -168,7 +238,6 @@ function FilterMenuContent({ field }: { field: FilterField | null }) {
           >
             {optionIcon(field, o, d.priorities)}
             <span className="palette-label">{o.label}</span>
-            <span className="palette-count">{o.count}</span>
             {selected.has(o.value) && (
               <span className="picker-check" aria-label="Selected">
                 ✓
@@ -224,9 +293,7 @@ export function FilterBar({ route, shown, total }: { route: Route; shown: number
       <button type="button" className="filter-add" aria-label="Add filter" onClick={() => openFilterMenu(null)}>
         <Icon name="plus" />
       </button>
-      <span className="filter-summary">
-        {shown} of {total}
-      </span>
+      <span className="filter-summary">{shown === total ? shown : `${shown} of ${total}`}</span>
       <button type="button" className="filter-clear" onClick={() => setFilters(routeKey(route), [])}>
         Clear
       </button>

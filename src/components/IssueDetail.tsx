@@ -272,8 +272,18 @@ function LinkedIssue({ id, issue, onRemove }: { id: number; issue: Issue | undef
 }
 
 /** Sub-issues, Redmine relations and #mentions, each way. */
-function Connections({ issue, journals }: { issue: Issue; journals: Journal[] | null }) {
+function Connections({
+  issue,
+  journals,
+  childIds,
+}: {
+  issue: Issue;
+  journals: Journal[] | null;
+  /** Direct sub-issues, from the issue's details; undefined until they load. */
+  childIds: number[] | undefined;
+}) {
   const issues = useApp((s) => s.issues);
+  const ensureIssues = useApp((s) => s.ensureIssues);
   const backend = useApp((s) => s.backend);
   const openPicker = useApp((s) => s.openPicker);
   const removeRelation = useApp((s) => s.removeRelation);
@@ -291,7 +301,25 @@ function Connections({ issue, journals }: { issue: Issue; journals: Journal[] | 
     };
   }, [backend, issue.id, issue.updated_on]);
 
-  const children = subIssues(issue, issues.values());
+  // The cache holds only recently used issues; read the connected ones it lacks.
+  const otherIds = [
+    ...(childIds ?? []),
+    ...(issue.relations ?? []).map((r) => (r.issue_id === issue.id ? r.issue_to_id : r.issue_id)),
+    ...(issue.parent ? [issue.parent.id] : []),
+  ].join(",");
+  useEffect(() => {
+    if (otherIds) void ensureIssues(otherIds.split(",").map(Number));
+  }, [otherIds, ensureIssues]);
+
+  const children = useMemo(() => {
+    const byParent = subIssues(issue, issues.values());
+    const known = new Set(byParent.map((c) => c.id));
+    for (const id of childIds ?? []) {
+      const child = issues.get(id);
+      if (child && !known.has(id) && child.parent?.id === issue.id) byParent.push(child);
+    }
+    return byParent.sort((a, b) => a.id - b.id);
+  }, [issue, issues, childIds]);
   const groups = relatedGroups(issue, issues);
   const shown = new Set<number>([...children.map((c) => c.id), ...groups.flatMap((g) => g.items.map((i) => i.otherId))]);
   if (issue.parent) shown.add(issue.parent.id);
@@ -715,7 +743,11 @@ export function IssueDetail({ id }: { id: number }) {
             <p className="muted">No description.</p>
           )}
           <Attachments issue={issue} onAttach={() => void pickAndAttach()} />
-          <Connections issue={issue} journals={details?.journals ?? null} />
+          <Connections
+            issue={issue}
+            journals={details?.journals ?? null}
+            childIds={details ? (details.issue.children ?? []).map((c) => c.id) : undefined}
+          />
           {details?.issue.changesets?.length ? <Commits issue={issue} commits={details.issue.changesets} /> : null}
           <h2 className="activity-title">Activity</h2>
           <div className="activity-change">

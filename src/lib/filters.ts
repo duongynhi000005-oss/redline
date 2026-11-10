@@ -76,13 +76,14 @@ export function toggleFilterValue(filters: Filter[], field: FilterField, value: 
 export interface FilterOption {
   value: string;
   label: string;
-  /** How many issues in the view have this value. */
+  /** How many of the view's loaded issues have this value. */
   count: number;
 }
 
 /**
- * The values worth offering for a field: the ones the view's issues actually
- * have, so the menu never lists a choice that would empty the list.
+ * The values worth offering for a field: what the view's projects allow (see
+ * `scopeValues`) and what its loaded issues have. Redmine filters the list,
+ * so these come from what Redline knows, not from every issue.
  */
 export function filterOptions(
   field: FilterField,
@@ -90,8 +91,10 @@ export function filterOptions(
   meta: Metadata,
   ctx: FilterContext,
   me?: number,
+  offered: Map<string, string> = new Map(),
 ): FilterOption[] {
   const counts = new Map<string, number>();
+  for (const v of offered.keys()) counts.set(v, 0);
   for (const issue of issues) for (const v of valuesOf(issue, field, ctx)) counts.set(v, (counts.get(v) ?? 0) + 1);
   const name = (v: string): string => {
     if (v === "none") return NONE_LABEL[field];
@@ -103,7 +106,7 @@ export function filterOptions(
         return meta.priorities.find((p) => p.id === id)?.name ?? v;
       case "assignee": {
         const issue = issues.find((i) => i.assigned_to?.id === id);
-        const n = issue?.assigned_to?.name ?? v;
+        const n = issue?.assigned_to?.name ?? offered.get(v) ?? v;
         return id === me ? `${n} (you)` : n;
       }
       case "label":
@@ -146,6 +149,55 @@ const NONE_LABEL: Record<FilterField, string> = {
   project: "No project",
   tracker: "No tracker",
 };
+
+/**
+ * Values a field can have in a view's projects (null means every project),
+ * with names where the metadata has them: statuses, priorities, trackers,
+ * members, cycles, categories and projects. Labels come only from issues.
+ */
+export function scopeValues(
+  field: FilterField,
+  scope: Set<number> | null,
+  meta: Metadata,
+  ctx: FilterContext,
+  me?: number,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  const inScope = (id: number) => !scope || scope.has(id);
+  switch (field) {
+    case "status":
+      for (const st of meta.statuses) out.set(ctx.categories.get(st.id) ?? (st.is_closed ? "completed" : "started"), "");
+      break;
+    case "priority":
+      for (const p of meta.priorities) out.set(String(p.id), p.name);
+      break;
+    case "tracker":
+      for (const t of meta.trackers) out.set(String(t.id), t.name);
+      break;
+    case "assignee":
+      out.set("none", "");
+      if (me !== undefined) out.set(String(me), meta.user?.firstname ? `${meta.user.firstname} ${meta.user.lastname}` : "");
+      for (const m of meta.memberships) {
+        const who = m.user ?? m.group;
+        if (who && inScope(m.project.id)) out.set(String(who.id), who.name);
+      }
+      break;
+    case "cycle":
+      out.set("none", "");
+      for (const v of meta.versions) if (inScope(v.project.id)) out.set(String(v.id), v.name);
+      break;
+    case "category":
+      out.set("none", "");
+      for (const p of meta.projects) if (inScope(p.id)) for (const c of p.issue_categories) out.set(String(c.id), c.name);
+      break;
+    case "project":
+      for (const p of meta.projects) if (inScope(p.id)) out.set(String(p.id), p.name);
+      break;
+    case "label":
+      break;
+  }
+  return out;
+}
 
 /** "Status is Todo or In progress", for a filter chip. */
 export function describeFilter(filter: Filter, options: FilterOption[]): { field: string; values: string } {

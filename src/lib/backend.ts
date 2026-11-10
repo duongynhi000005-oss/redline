@@ -7,6 +7,7 @@ import type {
   Issue,
   IssueChanges,
   IssueDetails,
+  IssueFilter,
   IssuesChanged,
   Metadata,
   NewRelation,
@@ -53,10 +54,18 @@ export interface Backend {
   /** Checks new headers against the server, saves them and restarts syncing with them. */
   updateConnection(connection: ConnectionOptions): Promise<ConnectionOptions>;
   getMetadata(): Promise<Metadata>;
+  /** The issues kept on this computer: the ones recently opened, created or changed. */
   listIssues(): Promise<Issue[]>;
+  /** Issues by id, from the cache or else from Redmine. Missing ones are left out. */
   getIssues(ids: number[]): Promise<Issue[]>;
+  /** One page (100) of the issues a filter finds, read from Redmine as its own issue list would. */
+  findIssues(filter: IssueFilter, offset: number): Promise<Found<Issue>>;
+  /** How many issues a filter finds. */
+  countIssues(filter: IssueFilter): Promise<number>;
+  /** Reads the cycles and people of projects someone opened, unless already read this session. */
+  loadProjectDetails(projectIds: number[]): Promise<void>;
   getIssueDetails(id: number, refresh?: boolean): Promise<IssueDetails>;
-  /** Journals of cached issues (up to 200), read from Redmine only where the cache is behind. */
+  /** Journals of issues, read from Redmine where the cache doesn't have them current. */
   issueJournals(ids: number[]): Promise<IssueJournals[]>;
   /** The latest sync state, or null when signed out. */
   getSyncState(): Promise<SyncState | null>;
@@ -72,8 +81,8 @@ export interface Backend {
   removeRelation(relation: Relation): Promise<void>;
   /** Ids of issues whose description or comments mention #id. */
   findMentions(id: number): Promise<number[]>;
-  /** Runs a saved query: its issues' ids in its order (up to 500), and how many it finds in all. */
-  runQuery(queryId: number, projectId?: number | null): Promise<Found<number>>;
+  /** Runs a saved query: its issues in its order (up to 500), and how many it finds in all. */
+  runQuery(queryId: number, projectId?: number | null): Promise<Found<Issue>>;
   /** One page (25) of what Redmine search finds, newest first, everywhere or within a scope. */
   search(text: string, offset: number, scope?: SearchScope): Promise<Found<SearchResult>>;
   /** Adds or removes a watcher, then returns the issue as Redmine has it. */

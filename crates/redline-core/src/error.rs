@@ -64,6 +64,10 @@ pub enum Error {
     #[error("Redmine answered with HTTP {0}.")]
     Http(u16),
 
+    /// A list asked for a filter or sort Redline doesn't send to Redmine.
+    #[error("Redline can't ask Redmine for that: {0}")]
+    Invalid(String),
+
     /// The local cache couldn't be read or written.
     #[error("Redline's local cache had a problem: {0}")]
     Storage(String),
@@ -89,6 +93,7 @@ impl Error {
             Error::Rejected(_) => "rejected",
             Error::Busy => "busy",
             Error::Http(_) => "http",
+            Error::Invalid(_) => "invalid",
             Error::Storage(_) => "storage",
             Error::Decode(_) => "decode",
         }

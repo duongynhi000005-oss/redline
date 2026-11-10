@@ -199,6 +199,8 @@ export interface Issue {
   watchers?: Named[] | null;
   /** Read with the issue's details, not with every sync. */
   attachments?: Attachment[] | null;
+  /** Direct sub-issues (and theirs, nested), read with the issue's details. */
+  children?: { id: number; children?: unknown[] }[] | null;
   /** Commits that mention the issue, read with its details; only for roles that may see the repository. */
   changesets?: Changeset[] | null;
 }
@@ -362,20 +364,36 @@ export interface SyncState {
   message: string | null;
   /** The error's code when the sync failed, e.g. "unauthorized". */
   code?: string | null;
-  /** How far a long sync has got, while it runs. */
-  progress?: SyncCount | null;
   /** True while the server has asked Redline to slow down. */
   slowed?: boolean;
 }
 
-export interface SyncCount {
-  fetched: number;
-  total: number;
-}
 
 export interface IssuesChanged {
   changed: number[];
   removed: number[];
+  /** The changed issues themselves, when the shell just read them. */
+  issues?: Issue[];
+}
+
+/**
+ * One of Redmine's issue filters, as its own issue list sends it:
+ * `f[]=field&op[field]=op&v[field][]=value`.
+ */
+export interface Condition {
+  field: string;
+  op: string;
+  values: string[];
+}
+
+/** A list of issues as Redmine's issue list asks for it. */
+export interface IssueFilter {
+  /** Only this project and its sub-projects. */
+  projectId?: number | null;
+  /** Every one must match. Without a status_id condition, any status. */
+  conditions: Condition[];
+  /** Redmine's sort, such as "priority:desc,updated_on:desc". */
+  sort?: string | null;
 }
 
 export interface AppInfo {

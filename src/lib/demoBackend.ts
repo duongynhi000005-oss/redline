@@ -3,6 +3,8 @@ import type { ConnectionOptions } from "./connection";
 import { NO_CONNECTION, connectionProblem, normalizeConnection } from "./connection";
 import { applyChanges as applyEdit } from "./edit";
 import { INVERSE, mentionedIds } from "./relations";
+import { matchesIssueFilter } from "./issueFilter";
+import { projectTree } from "./model";
 import type {
   SearchKind,
   SearchResult,
@@ -12,6 +14,7 @@ import type {
   Issue,
   IssueChanges,
   IssueDetails,
+  IssueFilter,
   IssuesChanged,
   Journal,
   Metadata,
@@ -370,7 +373,8 @@ function buildIssues(meta: Metadata): Issue[] {
         ...(project.id === 1 ? [{ id: 3, name: "Review by", value: i % 3 === 1 ? day(start + 2) : "" }] : []),
       ],
       created_on: iso(30 - i),
-      updated_on: iso(Math.floor(i / 3), i % 3),
+      // Redmine never has an issue updated before it was created.
+      updated_on: [iso(30 - i), iso(Math.floor(i / 3), i % 3)].sort().at(-1)!,
     };
   });
 }
@@ -405,8 +409,11 @@ const GATEWAY_REFUSAL = {
     "The server didn't let the request through (HTTP 401). If a proxy or gateway sits in front of Redmine, it may need a username or other headers.",
 };
 
-export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: number } = {}): Backend {
+export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: number; pageSize?: number } = {}): Backend {
   const latency = options.latencyMs ?? 0;
+  const pageSize = options.pageSize ?? 100;
+  // Like the app's cache: only issues opened, created or changed are kept.
+  const recent = new Set<number>();
   const wait = <T>(value: T) => new Promise<T>((r) => setTimeout(() => r(value), latency));
   let meta = buildMetadata();
   const issues = new Map(buildIssues(meta).map((i) => [i.id, i]));
@@ -418,6 +425,14 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       if (issue) issues.set(id, { ...issue, relations: [...(issue.relations ?? []), relation] });
     }
     return relation;
+  };
+  /** What Redmine's issue list would find for a filter, in its sort. */
+  const findDemoIssues = (filter: IssueFilter): Issue[] => {
+    const closed = new Set(meta.statuses.filter((st) => st.is_closed).map((st) => st.id));
+    const me = account?.userId ?? meta.user?.id;
+    const inScope = (projectId: number, scope: number) => projectTree(scope, meta.projects).has(projectId);
+    const found = [...issues.values()].filter((i) => matchesIssueFilter(i, filter, inScope, me, closed));
+    return found.sort(demoSort(filter.sort ?? "updated_on:desc,id:desc"));
   };
   // A few connections, so the Related section has something to show.
   relate(3, 2, "blocks");
@@ -707,6 +722,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       issue: {
         ...(may(issue.project.id, "view_issue_watchers") ? { ...issue, watchers: list } : issue),
         attachments: (files.get(id) ?? []).map((f) => f.attachment),
+        children: [...issues.values()].filter((i) => i.parent?.id === id).map((i) => ({ id: i.id })),
         ...(may(issue.project.id, "view_changesets") ? { changesets: commits.get(id) ?? [] } : {}),
       },
       journals: [...buildJournals(issue), ...(comments.get(id) ?? [])].flatMap((j) => {
@@ -765,9 +781,35 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       return connection;
     },
     getMetadata: () => wait(meta),
-    listIssues: () => wait([...issues.values()].sort((a, b) => b.updated_on.localeCompare(a.updated_on))),
-    getIssues: (ids) => wait(ids.flatMap((id) => (issues.has(id) ? [issues.get(id)!] : []))),
-    getIssueDetails: (id) => wait(details(id)),
+    listIssues: () =>
+      wait(
+        [...recent]
+          .flatMap((id) => issues.get(id) ?? [])
+          .sort((a, b) => b.updated_on.localeCompare(a.updated_on)),
+      ),
+    getIssues: (ids) =>
+      wait(
+        ids.flatMap((id) => {
+          const issue = issues.get(id);
+          if (!issue) return [];
+          recent.add(id);
+          return [issue];
+        }),
+      ),
+    async findIssues(filter, offset) {
+      await wait(null);
+      const found = findDemoIssues(filter);
+      return { items: found.slice(offset, offset + pageSize), total: found.length };
+    },
+    async countIssues(filter) {
+      await wait(null);
+      return findDemoIssues(filter).length;
+    },
+    loadProjectDetails: () => wait(undefined),
+    getIssueDetails: (id) => {
+      if (issues.has(id)) recent.add(id);
+      return wait(details(id));
+    },
     issueJournals: (ids) =>
       wait(ids.slice(0, 200).flatMap((id) => (issues.has(id) ? [{ issue_id: id, journals: details(id).journals }] : []))),
     getSyncState: () => wait(account ? { state: "idle" as const, lastSyncedAt, message: null } : null),
@@ -781,6 +823,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       if (!issue) throw { code: "not_found", message: "Not found in Redmine." };
       const next = applyChanges(issue, changes);
       issues.set(id, next);
+      recent.add(id);
       if (changes.notes?.trim()) {
         const list = comments.get(id) ?? [];
         const user = people.find((p) => p.id === meta.user?.id) ?? people[0]!;
@@ -812,6 +855,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       };
       const issue = applyChanges(base, { ...fields, subject: undefined, description: undefined });
       issues.set(id, issue);
+      recent.add(id);
       changeHandlers.forEach((h) => h({ changed: [id], removed: [] }));
       return issue;
     },
@@ -1286,7 +1330,7 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
                 .sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999") || a.id - b.id)
             : null;
       if (!ids) throw { code: "not_found", message: "Not found in Redmine." };
-      return { items: ids.map((i) => i.id), total: ids.length };
+      return { items: ids, total: ids.length };
     },
     async search(text, offset, scope) {
       await wait(null);
@@ -1339,4 +1383,41 @@ export function createDemoBackend(options: { signedIn?: boolean; latencyMs?: num
       return () => {};
     },
   };
+}
+
+/** Sorts issues the way Redmine's sort parameter asks, such as "priority:desc,updated_on:desc". */
+function demoSort(sort: string): (a: Issue, b: Issue) => number {
+  const keys = sort.split(",").map((part) => {
+    const [name, dir] = part.split(":");
+    return { name: name!, desc: dir === "desc" };
+  });
+  const value = (i: Issue, name: string): string | number => {
+    switch (name) {
+      case "priority":
+        return i.priority.id;
+      case "updated_on":
+        return i.updated_on;
+      case "created_on":
+        return i.created_on;
+      case "due_date":
+        return i.due_date ?? "9999";
+      case "start_date":
+        return i.start_date ?? "9999";
+      default:
+        return i.id;
+    }
+  };
+  return (a, b) => {
+    for (const k of keys) {
+      const x = value(a, k.name);
+      const y = value(b, k.name);
+      if (x !== y) return (x < y ? -1 : 1) * (k.desc ? -1 : 1);
+    }
+    return 0;
+  };
+}
+
+/** Every demo issue, as Redmine holds them: for tests that need the whole set, not what Redline has loaded. */
+export function demoIssues(): Issue[] {
+  return buildIssues(buildMetadata());
 }

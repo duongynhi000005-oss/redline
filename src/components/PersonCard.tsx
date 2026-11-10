@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { User } from "../lib/types";
 import { useApp } from "../state/app";
+import { useIssueCount } from "../state/counts";
 import { Avatar } from "./Avatar";
 import { Icon } from "./icons";
 
@@ -72,7 +73,12 @@ function PersonCardPanel({
 }) {
   const backend = useApp((s) => s.backend);
   const meta = useApp((s) => s.meta);
-  const issues = useApp((s) => s.issues);
+  const open = useIssueCount({
+    conditions: [
+      { field: "assigned_to_id", op: "=", values: [String(userId)] },
+      { field: "status_id", op: "o", values: [] },
+    ],
+  });
   const openInRedmine = useApp((s) => s.openInRedmine);
   const ref = useRef<HTMLDivElement>(null);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -128,9 +134,6 @@ function PersonCardPanel({
     .filter((m) => m.user?.id === userId)
     .map((m) => ({ id: m.project.id, team: m.project.name, roles: m.roles.map((r) => r.name).join(", ") }))
     .sort((a, b) => a.team.localeCompare(b.team));
-  const closed = new Set((meta?.statuses ?? []).filter((s) => s.is_closed).map((s) => s.id));
-  let open = 0;
-  for (const i of issues.values()) if (i.assigned_to?.id === userId && !closed.has(i.status.id)) open++;
   const isMe = meta?.user?.id === userId;
 
   return (
@@ -190,7 +193,7 @@ function PersonCardPanel({
       )}
       <footer className="person-card-footer">
         <span className="muted">
-          {open} open {open === 1 ? "issue" : "issues"} assigned
+          {open === null ? "Counting open issues…" : `${open} open ${open === 1 ? "issue" : "issues"} assigned`}
         </span>
         <button
           type="button"

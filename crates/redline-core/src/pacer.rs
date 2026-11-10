@@ -285,7 +285,8 @@ impl Pacer {
         state.strikes = 0;
         let base = inner.limits.interval();
         if state.interval > base {
-            state.interval = (state.interval * 9 / 10).max(base);
+            // Creep back slowly: a server that refused once is likely to again.
+            state.interval = (state.interval * 19 / 20).max(base);
         }
         let caught_up = Instant::now() >= state.paused_until.max(state.slowed_until);
         drop(state);

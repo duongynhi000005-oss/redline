@@ -2411,8 +2411,9 @@ button.time-row-issue:hover {
 }
 
 .cycle-count {
-  width: 88px;
+  width: 104px;
   text-align: right;
+  white-space: nowrap;
   font-size: 12px;
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;

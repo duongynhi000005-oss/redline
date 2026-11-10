@@ -8,6 +8,7 @@ import type {
   Issue,
   IssueChanges,
   IssueDetails,
+  IssueFilter,
   Metadata,
   Project,
   ProjectChanges,
@@ -21,7 +22,7 @@ import type {
 import type { RelationChoice } from "../lib/relations";
 import { newRelation } from "../lib/relations";
 import { errorMessage, isBackendError } from "../lib/types";
-import { projectTree } from "../lib/model";
+import { projectTree, teamOf } from "../lib/model";
 import { allowed } from "../lib/permissions";
 import { applyChanges, copyFields } from "../lib/edit";
 import type { ServerSettings } from "../lib/settings";
@@ -117,6 +118,40 @@ export interface QueryRun {
   error: string | null;
 }
 
+/**
+ * A list's issues as Redmine found them, a page at a time, the way its own
+ * issue list reads them. Keyed by what was asked (see filterKey).
+ */
+export interface ListRun {
+  /** Issue ids in Redmine's order, as far as read. */
+  ids: number[];
+  /** How many Redmine finds in all. */
+  total: number;
+  /** How far through the list Redmine has been read. */
+  fetched: number;
+  loading: boolean;
+  error: string | null;
+}
+
+/** A count of issues read from Redmine, for progress and summaries. */
+export interface CountRun {
+  value: number | null;
+  loading: boolean;
+  /** The countEpoch it was read in; a newer epoch reads it again when shown. */
+  epoch: number;
+  at: number;
+}
+
+/** Counts older than this are read again the next time they're shown. */
+const COUNT_TTL = 5 * 60_000;
+
+/** Whether a count needs reading: never read, from before a change, or old. */
+export function countIsStale(run: CountRun | undefined, epoch: number, now = Date.now()): boolean {
+  if (!run) return true;
+  if (run.loading) return false;
+  return run.epoch !== epoch || now - run.at > COUNT_TTL;
+}
+
 export type Phase = "starting" | "signed-out" | "ready";
 
 export type PickerKind =
@@ -160,6 +195,17 @@ export interface AppState {
   selection: number[];
   /** Saved queries run this session, by id. */
   queryRuns: Map<number, QueryRun>;
+  /** Lists read from Redmine this session, by filterKey. */
+  lists: Map<string, ListRun>;
+  /** Counts read from Redmine, by filterKey. */
+  counts: Map<string, CountRun>;
+  /** Bumped by a change made here or Sync now, so counts on screen are read again. */
+  countEpoch: number;
+  /**
+   * Issues changed or created since Redline started, here or by others. Lists
+   * show these wherever they match, on top of the pages Redmine sent.
+   */
+  fresh: Set<number>;
   paletteOpen: boolean;
   /** The property picker open for an issue, like Linear's S, P and A menus. */
   picker: PickerState | null;
@@ -210,6 +256,14 @@ export interface AppState {
   setSelection(ids: number[]): void;
   /** Runs a saved query in Redmine and keeps what it finds in `queryRuns`. */
   runQuery(queryId: number): Promise<void>;
+  /** Reads a list's first page from Redmine, or with `more` its next page. */
+  loadList(key: string, filter: IssueFilter, more?: boolean): Promise<void>;
+  /** Reads a count from Redmine unless a current one is known. */
+  requestCount(key: string, filter: IssueFilter): void;
+  /** Reads issues the session doesn't have yet, such as an open issue's sub-issues. */
+  ensureIssues(ids: number[]): Promise<void>;
+  /** Reads the cycles and people of a team someone opened, once per session. */
+  ensureProjectDetails(projectIds: number[]): void;
   toggleSelected(id: number): void;
   /**
    * Changes several issues, a few at a time, and says in one message how it
@@ -307,6 +361,10 @@ function initial() {
     focusedIssueId: null as number | null,
     selection: NO_SELECTION,
     queryRuns: new Map<number, QueryRun>(),
+    lists: new Map<string, ListRun>(),
+    counts: new Map<string, CountRun>(),
+    countEpoch: 0,
+    fresh: new Set<number>(),
     paletteOpen: false,
     picker: null as PickerState | null,
     timeDialog: null as AppState["timeDialog"],
@@ -349,9 +407,17 @@ export const useApp = create<AppState>()((set, get) => {
     const issues = new Map(get().issues);
     fresh.forEach((i) => issues.set(i.id, i));
     set({ issues });
+    touched(ids);
   }
 
-  /** Loads the cache and listens for the shell's sync events. */
+  /** Issues changed here: lists show them where they now match, and counts on screen are read again. */
+  function touched(ids: number[]) {
+    const fresh = new Set(get().fresh);
+    ids.forEach((id) => fresh.add(id));
+    set({ fresh, countEpoch: get().countEpoch + 1 });
+  }
+
+  /** Loads the metadata and recently used issues, and listens for the shell's events. */
   async function load(backend: Backend) {
     const gen = ++generation;
     const [meta, list] = await Promise.all([backend.getMetadata(), backend.listIssues()]);
@@ -370,8 +436,8 @@ export const useApp = create<AppState>()((set, get) => {
     unlisten = [];
     const subscriptions = await Promise.all([
       backend.onSyncState((sync) => set({ sync })),
-      backend.onIssuesChanged(async ({ changed, removed }) => {
-        const fresh = changed.length ? await backend.getIssues(changed) : [];
+      backend.onIssuesChanged(async ({ changed, removed, issues: sent }) => {
+        const fresh = sent ?? (changed.length ? await backend.getIssues(changed) : []);
         const issues = new Map(get().issues);
         removed.forEach((id) => issues.delete(id));
         // Attachments and watchers come only with an issue's details; keep them. Null
@@ -381,7 +447,10 @@ export const useApp = create<AppState>()((set, get) => {
           const watchers = known?.watchers === null ? null : (i.watchers ?? known?.watchers);
           issues.set(i.id, known ? { ...i, attachments: i.attachments ?? known.attachments, watchers } : i);
         });
-        set({ issues });
+        const marked = new Set(get().fresh);
+        fresh.forEach((i) => marked.add(i.id));
+        removed.forEach((id) => marked.delete(id));
+        set({ issues, fresh: marked });
         const gone = new Set(removed);
         if (gone.has(get().openIssueId ?? -1)) set({ openIssueId: null });
         if (gone.size && get().selection.some((id) => gone.has(id)))
@@ -490,6 +559,14 @@ export const useApp = create<AppState>()((set, get) => {
       set({ route, openIssueId: null, focusedIssueId: null, selection: NO_SELECTION, personCard: null });
       // A query runs on the server, so each visit asks Redmine again.
       if (route.view === "query") void get().runQuery(route.queryId);
+      // A team's cycles and people are read when it's first opened.
+      const meta = get().meta;
+      const root =
+        "teamId" in route ? route.teamId : "projectId" in route && route.projectId !== null ? route.projectId : null;
+      if (meta && root !== null) {
+        const team = teamOf(root, meta);
+        get().ensureProjectDetails([...projectTree(team, meta.projects)]);
+      }
     },
 
     async runQuery(queryId) {
@@ -501,18 +578,82 @@ export const useApp = create<AppState>()((set, get) => {
       runs({ ids: before?.ids ?? [], total: before?.total ?? 0, loading: true, error: null });
       try {
         const found = await backend.runQuery(queryId, query?.project_id);
-        // Issues the cache didn't have yet arrive through onIssuesChanged; make sure they're here.
-        const missing = found.items.filter((id) => !get().issues.has(id));
-        if (missing.length) {
-          const fetched = await backend.getIssues(missing);
-          const issues = new Map(get().issues);
-          for (const i of fetched) issues.set(i.id, i);
-          set({ issues });
-        }
-        runs({ ids: found.items, total: found.total, loading: false, error: null });
+        const issues = new Map(get().issues);
+        for (const i of found.items) issues.set(i.id, i);
+        set({ issues });
+        runs({ ids: found.items.map((i) => i.id), total: found.total, loading: false, error: null });
       } catch (e) {
         runs({ ids: before?.ids ?? [], total: before?.total ?? 0, loading: false, error: errorMessage(e) });
       }
+    },
+
+    async loadList(key, filter, more = false) {
+      const { backend } = get();
+      if (!backend) return;
+      const before = get().lists.get(key);
+      if (before?.loading) return;
+      if (more && (!before || before.fetched >= before.total)) return;
+      const offset = more ? (before?.fetched ?? 0) : 0;
+      const put = (run: ListRun) => set({ lists: new Map(get().lists).set(key, run) });
+      put({ ids: before?.ids ?? [], total: before?.total ?? 0, fetched: before?.fetched ?? 0, loading: true, error: null });
+      try {
+        const page = await backend.findIssues(filter, offset);
+        // Signed out, or Sync now started over, while it loaded.
+        if (get().lists.get(key)?.loading !== true) return;
+        const issues = new Map(get().issues);
+        for (const i of page.items) {
+          const known = issues.get(i.id);
+          // A list doesn't carry attachments or watchers; keep what details said.
+          issues.set(i.id, known ? { ...i, attachments: i.attachments ?? known.attachments, watchers: known.watchers ?? i.watchers } : i);
+        }
+        const ids = more ? [...(before?.ids ?? [])] : [];
+        const seen = new Set(ids);
+        for (const i of page.items) if (!seen.has(i.id)) ids.push(i.id);
+        set({ issues });
+        put({ ids, total: page.total, fetched: offset + page.items.length, loading: false, error: null });
+      } catch (e) {
+        if (get().lists.get(key)?.loading !== true) return;
+        put({
+          ids: before?.ids ?? [],
+          total: before?.total ?? 0,
+          fetched: before?.fetched ?? 0,
+          loading: false,
+          error: errorMessage(e),
+        });
+      }
+    },
+
+    requestCount(key, filter) {
+      const { backend, countEpoch } = get();
+      if (!backend || !countIsStale(get().counts.get(key), countEpoch)) return;
+      const before = get().counts.get(key);
+      const put = (run: CountRun) => set({ counts: new Map(get().counts).set(key, run) });
+      put({ value: before?.value ?? null, loading: true, epoch: countEpoch, at: Date.now() });
+      backend.countIssues(filter).then(
+        (value) => put({ value, loading: false, epoch: countEpoch, at: Date.now() }),
+        () => put({ value: before?.value ?? null, loading: false, epoch: countEpoch, at: Date.now() }),
+      );
+    },
+
+    async ensureIssues(ids) {
+      const { backend } = get();
+      const missing = [...new Set(ids)].filter((id) => !get().issues.has(id));
+      if (!backend || !missing.length) return;
+      try {
+        const found = await backend.getIssues(missing);
+        if (!found.length) return;
+        const issues = new Map(get().issues);
+        for (const i of found) if (!issues.has(i.id)) issues.set(i.id, i);
+        set({ issues });
+      } catch {
+        // Shown as numbers until they load.
+      }
+    },
+
+    ensureProjectDetails(projectIds) {
+      const { backend } = get();
+      if (!backend || !projectIds.length) return;
+      void backend.loadProjectDetails(projectIds).catch(() => {});
     },
 
     openIssue(id) {
@@ -570,6 +711,7 @@ export const useApp = create<AppState>()((set, get) => {
           try {
             const details = await backend.updateIssue(id, c);
             set({ issues: new Map(get().issues).set(id, details.issue), freshDetails: details });
+            touched([id]);
             done++;
           } catch (e) {
             const old = before.get(id);
@@ -596,6 +738,8 @@ export const useApp = create<AppState>()((set, get) => {
 
     async syncNow() {
       await get().backend?.syncNow();
+      // Lists and counts on screen are read again from Redmine.
+      set({ lists: new Map(), countEpoch: get().countEpoch + 1 });
       const { route } = get();
       if (route.view === "query") await get().runQuery(route.queryId);
     },
@@ -615,6 +759,7 @@ export const useApp = create<AppState>()((set, get) => {
         const issues = new Map(get().issues);
         issues.set(id, details.issue);
         set({ issues, freshDetails: details });
+        touched([id]);
         return details;
       } catch (e) {
         if (before) {
@@ -668,7 +813,8 @@ export const useApp = create<AppState>()((set, get) => {
         if (known && fresh !== undefined && JSON.stringify(known[key] ?? null) !== JSON.stringify(fresh)) patch[key] = fresh as never;
       }
       const next: Partial<AppState> = {};
-      if (known && Object.keys(patch).length) next.issues = new Map(issues).set(id, { ...known, ...patch });
+      if (!known) next.issues = new Map(issues).set(id, details.issue);
+      else if (Object.keys(patch).length) next.issues = new Map(issues).set(id, { ...known, ...patch });
       if (details.watching != null && watching.get(id) !== details.watching) {
         next.watching = new Map(watching).set(id, details.watching);
       }
@@ -905,6 +1051,7 @@ export const useApp = create<AppState>()((set, get) => {
       const issues = new Map(get().issues);
       issues.set(issue.id, issue);
       set({ issues, focusedIssueId: issue.id, toast: `Created #${issue.id} ${issue.subject}` });
+      touched([issue.id]);
       return issue;
     },
 
@@ -920,6 +1067,7 @@ export const useApp = create<AppState>()((set, get) => {
         return null;
       }
       set({ issues: new Map(get().issues).set(copy.id, copy) });
+      touched([copy.id]);
       let toast = `Duplicated #${id} as #${copy.id}`;
       try {
         await backend.addRelation(id, { issue_to_id: copy.id, relation_type: "copied_to" });
@@ -960,6 +1108,7 @@ export const useApp = create<AppState>()((set, get) => {
         focusedIssueId: focusedIssueId !== null && gone.has(focusedIssueId) ? null : focusedIssueId,
         selection: get().selection.some((s) => gone.has(s)) ? get().selection.filter((s) => !gone.has(s)) : get().selection,
         toast: `Deleted #${id}${issue ? ` ${issue.subject}` : ""}`,
+        countEpoch: get().countEpoch + 1,
       });
       return true;
     },

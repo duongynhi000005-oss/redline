@@ -13,12 +13,12 @@ pub mod pacer;
 pub mod store;
 pub mod sync;
 
-pub use client::{Client, IssueQuery, Page, TimeQuery};
+pub use client::{Client, Condition, IssueFilter, IssueQuery, Page, TimeQuery};
 pub use connection::{ConnectionOptions, Header};
 pub use error::{Error, Result};
 pub use pacer::{Pacer, Priority, RequestLimits};
 pub use store::{Metadata, Store};
-pub use sync::{IssueDetails, NewFile, SyncProgress, SyncReport, Syncer, projects_needing_details};
+pub use sync::{IssueDetails, IssuePage, NewFile, Syncer, projects_needing_details};
 
 /// The Redline version, shared by the core and the app.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

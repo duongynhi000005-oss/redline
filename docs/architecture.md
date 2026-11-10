@@ -52,9 +52,36 @@ design doc
    fields an edit changes. Every request goes through the server's pacer
    (`crates/redline-core/src/pacer.rs`): two at a time and two a second by
    default (a per-server setting under Advanced), what someone is waiting on
-   ahead of background sync, and on 429 or 503 every request pauses for
-   `Retry-After` or a backoff with jitter, then the pace halves and recovers.
-   Sync loads the newest issues first and the rest a few pages per pass
-   (open, then closed), so the first screen never waits on a full pull.
+   ahead of background work, and when the server says to slow down (429,
+   420, 503, 509, or any refusal with `Retry-After`) every request pauses
+   for `Retry-After` or a backoff with jitter, then the pace halves and
+   recovers slowly. Redline never pulls every issue; see Loading.
 3. **Keyboard first and native.** Every action has a shortcut that uses Cmd on
    macOS and Ctrl on Windows, real menus, and the system font and theme.
+
+## Loading
+
+Redline asks for what's on screen, the way Redmine's own pages do, and
+never copies every issue.
+
+- **Metadata** (projects, statuses, trackers, priorities, roles, saved
+  queries) loads at sign-in and every 30 minutes. Versions, members and
+  categories load for the projects the user is a member of, and for any
+  other project when it's opened.
+- **Lists** are Redmine issue-list queries (`src/lib/issueFilter.ts`,
+  `IssueFilter` in `client.rs`): the view's project, tab, filters and sort,
+  100 at a time, with the next page read as the list scrolls. Filters Redmine
+  can't express (labels on some fields) also filter what arrives.
+- **Counts** (cycle progress, open issues on a team page, a person's
+  assigned issues) are one small request each (`src/state/counts.ts`), read
+  again when shown after a change or after five minutes.
+- **Search** in the command menu and the relation picker asks Redmine once
+  typing pauses (`src/state/search.ts`); issues already loaded show at once.
+- **Details** (comments, history, sub-issues) load when an issue opens, and
+  connected issues load if they're not already known.
+- **Changes**: every few minutes, one page of the issues changed since the
+  last look (`poll_changes` in `sync.rs`), so open lists and issues stay
+  current.
+- **The cache** (`store.rs`) keeps metadata and the 500 most recently opened,
+  created or changed issues with their comments, for a quick start and for
+  reading offline. Lists aren't kept.

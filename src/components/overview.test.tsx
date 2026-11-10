@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
-import { createDemoBackend } from "../lib/demoBackend";
+import { createDemoBackend, demoIssues } from "../lib/demoBackend";
 import { useApp } from "../state/app";
 import { suggestIdentifier, validIdentifier } from "./TeamDialogs";
 import { areasOf, membersByRole } from "./TeamOverview";
@@ -61,11 +61,12 @@ describe("team overview", () => {
   it("counts open issues across sub-teams", async () => {
     await start();
     const page = await openOverview(1);
-    const { issues, meta } = useApp.getState();
+    const { meta } = useApp.getState();
     const closed = new Set(meta!.statuses.filter((s) => s.is_closed).map((s) => s.id));
-    const open = [...issues.values()].filter((i) => [1, 3].includes(i.project.id) && !closed.has(i.status.id)).length;
+    // Redmine counts them, the whole team's, not only what Redline has loaded.
+    const open = demoIssues().filter((i) => [1, 3].includes(i.project.id) && !closed.has(i.status.id)).length;
     const props = within(page).getByRole("complementary", { name: "Properties" });
-    expect(props).toHaveTextContent(`${open} issues`);
+    await waitFor(() => expect(props).toHaveTextContent(`Open${open} issues`));
   });
 
   it("opens Redmine areas that Redline has no view for in the browser", async () => {

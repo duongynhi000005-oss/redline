@@ -20,10 +20,13 @@ const section = (name: string) => screen.getByRole("region", { name });
 describe("related issues", () => {
   it("shows sub-issues, relations and mentions", async () => {
     await openIssue(1);
-    expect(within(section("Sub-issues")).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      expect.stringContaining("#11"),
-      expect.stringContaining("#12"),
-    ]);
+    // Sub-issues come with the issue's details, and load if Redline hasn't got them.
+    await waitFor(() =>
+      expect(within(section("Sub-issues")).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
+        expect.stringContaining("#11"),
+        expect.stringContaining("#12"),
+      ]),
+    );
     const related = section("Related issues");
     expect(within(related).getByRole("heading", { name: "Related to" })).toBeInTheDocument();
     expect(within(related).getByRole("button", { name: /^#13/ })).toBeInTheDocument();

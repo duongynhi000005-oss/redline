@@ -7,7 +7,9 @@ use std::sync::atomic::AtomicBool;
 use redline_core::models::{
     Found, Issue, IssueChanges, NewRelation, Relation, SearchResult, SearchScope,
 };
-use redline_core::{Client, ConnectionOptions, Error, IssueDetails, Metadata, Store, Syncer};
+use redline_core::{
+    Client, ConnectionOptions, Error, IssueDetails, IssueFilter, Metadata, Store, Syncer,
+};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::RwLock;
@@ -248,18 +250,58 @@ pub async fn list_issues(state: State<'_, AppState>) -> CmdResult<Vec<Issue>> {
     with_syncer(&state, |s| Ok(s.store().issues()?)).await
 }
 
+/// Issues by id: the cached ones, and the rest from Redmine.
 #[tauri::command]
 pub async fn get_issues(state: State<'_, AppState>, ids: Vec<u64>) -> CmdResult<Vec<Issue>> {
-    with_syncer(&state, |s| {
-        let mut out = Vec::with_capacity(ids.len());
-        for id in ids {
-            if let Some(issue) = s.store().issue(id)? {
-                out.push(issue);
+    let syncer = syncer(&state).await?;
+    match syncer.issues_by_id(&ids).await {
+        Ok(issues) => Ok(issues),
+        // Offline: what the cache has.
+        Err(Error::Network(_)) => {
+            let mut out = Vec::with_capacity(ids.len());
+            for id in ids {
+                if let Some(issue) = syncer.store().issue(id)? {
+                    out.push(issue);
+                }
             }
+            Ok(out)
         }
-        Ok(out)
-    })
-    .await
+        Err(e) => Err(e.into()),
+    }
+}
+
+/// One page (100) of the issues a view's filter finds, read from Redmine as
+/// its own issue list would, with how many it finds in all.
+#[tauri::command]
+pub async fn find_issues(
+    state: State<'_, AppState>,
+    filter: IssueFilter,
+    offset: u64,
+) -> CmdResult<Found<Issue>> {
+    let syncer = syncer(&state).await?;
+    Ok(syncer.find_issues(&filter, offset).await?)
+}
+
+/// How many issues a filter finds, for counts and progress.
+#[tauri::command]
+pub async fn count_issues(state: State<'_, AppState>, filter: IssueFilter) -> CmdResult<u64> {
+    let syncer = syncer(&state).await?;
+    Ok(syncer.count_issues(&filter).await?)
+}
+
+/// Reads the cycles and people of projects someone opened, unless they were
+/// read already this session.
+#[tauri::command]
+pub async fn load_project_details(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    project_ids: Vec<u64>,
+) -> CmdResult<()> {
+    let syncer = syncer(&state).await?;
+    if syncer.ensure_project_details(&project_ids).await?.is_some() {
+        let _ = app.emit(EVENT_METADATA_CHANGED, ());
+    }
+    Ok(())
 }
 
 /// Cached details when they're current; otherwise fetched from Redmine.
@@ -326,6 +368,7 @@ pub async fn update_issue(
         IssuesChanged {
             changed: vec![id],
             removed: vec![],
+            ..Default::default()
         },
     );
     Ok(details)
@@ -345,6 +388,7 @@ pub async fn create_issue(
         IssuesChanged {
             changed: vec![issue.id],
             removed: vec![],
+            ..Default::default()
         },
     );
     Ok(issue)
@@ -356,7 +400,7 @@ fn emit_changed(app: &AppHandle, changed: Vec<u64>) {
             EVENT_ISSUES_CHANGED,
             IssuesChanged {
                 changed,
-                removed: vec![],
+                ..Default::default()
             },
         );
     }
@@ -499,8 +543,8 @@ pub async fn delete_project(app: AppHandle, state: State<'_, AppState>, id: u64)
     let _ = app.emit(
         EVENT_ISSUES_CHANGED,
         IssuesChanged {
-            changed: Vec::new(),
             removed,
+            ..Default::default()
         },
     );
     Ok(())
@@ -534,7 +578,14 @@ pub async fn add_relation(
 pub async fn delete_issue(app: AppHandle, state: State<'_, AppState>, id: u64) -> CmdResult<()> {
     let syncer = syncer(&state).await?;
     let (removed, changed) = syncer.delete_issue(id).await?;
-    let _ = app.emit(EVENT_ISSUES_CHANGED, IssuesChanged { changed, removed });
+    let _ = app.emit(
+        EVENT_ISSUES_CHANGED,
+        IssuesChanged {
+            changed,
+            removed,
+            ..Default::default()
+        },
+    );
     Ok(())
 }
 
@@ -568,19 +619,16 @@ pub async fn remove_relation(
     Ok(())
 }
 
-/// Runs a saved query: the ids of the issues it finds, in its order, and how
-/// many there are in all. Issues it brought in or changed arrive as usual.
+/// Runs a saved query: the issues it finds, in its order, and how many there
+/// are in all.
 #[tauri::command]
 pub async fn run_query(
-    app: AppHandle,
     state: State<'_, AppState>,
     query_id: u64,
     project_id: Option<u64>,
-) -> CmdResult<Found<u64>> {
+) -> CmdResult<Found<Issue>> {
     let syncer = syncer(&state).await?;
-    let (found, changed) = syncer.query_issues(query_id, project_id).await?;
-    emit_changed(&app, changed);
-    Ok(found)
+    Ok(syncer.query_issues(query_id, project_id).await?)
 }
 
 /// One page of Redmine search: issues, wiki pages, news, documents, forum

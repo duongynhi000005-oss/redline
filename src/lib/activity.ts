@@ -206,8 +206,11 @@ export function groupByDay(events: ActivityEvent[]): { day: string; events: Acti
     .map(([day, list]) => ({ day, events: [...list].sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || a.key.localeCompare(b.key)) }));
 }
 
-/** At most this many changed issues have their journals read for one window. */
-export const MAX_ISSUES = 200;
+/**
+ * At most this many changed issues have their journals read for one
+ * window: each is a request, and servers limit how fast Redline may ask.
+ */
+export const MAX_ISSUES = 25;
 
 export interface ActivityPage {
   events: ActivityEvent[];
@@ -237,6 +240,8 @@ export function activitySource(backend: Backend, meta: Metadata, rootId: number,
   const files = projectIds.filter((id) => filesAccess(meta, id).view);
   const time = projectIds.some((id) => timeAccess(meta, id).view);
   const inTeam = new Set(projectIds);
+  // Issues whose journals were read, with their whole history, by id.
+  const read = new Map<number, { issue: Issue; journals: Journal[] }>();
 
   return {
     kinds: ACTIVITY_KINDS.filter(
@@ -249,14 +254,24 @@ export function activitySource(backend: Backend, meta: Metadata, rootId: number,
     ).map((k) => k.value),
 
     async load(w: ActivityWindow, cached: Map<number, Issue>): Promise<ActivityPage> {
-      const changed = [...cached.values()]
-        .filter((i) => inTeam.has(i.project.id) && Date.parse(i.updated_on) >= Date.parse(w.from))
-        .sort((a, b) => b.updated_on.localeCompare(a.updated_on));
-      const read = changed.slice(0, MAX_ISSUES);
+      // Issues last changed in the window, newest first, as Redmine's issue list finds them.
+      const last = dayOf(new Date(Date.parse(w.until) - 1).toISOString());
+      const found = await backend.findIssues(
+        {
+          projectId: rootId,
+          conditions: [{ field: "updated_on", op: "><", values: [dayOf(w.from), last] }],
+          sort: "updated_on:desc,id:desc",
+        },
+        0,
+      );
+      const changed = found.items.filter((i) => inTeam.has(i.project.id) && !read.has(i.id));
+      const reading = changed.slice(0, MAX_ISSUES);
       const created = changed.filter((i) => within(i.created_on, w));
+      const names = new Map(cached);
+      for (const i of found.items) names.set(i.id, i);
 
       const [journals, entries, pages, posts, uploads] = await Promise.all([
-        read.length ? backend.issueJournals(read.map((i) => i.id)) : Promise.resolve([]),
+        reading.length ? backend.issueJournals(reading.map((i) => i.id)) : Promise.resolve([]),
         time
           ? backend.timeEntries({ project_id: rootId, from: dayOf(w.from), to: dayOf(new Date(Date.parse(w.until) - 1).toISOString()) })
           : Promise.resolve([] as TimeEntry[]),
@@ -275,16 +290,23 @@ export function activitySource(backend: Backend, meta: Metadata, rootId: number,
         Promise.all(files.map(async (id) => fileEvents(id, await memo(`files:${id}`, () => backend.projectFiles(id)), w))),
       ]);
 
-      const byIssue = new Map(journals.map((j) => [j.issue_id, j.journals]));
-      const withEvents = [...new Map([...read, ...created].map((i) => [i.id, i])).values()];
+      for (const issue of reading) read.set(issue.id, { issue, journals: [] });
+      for (const j of journals) {
+        const r = read.get(j.issue_id);
+        if (r) r.journals = j.journals;
+      }
+      // Issues read for later windows carry their whole history; their
+      // earlier changes show here without asking again.
+      const byIssue = new Map([...read.values()].map((r) => [r.issue.id, r.journals]));
+      const withEvents = [...new Map([...[...read.values()].map((r) => r.issue), ...created].map((i) => [i.id, i])).values()];
       const events = [
         ...issueEvents(withEvents, byIssue, meta, w),
-        ...timeEvents(entries.filter((e) => inTeam.has(e.project.id)), cached, w),
+        ...timeEvents(entries.filter((e) => inTeam.has(e.project.id)), names, w),
         ...pages.flat(),
         ...newsEvents(posts.flat(), w),
         ...uploads.flat(),
       ];
-      return { events, capped: changed.length > read.length };
+      return { events, capped: changed.length > reading.length || found.total > found.items.length };
     },
   };
 }

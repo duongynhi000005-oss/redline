@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useState } from "react";
 import { teamOf } from "../lib/model";
 import { shortcutLabel } from "../lib/platform";
-import type { SyncCount, SyncPhase } from "../lib/types";
+import type { SyncPhase } from "../lib/types";
 import type { Route } from "../state/app";
 import { useApp } from "../state/app";
 import { useDerived } from "../state/derived";
@@ -70,12 +70,10 @@ export function syncLabel(
   message: string | null,
   lastSyncedAt: number | null,
   now = Date.now(),
-  progress: SyncCount | null = null,
   slowed = false,
 ): string {
-  const count = progress ? `${progress.fetched.toLocaleString()} of ${progress.total.toLocaleString()}` : null;
-  if (state === "syncing" && slowed) return count ? `${SLOWED_LABEL} · ${count}` : `${SLOWED_LABEL}…`;
-  if (state === "syncing" && count) return `Syncing ${count} issues`;
+  // Lists load as they're opened, so the server can ask to slow down between syncs too.
+  if (slowed && (state === "syncing" || state === "idle")) return `${SLOWED_LABEL}…`;
   if (state === "syncing") return "Syncing…";
   if (state === "busy") return "Server is busy · Trying again soon";
   if (state === "offline") return "Offline, showing saved issues";
@@ -266,16 +264,8 @@ export function Sidebar() {
         />
         {keyRefused ? (
           <span>{KEY_REFUSED_LABEL}</span>
-        ) : sync.state === "syncing" && sync.progress ? (
-          <>
-            {/* The count changes with every page; screen readers hear it once. */}
-            <span aria-hidden="true">
-              {syncLabel(sync.state, sync.message, sync.lastSyncedAt, undefined, sync.progress, sync.slowed)}
-            </span>
-            <span className="sr-only">{sync.slowed ? `${SLOWED_LABEL}…` : "Syncing issues…"}</span>
-          </>
         ) : (
-          <span>{syncLabel(sync.state, sync.message, sync.lastSyncedAt, undefined, null, sync.slowed)}</span>
+          <span>{syncLabel(sync.state, sync.message, sync.lastSyncedAt, undefined, sync.slowed)}</span>
         )}
       </button>
     </nav>

@@ -1,10 +1,10 @@
-import { useMemo } from "react";
-import { projectTree, teamOf } from "../lib/model";
+import { teamOf } from "../lib/model";
 import { allowed, documentsAccess, filesAccess, forumsAccess, newsAccess, wikiAccess } from "../lib/permissions";
 import type { Layout } from "../lib/views";
 import type { Membership, Metadata, Project } from "../lib/types";
 import type { Route } from "../state/app";
 import { useApp } from "../state/app";
+import { projectIssues, useIssueCount } from "../state/counts";
 import { Avatar } from "./Avatar";
 import { Icon, type IconName } from "./icons";
 import { OpenInRedmineButton } from "./OpenInRedmine";
@@ -141,7 +141,6 @@ function longDay(iso: string) {
 /** A team's (or sub-team's) page: what it is, its sub-teams, its members and where its Redmine areas are. */
 export function TeamOverview({ projectId }: { projectId: number }) {
   const meta = useApp((s) => s.meta);
-  const issues = useApp((s) => s.issues);
   const navigate = useApp((s) => s.navigate);
   const updateView = useApp((s) => s.updateView);
   const openInRedmine = useApp((s) => s.openInRedmine);
@@ -149,19 +148,8 @@ export function TeamOverview({ projectId }: { projectId: number }) {
   const showToast = useApp((s) => s.showToast);
   const project = meta?.projects.find((p) => p.id === projectId);
 
-  const counts = useMemo(() => {
-    if (!meta) return { open: 0, closed: 0 };
-    const tree = projectTree(projectId, meta.projects);
-    const closed = new Set(meta.statuses.filter((s) => s.is_closed).map((s) => s.id));
-    let open = 0;
-    let done = 0;
-    for (const i of issues.values()) {
-      if (!tree.has(i.project.id)) continue;
-      if (closed.has(i.status.id)) done++;
-      else open++;
-    }
-    return { open, closed: done };
-  }, [meta, issues, projectId]);
+  const openCount = useIssueCount(project ? projectIssues(projectId, true) : null);
+  const closedCount = useIssueCount(project ? projectIssues(projectId, false) : null);
 
   if (!meta || !project) {
     return (
@@ -176,13 +164,6 @@ export function TeamOverview({ projectId }: { projectId: number }) {
   const members = meta.memberships.filter((m) => m.project.id === project.id);
   const roles = membersByRole(members, meta);
   const areas = areasOf(project, meta);
-  const openCount = (p: Project) => {
-    const tree = projectTree(p.id, meta.projects);
-    const closed = new Set(meta.statuses.filter((s) => s.is_closed).map((s) => s.id));
-    let n = 0;
-    for (const i of issues.values()) if (tree.has(i.project.id) && !closed.has(i.status.id)) n++;
-    return n;
-  };
   const go = (area: Area) => {
     if (area.route) {
       if (area.layout) updateView(area.route.view === "team" ? `team:${area.route.teamId}` : `project:${project.id}`, { layout: area.layout });
@@ -244,7 +225,7 @@ export function TeamOverview({ projectId }: { projectId: number }) {
                       <Icon name="project" />
                       <span className="linked-issue-subject">{c.name}</span>
                       {c.status === 5 && <span className="chip chip-plain">Closed</span>}
-                      <span className="muted team-open-count">{openCount(c)} open</span>
+                      <OpenCount projectId={c.id} />
                     </button>
                   </li>
                 ))}
@@ -333,14 +314,25 @@ export function TeamOverview({ projectId }: { projectId: number }) {
             )}
             {project.created_on && <Property label="Created">{longDay(project.created_on)}</Property>}
             <Property label="Open" action="Show issues" onEdit={() => navigate(issuesRoute(project))}>
-              {counts.open} {counts.open === 1 ? "issue" : "issues"}
+              {issueCount(openCount)}
             </Property>
             <Property label="Closed">
-              {counts.closed} {counts.closed === 1 ? "issue" : "issues"}
+              {issueCount(closedCount)}
             </Property>
           </dl>
         </aside>
       </div>
     </section>
   );
+}
+
+function issueCount(n: number | null) {
+  if (n === null) return "…";
+  return `${n} ${n === 1 ? "issue" : "issues"}`;
+}
+
+/** A sub-team's open issues, counted by Redmine. */
+function OpenCount({ projectId }: { projectId: number }) {
+  const n = useIssueCount(projectIssues(projectId, true));
+  return <span className="muted team-open-count">{n === null ? "…" : `${n} open`}</span>;
 }

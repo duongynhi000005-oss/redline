@@ -19,7 +19,8 @@ import { TimelineView } from "./TimelineView";
 import { DisplayMenu } from "./DisplayMenu";
 import { Avatar } from "./Avatar";
 import { CycleHeader } from "./Cycle";
-import { FilterBar, useRouteIssues } from "./Filters";
+import type { RouteList } from "./Filters";
+import { FilterBar, useRouteList } from "./Filters";
 import { SelectionBar } from "./SelectionBar";
 import { Icon, PriorityIcon, StatusIcon } from "./icons";
 import { OpenInRedmineButton } from "./OpenInRedmine";
@@ -196,10 +197,14 @@ export function IssueList() {
   const view = useApp((s) => viewFor(s, key));
   const filters = view.filters;
 
-  const base = useRouteIssues(route);
+  const list = useRouteList(route);
+  const base = list.issues;
   const run = useApp((s) => (route.view === "query" ? s.queryRuns.get(route.queryId) : undefined));
+  // Redmine filtered the list already; this keeps issues changed since in step with the filters.
   const issues = useMemo(() => (filters.length ? base.filter((i) => matchesFilters(i, filters, d)) : base), [base, filters, d]);
-  const total = issues.length;
+  const paged = list.run;
+  // How many Redmine finds, when it could apply every filter; otherwise what's here.
+  const total = paged && list.exact ? Math.max(paged.total, issues.length) : issues.length;
 
   // F filters; Cmd/Ctrl+1 to 4 switch between list, board, timeline and calendar.
   useEffect(() => {
@@ -236,7 +241,8 @@ export function IssueList() {
         <OpenInRedmineButton />
       </header>
       {route.view === "cycle" && <CycleHeader teamId={route.teamId} versionId={route.versionId} />}
-      <FilterBar route={route} shown={total} total={base.length} />
+      <FilterBar route={route} shown={issues.length} total={total} />
+      {paged && <MoreNote list={list} shown={issues.length} total={total} />}
       {run && !run.loading && !run.error && run.total > run.ids.length && (
         <p className="list-note muted">
           Showing the first {run.ids.length} of {run.total} issues this view finds in Redmine.
@@ -247,9 +253,17 @@ export function IssueList() {
           <p>Couldn't run this view.</p>
           <p className="muted">{run.error}</p>
         </div>
-      ) : !run?.ids.length && run?.loading ? (
+      ) : (!run?.ids.length && run?.loading) || (route.view !== "query" && !paged?.fetched && paged?.loading !== false) ? (
         <div className="empty-state" aria-busy="true">
           <p className="muted">Asking Redmine…</p>
+        </div>
+      ) : paged?.error && !issues.length ? (
+        <div className="empty-state" role="alert">
+          <p>Couldn't load these issues.</p>
+          <p className="muted">{paged.error}</p>
+          <button type="button" className="button-secondary" onClick={() => list.retry()}>
+            Try again
+          </button>
         </div>
       ) : total === 0 && filters.length ? (
         <div className="empty-state">
@@ -276,14 +290,53 @@ export function IssueList() {
       ) : view.layout === "calendar" ? (
         <CalendarView issues={issues} view={view} route={route} />
       ) : (
-        <ListBody issues={issues} view={view} route={route} />
+        <ListBody issues={issues} view={view} route={route} onEnd={list.loadMore} />
       )}
       <SelectionBar />
     </section>
   );
 }
 
-function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions; route: Route }) {
+/**
+ * Under the header while Redmine has more of a list than Redline has read:
+ * how far it has got and a way to read more. The list reads more on its own
+ * as it scrolls to the end.
+ */
+function MoreNote({ list, shown, total }: { list: RouteList; shown: number; total: number }) {
+  const run = list.run!;
+  if (run.error && run.fetched) {
+    return (
+      <p className="list-note muted" role="alert">
+        Couldn't load more: {run.error}{" "}
+        <button type="button" className="link-button" onClick={list.loadMore}>
+          Try again
+        </button>
+      </p>
+    );
+  }
+  if (!run.fetched || run.fetched >= run.total) return null;
+  return (
+    <p className="list-note muted">
+      Showing {shown.toLocaleString()} of {total.toLocaleString()} issues.{" "}
+      <button type="button" className="link-button" onClick={list.loadMore} disabled={run.loading}>
+        {run.loading ? "Loading…" : "Load more"}
+      </button>
+    </p>
+  );
+}
+
+function ListBody({
+  issues,
+  view,
+  route,
+  onEnd,
+}: {
+  issues: Issue[];
+  view: ViewOptions;
+  route: Route;
+  /** Called when the list scrolls near its end, to read more from Redmine. */
+  onEnd?: () => void;
+}) {
   const openIssue = useApp((s) => s.openIssue);
   const overlay = useApp(overlayOpen);
   const d = useDerived();
@@ -323,6 +376,13 @@ function ListBody({ issues, view, route }: { issues: Issue[]; view: ViewOptions;
   });
 
   const order = useMemo(() => issueRows.map((r) => r.id), [issueRows]);
+
+  // Near the end of what's loaded, read the next page from Redmine.
+  const lastShown = virtualizer.getVirtualItems().at(-1)?.index ?? -1;
+  const nearEnd = rows.length > 0 && lastShown >= rows.length - 15;
+  useEffect(() => {
+    if (nearEnd) onEnd?.();
+  }, [nearEnd, rows.length, onEnd]);
 
   // Keyboard: ↑/↓ or j/k move, Home/End and Page Up/Down jump, Enter opens, Shift+↑/↓ pick as they move, Cmd/Ctrl+A picks all.
   useEffect(() => {

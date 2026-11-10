@@ -7,8 +7,9 @@
 //!   never go to another host.
 //! - Paces every request through the server's [`Pacer`]: a few in flight,
 //!   evenly spaced, with what the person is waiting on going first.
-//! - On 429 or 503 pauses every request to the server, honouring
-//!   `Retry-After` (or backing off with jitter), then retries.
+//! - On 429 or 503, or any error that comes with `Retry-After`, pauses
+//!   every request to the server, honouring `Retry-After` (or backing off
+//!   with jitter), then retries.
 //! - Pages through lists in Redmine's maximum page size of 100.
 
 use std::time::Duration;
@@ -59,6 +60,126 @@ pub struct IssueQuery {
     pub newest_first: bool,
     pub offset: u64,
     pub limit: Option<u32>,
+}
+
+/// A list of issues as one of Redmine's own issue pages asks for it: a
+/// project (with its sub-projects), filters in Redmine's own terms, and a sort.
+/// The UI builds these from a view and its filters; see [`Client::find_issues`].
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct IssueFilter {
+    /// Only this project and its sub-projects.
+    pub project_id: Option<u64>,
+    /// Every one must match. Without a `status_id` condition, any status.
+    pub conditions: Vec<Condition>,
+    /// Redmine's `sort`, such as `priority:desc,updated_on:desc`. Newest
+    /// change first when empty.
+    pub sort: Option<String>,
+}
+
+/// One of Redmine's issue filters: `field`, `op` and `values` become
+/// `f[]=field&op[field]=op&v[field][]=value`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Condition {
+    pub field: String,
+    pub op: String,
+    pub values: Vec<String>,
+}
+
+impl Condition {
+    pub fn new(field: &str, op: &str, values: &[&str]) -> Self {
+        Self {
+            field: field.into(),
+            op: op.into(),
+            values: values.iter().map(|v| (*v).into()).collect(),
+        }
+    }
+}
+
+/// Fields Redline filters issues by. Others are refused, so a view can only
+/// ask what Redmine's own issue list could.
+const FILTER_FIELDS: &[&str] = &[
+    "status_id",
+    "assigned_to_id",
+    "author_id",
+    "fixed_version_id",
+    "tracker_id",
+    "priority_id",
+    "category_id",
+    "project_id",
+    "subproject_id",
+    "issue_id",
+    "parent_id",
+    "subject",
+    "any_searchable",
+    "watcher_id",
+    "updated_on",
+    "created_on",
+    "start_date",
+    "due_date",
+    "closed_on",
+];
+
+/// Operators Redmine's filters take.
+const FILTER_OPS: &[&str] = &[
+    "=", "!", "*", "!*", "~", "!~", "^", "$", "o", "c", ">=", "<=", "><", ">t-", "<t-", "t",
+];
+
+impl IssueFilter {
+    /// The query string Redmine's issue list takes for this filter. Fails on
+    /// a field, operator or sort Redline doesn't use.
+    pub fn params(&self) -> Result<Vec<(String, String)>> {
+        let mut out: Vec<(String, String)> = vec![("set_filter".into(), "1".into())];
+        if let Some(project) = self.project_id {
+            out.push(("project_id".into(), project.to_string()));
+        }
+        let mut conditions = self.conditions.clone();
+        if !conditions.iter().any(|c| c.field == "status_id") {
+            conditions.insert(0, Condition::new("status_id", "*", &[]));
+        }
+        if self.project_id.is_some() && !conditions.iter().any(|c| c.field == "subproject_id") {
+            // Whatever the server's setting, a team's list includes its sub-teams.
+            conditions.push(Condition::new("subproject_id", "*", &[]));
+        }
+        for c in &conditions {
+            let field_ok = FILTER_FIELDS.contains(&c.field.as_str())
+                || c.field
+                    .strip_prefix("cf_")
+                    .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+            if !field_ok || !FILTER_OPS.contains(&c.op.as_str()) {
+                return Err(Error::Invalid(format!(
+                    "can't filter issues by {} {}",
+                    c.field, c.op
+                )));
+            }
+            out.push(("f[]".into(), c.field.clone()));
+            out.push((format!("op[{}]", c.field), c.op.clone()));
+            for v in &c.values {
+                out.push((format!("v[{}][]", c.field), v.clone()));
+            }
+        }
+        let sort = self
+            .sort
+            .as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or("updated_on:desc,id:desc");
+        let sort_ok = sort.split(',').all(|part| {
+            let name = part
+                .strip_suffix(":desc")
+                .or_else(|| part.strip_suffix(":asc"))
+                .unwrap_or(part);
+            !name.is_empty()
+                && name
+                    .bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'.')
+        });
+        if !sort_ok {
+            return Err(Error::Invalid(format!("can't sort issues by {sort}")));
+        }
+        out.push(("sort".into(), sort.into()));
+        Ok(out)
+    }
 }
 
 /// Filters for listing time entries. Everything is optional.
@@ -648,6 +769,37 @@ impl Client {
         page(body, "issues")
     }
 
+    /// One page of the issues `filter` finds, as Redmine's own issue list
+    /// would show them, with how many it finds in all.
+    pub async fn find_issues(
+        &self,
+        filter: &IssueFilter,
+        offset: u64,
+        limit: u32,
+        include: &[&str],
+    ) -> Result<Page<Issue>> {
+        let mut params = filter.params()?;
+        params.push(("offset".into(), offset.to_string()));
+        params.push(("limit".into(), limit.clamp(1, PAGE_SIZE).to_string()));
+        if !include.is_empty() {
+            params.push(("include".into(), include.join(",")));
+        }
+        let params: Vec<(&str, String)> = params
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.clone()))
+            .collect();
+        let body: Value = self.get("issues.json", &params).await?;
+        page(body, "issues")
+    }
+
+    /// How many issues `filter` finds: one issue's worth of reading.
+    pub async fn count_issues(&self, filter: &IssueFilter) -> Result<u64> {
+        let mut plain = filter.clone();
+        // Sorting a count is wasted work for the server.
+        plain.sort = Some("id".into());
+        Ok(self.find_issues(&plain, 0, 1, &[]).await?.total_count)
+    }
+
     /// One issue with the given extras, for example
     /// `["journals", "watchers", "children", "allowed_statuses"]`.
     pub async fn issue(&self, id: u64, include: &[&str]) -> Result<Issue> {
@@ -949,11 +1101,8 @@ impl Client {
                     .map_err(network_error)?
             };
             let status = response.status();
-            if matches!(
-                status,
-                StatusCode::TOO_MANY_REQUESTS | StatusCode::SERVICE_UNAVAILABLE
-            ) {
-                let after = retry_after(&response);
+            let after = retry_after(&response);
+            if is_slow_down(status, after) {
                 // The pause applies to the next turn, this request's included.
                 self.pacer.told_to_slow_down(after);
                 if attempt >= MAX_ATTEMPTS || after.is_some_and(|a| a > MAX_RETRY_AFTER) {
@@ -1024,6 +1173,13 @@ fn network_error(e: reqwest::Error) -> Error {
     } else {
         Error::Network(e.without_url().to_string())
     }
+}
+
+/// Whether an answer asks Redline to slow down: 429 and 503, the 420 and
+/// 509 some gateways use, and any error that says when to try again.
+fn is_slow_down(status: StatusCode, retry_after: Option<Duration>) -> bool {
+    matches!(status.as_u16(), 420 | 429 | 503 | 509)
+        || (retry_after.is_some() && (status.is_client_error() || status.is_server_error()))
 }
 
 /// `Retry-After` as a wait: a number of seconds, or an HTTP date.

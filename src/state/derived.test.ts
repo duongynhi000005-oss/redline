@@ -1,11 +1,11 @@
-import { createDemoBackend } from "../lib/demoBackend";
+import { createDemoBackend, demoIssues } from "../lib/demoBackend";
 import type { Issue, Metadata } from "../lib/types";
 import { groupIssues } from "../lib/views";
 import { derive, issuesForRoute } from "./derived";
 
 async function demo(): Promise<{ meta: Metadata; issues: Issue[] }> {
   const backend = createDemoBackend({ signedIn: true });
-  return { meta: await backend.getMetadata(), issues: await backend.listIssues() };
+  return { meta: await backend.getMetadata(), issues: demoIssues() };
 }
 
 describe("derive", () => {
