@@ -15,9 +15,7 @@ export function useIssueCount(filter: IssueFilter | null): number | null {
   const key = filter ? `count:${filterKey(filter)}` : null;
   // The effect reads the filter back from this, so a new object with the same contents asks nothing.
   const asked = filter ? JSON.stringify(filter) : null;
-  const value = useApp((s) =>
-    key ? (s.counts.get(key)?.value ?? null) : null,
-  );
+  const value = useApp((s) => (key ? (s.counts.get(key)?.value ?? null) : null));
   const epoch = useApp((s) => s.countEpoch);
   const requestCount = useApp((s) => s.requestCount);
   useEffect(() => {
@@ -64,19 +62,14 @@ export function useCycleProgress(
     const among = (statuses: string[]): IssueFilter | null =>
       statuses.length
         ? {
-            conditions: [
-              version,
-              { field: "status_id", op: "=", values: statuses },
-            ],
+            conditions: [version, { field: "status_id", op: "=", values: statuses }],
           }
         : null;
     return {
       total: {
         conditions: [
           version,
-          canceled.length
-            ? { field: "status_id", op: "!", values: canceled }
-            : { field: "status_id", op: "*", values: [] },
+          canceled.length ? { field: "status_id", op: "!", values: canceled } : { field: "status_id", op: "*", values: [] },
         ],
       },
       done: among(ids(["completed"])),

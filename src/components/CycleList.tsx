@@ -23,40 +23,22 @@ export function CycleList({ teamId }: { teamId: number }) {
   const navigate = useApp((s) => s.navigate);
   const openVersionDialog = useApp((s) => s.openVersionDialog);
   const d = useDerived();
-  const cycles = useMemo(
-    () => (meta ? teamCycles(teamId, d, meta) : []),
-    [teamId, d, meta],
-  );
+  const cycles = useMemo(() => (meta ? teamCycles(teamId, d, meta) : []), [teamId, d, meta]);
   const open = cycles.filter((c) => c.version.status !== "closed");
   const closed = cycles.filter((c) => c.version.status === "closed").reverse();
-  const canCreate = useMemo(
-    () => cycleProjects(meta, teamId).length > 0,
-    [meta, teamId],
-  );
+  const canCreate = useMemo(() => cycleProjects(meta, teamId).length > 0, [meta, teamId]);
 
   const row = (c: (typeof cycles)[number]) => {
     return (
       <li key={c.version.id}>
-        <button
-          type="button"
-          className="cycle-row"
-          onClick={() =>
-            navigate({ view: "cycle", teamId, versionId: c.version.id })
-          }
-        >
+        <button type="button" className="cycle-row" onClick={() => navigate({ view: "cycle", teamId, versionId: c.version.id })}>
           <Icon name="cycle" />
           <span className="cycle-row-meta">
             <span className="cycle-name">{c.version.name}</span>
-            {c.version.description && (
-              <span className="cycle-row-description">
-                {c.version.description}
-              </span>
-            )}
+            {c.version.description && <span className="cycle-row-description">{c.version.description}</span>}
           </span>
           {c.current && <span className="chip chip-current">Current</span>}
-          {c.version.status === "locked" && (
-            <span className="chip cycle-status-locked">Locked</span>
-          )}
+          {c.version.status === "locked" && <span className="chip cycle-status-locked">Locked</span>}
           <span className="cycle-dates">{dateLabel(c.version.due_date)}</span>
           {c.version.status === "closed" ? (
             <span className="cycle-count muted">Closed</span>
@@ -88,11 +70,7 @@ export function CycleList({ teamId }: { teamId: number }) {
         <span className="count">{cycles.length}</span>
         <span className="header-spacer" />
         {canCreate && (
-          <button
-            type="button"
-            className="header-button"
-            onClick={() => openVersionDialog(teamId)}
-          >
+          <button type="button" className="header-button" onClick={() => openVersionDialog(teamId)}>
             <Icon name="plus" size={12} />
             <span>New cycle</span>
           </button>
@@ -122,22 +100,10 @@ export function CycleList({ teamId }: { teamId: number }) {
 }
 
 /** An open cycle's progress, counted by Redmine; past cycles aren't counted, to keep requests down. */
-function CycleRowProgress({
-  cycle,
-  d,
-  meta,
-}: {
-  cycle: CycleSummary;
-  d: Derived;
-  meta: Metadata | null;
-}) {
+function CycleRowProgress({ cycle, d, meta }: { cycle: CycleSummary; d: Derived; meta: Metadata | null }) {
   const progress = useCycleProgress(cycle.version.id, d, meta, false);
-  const pct = progress?.total
-    ? Math.round((progress.done / progress.total) * 100)
-    : 0;
-  const startedPct = progress?.total
-    ? Math.round((progress.started / progress.total) * 100)
-    : 0;
+  const pct = progress?.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  const startedPct = progress?.total ? Math.round((progress.started / progress.total) * 100) : 0;
   return (
     <>
       <span
@@ -149,14 +115,9 @@ function CycleRowProgress({
         aria-valuenow={pct}
       >
         <span className="cycle-progress-done" style={{ width: `${pct}%` }} />
-        <span
-          className="cycle-progress-started"
-          style={{ width: `${startedPct}%` }}
-        />
+        <span className="cycle-progress-started" style={{ width: `${startedPct}%` }} />
       </span>
-      <span className="cycle-count">
-        {progress ? `${progress.done} of ${progress.total} done` : "…"}
-      </span>
+      <span className="cycle-count">{progress ? `${progress.done} of ${progress.total} done` : "…"}</span>
     </>
   );
 }
