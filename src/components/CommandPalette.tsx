@@ -5,6 +5,7 @@ import { matchesShortcut, shortcutLabel } from "../lib/platform";
 import type { Issue } from "../lib/types";
 import type { PickerKind, Route } from "../state/app";
 import { routeKey, targetIssueId, useApp } from "../state/app";
+import { useIssueSearch, withFound } from "../state/search";
 import { LAYOUTS } from "../lib/views";
 import { RELATION_CHOICES } from "../lib/relations";
 import { canManageVersions, cycleProjects } from "./Cycle";
@@ -534,10 +535,15 @@ function PaletteContent() {
 
   const q = query.trim();
   const visibleActions = q ? actions.filter((a) => matchesQuery(`${a.label} ${a.keywords ?? ""}`, q)) : actions;
+  // Issues Redline holds show at once; Redmine's answer adds the rest.
+  const { found, searching } = useIssueSearch(q);
   const issueMatches = useMemo(() => {
     if (!q) return [];
-    return rankIssues(issues.values(), q, MAX_ISSUES);
-  }, [q, issues]);
+    return rankIssues(withFound(issues, found), q, MAX_ISSUES);
+  }, [q, issues, found]);
+  // A number opens that issue at once, before Redmine has said what it is.
+  const wanted = /^#?(\d+)$/.exec(q)?.[1];
+  const byNumber = wanted && searching && !issueMatches.some((i) => String(i.id) === wanted) ? Number(wanted) : null;
 
   const groups = [...new Set(visibleActions.map((a) => a.group))];
 
@@ -564,8 +570,15 @@ function PaletteContent() {
               ))}
           </Command.Group>
         ))}
-        {issueMatches.length > 0 && (
+        {(issueMatches.length > 0 || byNumber) && (
           <Command.Group heading="Issues">
+            {byNumber && (
+              <Command.Item key={byNumber} value={`open-${byNumber}`} onSelect={() => run(() => openIssue(byNumber))}>
+                <Icon name="issues" />
+                <span className="palette-id">#{byNumber}</span>
+                <span className="palette-label muted">Open issue</span>
+              </Command.Item>
+            )}
             {issueMatches.map((issue) => (
               <Command.Item key={issue.id} value={`open-${issue.id}`} onSelect={() => run(() => openIssue(issue.id))}>
                 <StatusIcon category={issueCategory(issue, d.categories)} />

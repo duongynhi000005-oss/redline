@@ -61,19 +61,12 @@ describe("syncLabel", () => {
     expect(syncLabel("error", "Redmine is busy", now, now)).toBe("Redmine is busy");
   });
 
-  it("counts a long sync's progress", () => {
+  it("says quietly when the server asks Redline to slow down", () => {
     expect(syncLabel("syncing", null, null, now)).toBe("Syncing…");
-    expect(syncLabel("syncing", null, null, now, { fetched: 1200, total: 5000 })).toBe(
-      `Syncing ${(1200).toLocaleString()} of ${(5000).toLocaleString()} issues`,
-    );
-    // Told to slow down: says so quietly, with the count when there is one.
-    expect(syncLabel("syncing", null, null, now, null, true)).toBe("Slowing down for the server…");
-    expect(syncLabel("syncing", null, null, now, { fetched: 1200, total: 5000 }, true)).toBe(
-      `Slowing down for the server · ${(1200).toLocaleString()} of ${(5000).toLocaleString()}`,
-    );
+    expect(syncLabel("syncing", null, null, now, true)).toBe("Slowing down for the server…");
+    // Lists load between syncs, so it shows while idle too.
+    expect(syncLabel("idle", null, now - 10_000, now, true)).toBe("Slowing down for the server…");
     // Still busy after every retry: not an error, and not "Synced just now".
     expect(syncLabel("busy", null, now - 10_000, now)).toBe("Server is busy · Trying again soon");
-    // Progress left over from a finished sync isn't shown.
-    expect(syncLabel("idle", null, now - 10_000, now, { fetched: 5000, total: 5000 })).toBe("Synced just now");
   });
 });

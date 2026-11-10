@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, vi } from "vitest";
 import { App } from "../App";
 import { createDemoBackend } from "../lib/demoBackend";
 import { useApp } from "../state/app";
@@ -21,6 +22,13 @@ async function openIssue(id: number) {
 }
 
 const timeSection = () => screen.getByRole("region", { name: "Time" });
+
+// The demo's time was logged around Nov 9, 2026; "today" is that day.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"], shouldAdvanceTime: true });
+  vi.setSystemTime(new Date(2026, 10, 9, 15));
+});
+afterEach(() => vi.useRealTimers());
 
 describe("time tracking", () => {
   it("lists an issue's time and logs more from the dialog", async () => {

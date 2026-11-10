@@ -1,29 +1,34 @@
 import { useMemo } from "react";
 import { useApp } from "../state/app";
+import { useCycleProgress } from "../state/counts";
+import type { CycleSummary, Derived } from "../state/derived";
 import { routeTitle, teamCycles, useDerived } from "../state/derived";
+import type { Metadata } from "../lib/types";
 import { canManageVersions, cycleProjects } from "./Cycle";
 import { Icon } from "./icons";
 import { OpenInRedmineButton } from "./OpenInRedmine";
 
 function dateLabel(iso: string | null | undefined) {
   if (!iso) return "No due date";
-  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 export function CycleList({ teamId }: { teamId: number }) {
-  const issues = useApp((s) => s.issues);
   const meta = useApp((s) => s.meta);
   const route = useApp((s) => s.route);
   const navigate = useApp((s) => s.navigate);
   const openVersionDialog = useApp((s) => s.openVersionDialog);
   const d = useDerived();
-  const cycles = useMemo(() => (meta ? teamCycles(teamId, issues.values(), d, meta) : []), [teamId, issues, d, meta]);
+  const cycles = useMemo(() => (meta ? teamCycles(teamId, d, meta) : []), [teamId, d, meta]);
   const open = cycles.filter((c) => c.version.status !== "closed");
   const closed = cycles.filter((c) => c.version.status === "closed").reverse();
   const canCreate = useMemo(() => cycleProjects(meta, teamId).length > 0, [meta, teamId]);
 
   const row = (c: (typeof cycles)[number]) => {
-    const pct = c.total ? Math.round((c.done / c.total) * 100) : 0;
     return (
       <li key={c.version.id}>
         <button type="button" className="cycle-row" onClick={() => navigate({ view: "cycle", teamId, versionId: c.version.id })}>
@@ -35,23 +40,11 @@ export function CycleList({ teamId }: { teamId: number }) {
           {c.current && <span className="chip chip-current">Current</span>}
           {c.version.status === "locked" && <span className="chip cycle-status-locked">Locked</span>}
           <span className="cycle-dates">{dateLabel(c.version.due_date)}</span>
-          <span
-            className="cycle-progress"
-            role="progressbar"
-            aria-label={`${c.version.name} progress`}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={pct}
-          >
-            <span className="cycle-progress-done" style={{ width: `${pct}%` }} />
-            <span
-              className="cycle-progress-started"
-              style={{ width: `${c.total ? Math.round((c.started / c.total) * 100) : 0}%` }}
-            />
-          </span>
-          <span className="cycle-count">
-            {c.done} of {c.total} done
-          </span>
+          {c.version.status === "closed" ? (
+            <span className="cycle-count muted">Closed</span>
+          ) : (
+            <CycleRowProgress cycle={c} d={d} meta={meta} />
+          )}
         </button>
         {canManageVersions(meta, c.version.project.id) && (
           <span className="cycle-row-actions">
@@ -103,5 +96,28 @@ export function CycleList({ teamId }: { teamId: number }) {
         )}
       </div>
     </section>
+  );
+}
+
+/** An open cycle's progress, counted by Redmine; past cycles aren't counted, to keep requests down. */
+function CycleRowProgress({ cycle, d, meta }: { cycle: CycleSummary; d: Derived; meta: Metadata | null }) {
+  const progress = useCycleProgress(cycle.version.id, d, meta, false);
+  const pct = progress?.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  const startedPct = progress?.total ? Math.round((progress.started / progress.total) * 100) : 0;
+  return (
+    <>
+      <span
+        className="cycle-progress"
+        role="progressbar"
+        aria-label={`${cycle.version.name} progress`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={pct}
+      >
+        <span className="cycle-progress-done" style={{ width: `${pct}%` }} />
+        <span className="cycle-progress-started" style={{ width: `${startedPct}%` }} />
+      </span>
+      <span className="cycle-count">{progress ? `${progress.done} of ${progress.total} done` : "…"}</span>
+    </>
   );
 }

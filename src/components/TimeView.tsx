@@ -67,6 +67,12 @@ export function TimeView({ teamId }: { teamId: number }) {
       ),
     [current],
   );
+  // Names the issues time went to, reading those Redline hasn't loaded.
+  const ensureIssues = useApp((s) => s.ensureIssues);
+  const entryIssues = grouping === "issue" ? [...new Set(entries.flatMap((e) => (e.issue ? [e.issue.id] : [])))].join(",") : "";
+  useEffect(() => {
+    if (entryIssues) void ensureIssues(entryIssues.split(",").map(Number));
+  }, [entryIssues, ensureIssues]);
   const issueTitle = (id: number) => {
     const issue = issues.get(id);
     return issue ? `#${id} ${issue.subject}` : `#${id}`;

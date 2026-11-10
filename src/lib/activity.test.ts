@@ -8,9 +8,10 @@ import {
   issueEvents,
   newsEvents,
   timeEvents,
+  MAX_ISSUES,
   wikiEvents,
 } from "./activity";
-import { createDemoBackend } from "./demoBackend";
+import { createDemoBackend, demoIssues } from "./demoBackend";
 import type { Issue, Journal, Metadata, TimeEntry } from "./types";
 
 const meta = {
@@ -157,7 +158,7 @@ describe("activity source", () => {
     const wikiIndex = vi.spyOn(backend, "wikiIndex");
     const journals = vi.spyOn(backend, "issueJournals");
     const meta = await backend.getMetadata();
-    const issues = new Map((await backend.listIssues()).map((i) => [i.id, i]));
+    const issues = new Map(demoIssues().map((i) => [i.id, i]));
     const source = activitySource(backend, meta, 1, [1, 3]);
     expect(source.kinds).toEqual(["issues", "time", "wiki", "news", "files"]);
 
@@ -166,13 +167,19 @@ describe("activity source", () => {
     expect([...kinds].sort()).toEqual(["files", "issues", "news", "time", "wiki"]);
     // Only Web and its sub-team: Mobile's news isn't here.
     expect(page.events.every((e) => [1, 3].includes(e.projectId))).toBe(true);
-    expect(page.capped).toBe(false);
+    const from = Date.parse(activityWindow(new Date(), 14).from);
+    const changed = [...issues.values()].filter((i) => [1, 3].includes(i.project.id) && Date.parse(i.updated_on) >= from);
+    expect(page.capped).toBe(changed.length > MAX_ISSUES);
 
     await source.load(earlierWindow(activityWindow(new Date(), 14), 14), issues);
     expect(wikiIndex).toHaveBeenCalledTimes(1);
-    // Journals are only asked for issues changed since the window began.
+    // Journals are only asked for issues changed in the window, the most recent first, a few at a time.
     const asked = journals.mock.calls[0]![0];
-    expect(asked.every((id) => Date.parse(issues.get(id)!.updated_on) >= Date.parse(activityWindow(new Date(), 14).from))).toBe(true);
+    expect(asked.length).toBeLessThanOrEqual(MAX_ISSUES);
+    expect(asked.every((id) => Date.parse(issues.get(id)!.updated_on) >= from)).toBe(true);
+    // An earlier window doesn't ask again for issues already read.
+    const again = journals.mock.calls[1]?.[0] ?? [];
+    expect(again.some((id) => asked.includes(id))).toBe(false);
   });
 
   it("offers only what the role may see", async () => {

@@ -2,7 +2,7 @@
 //! count how many requests Redline sends and how it copes with 429s.
 //!
 //! It serves just enough of Redmine's REST API for sign-in, metadata and
-//! issue sync: projects, statuses, trackers, priorities, activities, roles,
+//! issue lists: projects, statuses, trackers, priorities, activities, roles,
 //! queries, versions and memberships per project, and `issues.json` with the
 //! filters, sort orders and paging Redline uses. In front of that sits a
 //! token bucket: past it, the server answers 429, with or without
@@ -194,34 +194,79 @@ impl StandIn {
                     })],
                 )
             }
-            ["issues.json"] => paged("issues", self.issues(&query)),
+            ["issues.json"] => {
+                let pairs: Vec<(String, String)> = request
+                    .url
+                    .query_pairs()
+                    .map(|(k, v)| (k.into_owned(), v.into_owned()))
+                    .collect();
+                paged("issues", self.issues(&query, &pairs))
+            }
             _ => ResponseTemplate::new(404),
         }
     }
 
-    /// Issues matching Redline's filters, in the order asked for.
-    fn issues(&self, query: &BTreeMap<String, String>) -> Vec<Value> {
+    /// Issues matching Redline's filters, in the order asked for: the
+    /// generic `f[]`/`op[]`/`v[][]` form Redmine's issue list uses, and the
+    /// older shorthand (`status_id=*`, `updated_on=>=…`).
+    fn issues(&self, query: &BTreeMap<String, String>, pairs: &[(String, String)]) -> Vec<Value> {
         let config = &self.shared.config;
-        let status = query.get("status_id").map(String::as_str).unwrap_or("open");
-        let since = query
-            .get("updated_on")
-            .and_then(|v| v.strip_prefix(">="))
-            .map(str::to_owned);
-        let ids: Option<Vec<u64>> = query
-            .get("issue_id")
-            .map(|v| v.split(',').filter_map(|i| i.parse().ok()).collect());
+        let values = |field: &str| -> Vec<String> {
+            let key = format!("v[{field}][]");
+            pairs
+                .iter()
+                .filter(|(k, _)| *k == key)
+                .flat_map(|(_, v)| v.split(',').map(str::to_owned).collect::<Vec<_>>())
+                .collect()
+        };
+        let op = |field: &str| query.get(&format!("op[{field}]")).map(String::as_str);
+        let status: Box<dyn Fn(u64) -> bool> =
+            match (op("status_id"), query.get("status_id").map(String::as_str)) {
+                (Some("*"), _) | (None, Some("*")) => Box::new(|_| true),
+                (Some("c"), _) | (None, Some("closed")) => {
+                    Box::new(|id| is_closed(id, config.issues))
+                }
+                (Some("="), _) => {
+                    let wanted = values("status_id");
+                    Box::new(move |id| {
+                        let status = if is_closed(id, config.issues) {
+                            "5"
+                        } else {
+                            "1"
+                        };
+                        wanted.iter().any(|w| w == status)
+                    })
+                }
+                _ => Box::new(|id| !is_closed(id, config.issues)),
+            };
+        let since = match op("updated_on") {
+            Some(">=") => values("updated_on").into_iter().next(),
+            _ => query
+                .get("updated_on")
+                .and_then(|v| v.strip_prefix(">="))
+                .map(str::to_owned),
+        };
+        let ids: Option<Vec<u64>> = match op("issue_id") {
+            Some("=") => Some(
+                values("issue_id")
+                    .iter()
+                    .filter_map(|i| i.trim().parse().ok())
+                    .collect(),
+            ),
+            _ => query
+                .get("issue_id")
+                .map(|v| v.split(',').filter_map(|i| i.parse().ok()).collect()),
+        };
+        let project: Option<u64> = query.get("project_id").and_then(|p| p.parse().ok());
         let mut found: Vec<u64> = (1..=config.issues)
-            .filter(|&id| match status {
-                "*" => true,
-                "closed" => is_closed(id, config.issues),
-                _ => !is_closed(id, config.issues),
-            })
+            .filter(|&id| status(id))
             .filter(|&id| {
                 since
                     .as_deref()
                     .is_none_or(|s| updated_on(id).as_str() >= s)
             })
             .filter(|id| ids.as_ref().is_none_or(|ids| ids.contains(id)))
+            .filter(|&id| project.is_none_or(|p| id % config.projects + 1 == p))
             .collect();
         if query
             .get("sort")

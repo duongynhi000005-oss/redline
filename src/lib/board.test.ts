@@ -1,11 +1,11 @@
-import { createDemoBackend } from "./demoBackend";
+import { createDemoBackend, demoIssues } from "./demoBackend";
 import { boardColumns, canDrop } from "./board";
 import { derive } from "../state/derived";
 import type { Issue, Metadata } from "./types";
 
 async function demo(): Promise<{ meta: Metadata; issues: Issue[] }> {
   const backend = createDemoBackend({ signedIn: true });
-  return { meta: await backend.getMetadata(), issues: await backend.listIssues() };
+  return { meta: await backend.getMetadata(), issues: demoIssues() };
 }
 
 describe("boardColumns", () => {

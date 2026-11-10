@@ -1,109 +1,101 @@
-//! Sync against a large stand-in Redmine that rate limits: Redline should
-//! show the newest issues first, keep to its pace, back off when told, and
-//! finish without failing.
+//! Opening Redline against a large stand-in Redmine that rate limits:
+//! Redline should ask only for what's on screen, the way Redmine's own
+//! pages do, keep to its pace, back off when told, and not fail.
 
 mod support;
 
+use std::future::Future;
 use std::time::{Duration, Instant};
 
-use redline_core::{Client, Error, RequestLimits, Store, Syncer, projects_needing_details};
+use redline_core::{Client, Condition, Error, IssueFilter, RequestLimits, Result, Store, Syncer};
 use support::standin::{Config, StandIn};
 
-/// Older pages read per sync pass, as the app does.
-const PAGES_PER_PASS: usize = 5;
-/// Projects whose versions and members are read per pass, as the app does.
-const PROJECTS_PER_PASS: usize = 6;
-
-/// What one run of the app's sync loop looked like.
+/// What opening the app looked like.
 #[derive(Debug)]
 struct Run {
-    /// When the 100 most recently changed issues were all cached.
+    /// When the first page of the list was on screen.
     first_screen: Duration,
-    /// When everything was cached.
+    /// When everything on screen had loaded.
     done: Duration,
-    /// Passes that failed because the server stayed busy.
-    busy_passes: u32,
-    /// Times the first sync's "X of Y" count went down.
-    count_went_down: u32,
+    /// Steps that failed because the server stayed busy.
+    busy: u32,
+    /// Issues the first page and the next one showed.
+    shown: usize,
+    /// Changed issues the second check for changes read.
+    changes: usize,
 }
 
-/// Runs the app's sync loop until everything is cached: core metadata, then
-/// passes that each read the changes, a few pages of older issues and a few
-/// projects' versions and members.
-async fn sync_like_the_app(syncer: &Syncer, newest: u64, retry_wait: Duration) -> Run {
-    let started = Instant::now();
-    // Watches the cache for the newest issues, as the screen would.
-    let store = syncer.store().clone();
-    let watcher = tokio::spawn(async move {
-        loop {
-            let cached = store.issue_ids().unwrap();
-            if cached.iter().filter(|&&id| id > newest - 100).count() == 100 {
-                return started.elapsed();
-            }
-            tokio::time::sleep(Duration::from_millis(5)).await;
-        }
-    });
-    let mut busy_passes = 0;
-    let mut last_count = 0;
-    let mut count_went_down = 0;
-    // Whether the last pass left older issues to read.
-    let mut backfilling = false;
-    let mut pending: Option<Vec<u64>> = None;
+/// Tries a step again when the server stayed busy, as the app does.
+async fn retrying<T, F, Fut>(busy: &mut u32, wait: Duration, mut step: F) -> T
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
     loop {
-        let pass = async {
-            if pending.is_none() {
-                let meta = syncer.sync_core_metadata().await?;
-                pending = Some(projects_needing_details(&meta));
-            }
-            let report = syncer
-                .sync_issues_paced(PAGES_PER_PASS, |p| {
-                    // Every count while the first sync runs, the changes
-                    // read alongside it included.
-                    if backfilling || p.initial {
-                        if p.fetched < last_count {
-                            count_went_down += 1;
-                        }
-                        last_count = p.fetched;
-                    }
-                })
-                .await?;
-            backfilling = report.remaining;
-            let projects = pending.as_mut().expect("read above");
-            let batch: Vec<u64> = projects
-                .drain(..projects.len().min(PROJECTS_PER_PASS))
-                .collect();
-            if !batch.is_empty() {
-                syncer.sync_project_details(&batch).await?;
-            }
-            Ok::<_, Error>(report.remaining || !projects.is_empty())
-        };
-        match pass.await {
-            Ok(true) => {}
-            Ok(false) => break,
+        match step().await {
+            Ok(value) => return value,
             Err(Error::Busy) => {
-                busy_passes += 1;
-                tokio::time::sleep(retry_wait).await;
+                *busy += 1;
+                tokio::time::sleep(wait).await;
             }
-            Err(e) => panic!("sync failed: {e}"),
+            Err(e) => panic!("failed: {e}"),
         }
     }
-    let done = started.elapsed();
+}
+
+fn filter(project_id: Option<u64>, status: &str) -> IssueFilter {
+    IssueFilter {
+        project_id,
+        conditions: vec![Condition::new("status_id", status, &[])],
+        sort: None,
+    }
+}
+
+/// Opens the app: metadata, a list of issues and its next page as the
+/// list scrolls, the sidebar's counts alongside, three recently opened
+/// issues, and two checks for changes.
+async fn open_like_the_app(syncer: &Syncer, wait: Duration) -> Run {
+    let started = Instant::now();
+    let mut busy = 0;
+    retrying(&mut busy, wait, || syncer.sync_metadata()).await;
+
+    let team = filter(None, "*");
+    let counts = [
+        filter(Some(1), "c"),
+        filter(Some(2), "o"),
+        filter(None, "*"),
+    ];
+    let mut count_busy = 0;
+    let ((first, first_screen), ()) = tokio::join!(
+        async {
+            let first = retrying(&mut busy, wait, || syncer.find_issues(&team, 0)).await;
+            (first, started.elapsed())
+        },
+        async {
+            for filter in &counts {
+                retrying(&mut count_busy, wait, || syncer.count_issues(filter)).await;
+            }
+        }
+    );
+    let offset = first.items.len() as u64;
+    let next = retrying(&mut busy, wait, || syncer.find_issues(&team, offset)).await;
+    retrying(&mut busy, wait, || syncer.issues_by_id(&[1, 2, 3])).await;
+    retrying(&mut busy, wait, || syncer.poll_changes()).await;
+    let changes = retrying(&mut busy, wait, || syncer.poll_changes()).await;
     Run {
-        first_screen: tokio::time::timeout(Duration::from_secs(1), watcher)
-            .await
-            .expect("the newest issues were cached")
-            .unwrap(),
-        done,
-        busy_passes,
-        count_went_down,
+        first_screen,
+        done: started.elapsed(),
+        busy: busy + count_busy,
+        shown: first.items.len() + next.items.len(),
+        changes: changes.len(),
     }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn syncs_a_large_server_that_rate_limits_without_failing() {
-    // Scaled down so it runs in a few seconds: 50 requests a second after a
-    // burst of 10, no Retry-After, and Redline set to 3 at once and 6000 a
-    // minute (more than the server allows, so it has to back off).
+async fn opens_a_large_server_that_rate_limits_with_few_requests() {
+    // 50 requests a second after a burst of 10, no Retry-After, and Redline
+    // set to 3 at once and 6000 a minute (more than the server allows, so it
+    // has to back off).
     let run = StandIn::start(Config {
         projects: 30,
         issues: 2500,
@@ -112,37 +104,38 @@ async fn syncs_a_large_server_that_rate_limits_without_failing() {
         retry_after: false,
     })
     .await;
-    let limits = RequestLimits {
-        at_once: 3,
-        per_minute: 6000,
-    };
     let client = Client::new(&run.server.uri(), "key")
         .unwrap()
-        .with_limits(limits)
+        .with_limits(RequestLimits {
+            at_once: 3,
+            per_minute: 6000,
+        })
         .with_retry_unit(Duration::from_millis(20));
     let syncer = Syncer::new(client, Store::in_memory().unwrap());
-    let result = sync_like_the_app(&syncer, run.standin.newest(), Duration::from_millis(200)).await;
+    let result = open_like_the_app(&syncer, Duration::from_millis(200)).await;
     let tally = run.standin.tally();
 
-    // Everything arrived, metadata included.
-    assert_eq!(syncer.store().count_issues().unwrap(), 2500);
+    // Two pages of the list showed.
+    assert_eq!(result.shown, 200, "{result:?}");
+    // Only issues opened are kept, not the lists.
+    assert_eq!(syncer.store().count_issues().unwrap(), 3);
+    // Versions and members only for the projects the user is in, not all 30.
     let meta = syncer.store().metadata().unwrap();
     assert_eq!(meta.projects.len(), 30);
-    assert_eq!(meta.versions.len(), 30);
-    assert_eq!(meta.memberships.len(), 30);
+    assert_eq!(meta.versions.len(), 5);
+    assert_eq!(tally.by_kind["versions"], 5, "{tally:?}");
     // Never more in flight than allowed.
     assert!(tally.most_at_once <= 3, "{tally:?}");
-    // The newest issues came well before the rest.
-    assert!(result.first_screen < result.done / 2, "{result:?}");
     // It backed off instead of hammering: refusals stay a small share.
     assert!(tally.limited * 4 < tally.requests, "{tally:?}");
-    // 2500 issues: one newest page, then open and closed pages of 100 that
-    // overlap by 10, a few more for the overlap and passes.
-    let issue_requests = tally.by_kind["issues"] - tally.limited.min(tally.by_kind["issues"]);
-    assert!(issue_requests <= 35, "{tally:?}");
-    assert_eq!(result.busy_passes, 0, "{result:?}");
-    // The sidebar's "X of Y" only goes up while the first sync runs.
-    assert_eq!(result.count_went_down, 0, "{result:?}");
+    // Issues: two list pages, three counts, the opened issues and two
+    // checks for changes; nothing like reading all 2500.
+    assert!(tally.by_kind["issues"] <= 8 + tally.limited, "{tally:?}");
+    assert!(tally.requests - tally.limited <= 32, "{tally:?}");
+    assert_eq!(result.busy, 0, "{result:?}");
+    assert!(result.first_screen <= result.done);
+    // Nothing changed between the two checks.
+    assert_eq!(result.changes, 0, "{result:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -166,10 +159,9 @@ async fn honours_retry_after_for_every_request() {
         .with_retry_unit(Duration::from_millis(50));
     let syncer = Syncer::new(client.clone(), Store::in_memory().unwrap());
     let slowed = client.pacer().slowed();
-    let result = sync_like_the_app(&syncer, run.standin.newest(), Duration::from_secs(1)).await;
+    let result = open_like_the_app(&syncer, Duration::from_secs(1)).await;
     let tally = run.standin.tally();
-    assert_eq!(syncer.store().count_issues().unwrap(), 300);
-    assert_eq!(result.busy_passes, 0, "{result:?}");
+    assert_eq!(result.busy, 0, "{result:?}");
     // It was told to slow down, said so, and recovered.
     assert!(tally.limited > 0);
     assert!(slowed.has_changed().unwrap());
@@ -181,8 +173,8 @@ async fn honours_retry_after_for_every_request() {
     assert!(tally.limited * 3 < tally.requests, "{tally:?}");
 }
 
-/// Prints request counts and timings for a large server with a strict
-/// limit, with Redline's default limits. Run with
+/// Prints request counts and timings for opening the app on a large server
+/// with a strict limit, with Redline's default limits. Run with
 /// `cargo test -p redline-core --test rate_limit -- --ignored --nocapture`.
 /// `STANDIN_PER_SECOND`, `STANDIN_BURST` and `STANDIN_RETRY_AFTER=0` change
 /// the server's limit.
@@ -205,17 +197,17 @@ async fn measure_a_large_server() {
     .await;
     let client = Client::new(&run.server.uri(), "key").unwrap();
     let syncer = Syncer::new(client, Store::in_memory().unwrap());
-    let result = sync_like_the_app(&syncer, run.standin.newest(), Duration::from_secs(45)).await;
+    let result = open_like_the_app(&syncer, Duration::from_secs(45)).await;
     let tally = run.standin.tally();
     eprintln!(
-        "RESULT: requests={} limited={} most_at_once={} cached={} first_screen={:?} done={:?} busy_passes={} by_kind={:?}",
+        "RESULT: requests={} limited={} most_at_once={} cached={} first_screen={:?} done={:?} busy={} by_kind={:?}",
         tally.requests,
         tally.limited,
         tally.most_at_once,
         syncer.store().count_issues().unwrap(),
         result.first_screen,
         result.done,
-        result.busy_passes,
+        result.busy,
         tally.by_kind
     );
 }

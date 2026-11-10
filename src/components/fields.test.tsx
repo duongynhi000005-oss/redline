@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 import { boardColumns, canDrop } from "../lib/board";
-import { createDemoBackend } from "../lib/demoBackend";
+import { createDemoBackend, demoIssues } from "../lib/demoBackend";
 import { fieldEnabled, fieldShape, nextFieldValue } from "../lib/edit";
 import { filterOptions, matchesFilters } from "../lib/filters";
 import { groupIssues } from "../lib/views";
@@ -105,6 +105,12 @@ describe("custom fields", () => {
 
   it("picks a known value, types a new one, and clears it", async () => {
     const { user, backend } = await start();
+    // Values are known from issues Redline has loaded: here, the Web team's.
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    await user.click(within(nav).getAllByRole("button", { name: "Issues" })[1]!);
+    await user.click(await screen.findByRole("tab", { name: "All issues" }));
+    await waitFor(() => expect(useApp.getState().lists.size).toBeGreaterThan(1));
+    await waitFor(() => expect([...useApp.getState().lists.values()].every((l) => !l.loading)).toBe(true));
     await openIssue(1);
     await user.click(within(properties()).getByRole("button", { name: "Size: change" }));
     let picker = await screen.findByRole("dialog", { name: "Set Size…" });
@@ -160,7 +166,7 @@ describe("categories", () => {
   it("filter and group issues", async () => {
     const backend = createDemoBackend({ signedIn: true });
     const meta = await backend.getMetadata();
-    const issues = (await backend.listIssues()).filter((i) => i.project.id === 1);
+    const issues = demoIssues().filter((i) => i.project.id === 1);
     const d = derive(meta);
     const ctx = { categories: d.categories, priorities: d.priorities, labelFields: d.labelFields };
     const options = filterOptions("category", issues, meta, ctx);
@@ -178,7 +184,7 @@ describe("categories", () => {
   it("only take issues from their own project on the board", async () => {
     const backend = createDemoBackend({ signedIn: true });
     const meta = await backend.getMetadata();
-    const issues = await backend.listIssues();
+    const issues = demoIssues();
     const columns = boardColumns(issues, "category", "priority", derive(meta), meta, { showEmpty: false });
     const frontend = columns.find((c) => c.label === "Frontend")!;
     expect(frontend.drop).toEqual({ category_id: 1 });

@@ -1,8 +1,12 @@
 //! The local cache: one SQLite database per Redmine server and user.
 //!
-//! Every screen reads from here, so the UI is instant and works offline. Rows
-//! keep Redmine's JSON as it came, which lets older caches survive model
-//! changes; the columns beside it are only what queries need.
+//! It keeps what changes rarely (projects, statuses, versions, members) and
+//! the issues someone recently opened, created or changed, up to
+//! [`RECENT_ISSUES`] of them, so those open at once and offline. Lists of
+//! issues come from Redmine as each view needs them, the way Redmine's own
+//! pages do, and aren't kept here. Rows keep Redmine's JSON as it came,
+//! which lets older caches survive model changes; the columns beside it are
+//! only what queries need.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -15,7 +19,10 @@ use crate::error::{Error, Result};
 use crate::models::*;
 
 /// Bump when the schema changes, and add a step to [`migrate`].
-const SCHEMA_VERSION: i32 = 2;
+const SCHEMA_VERSION: i32 = 3;
+
+/// How many recently used issues the cache keeps. Older ones are dropped.
+pub const RECENT_ISSUES: usize = 500;
 
 /// Everything about the server that changes rarely.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
@@ -213,13 +220,27 @@ impl Store {
 
     // ----- Issues --------------------------------------------------------
 
-    /// Inserts or updates issues. Returns the ids that are new or changed.
+    /// Inserts or updates issues and counts them as recently used. Returns
+    /// the ids that are new or changed. Past [`RECENT_ISSUES`], the issues
+    /// used longest ago are dropped.
     ///
     /// An issue counts as changed when anything Redline keeps differs, not
     /// only `updated_on`: Redmine doesn't touch `updated_on` when a relation
     /// is added or removed. Extras a list doesn't carry (watchers, children,
     /// attachments, changesets) are kept from the cached copy until a fresh copy has them.
     pub fn upsert_issues(&self, issues: &[Issue]) -> Result<Vec<u64>> {
+        self.write_issues(issues, true)
+    }
+
+    /// Updates issues the cache already keeps, from a list read for
+    /// something else, without counting them as recently used or adding
+    /// new ones. Returns the ids that changed.
+    pub fn refresh_cached(&self, issues: &[Issue]) -> Result<Vec<u64>> {
+        self.write_issues(issues, false)
+    }
+
+    fn write_issues(&self, issues: &[Issue], touch: bool) -> Result<Vec<u64>> {
+        let now = now_ms();
         let mut changed = Vec::new();
         let mut conn = self.conn();
         let tx = conn.transaction().map_err(storage)?;
@@ -232,6 +253,16 @@ impl Store {
                 )
                 .optional()
                 .map_err(storage)?;
+            if touch {
+                // Read again, changed or not: it's recently used.
+                tx.execute(
+                    "UPDATE issues SET touched_at = ?2 WHERE id = ?1",
+                    params![issue.id as i64, now],
+                )
+                .map_err(storage)?;
+            } else if previous.is_none() {
+                continue;
+            }
             let mut stored = issue.clone();
             // Journals live in their own table; allowed statuses go stale.
             stored.journals = None;
@@ -250,24 +281,29 @@ impl Store {
                 }
             }
             tx.execute(
-                "INSERT INTO issues (id, project_id, updated_on, json) VALUES (?1, ?2, ?3, ?4)
+                "INSERT INTO issues (id, project_id, updated_on, json, touched_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT(id) DO UPDATE SET project_id = excluded.project_id,
                    updated_on = excluded.updated_on, json = excluded.json",
                 params![
                     issue.id as i64,
                     issue.project.id as i64,
                     issue.updated_on,
-                    to_json(&stored)?
+                    to_json(&stored)?,
+                    now
                 ],
             )
             .map_err(storage)?;
             changed.push(issue.id);
         }
+        if touch {
+            trim(&tx)?;
+        }
         tx.commit().map_err(storage)?;
         Ok(changed)
     }
 
-    /// Every cached issue, newest change first.
+    /// Every cached issue (the recently used ones), newest change first.
     pub fn issues(&self) -> Result<Vec<Issue>> {
         rows(
             &self.conn(),
@@ -401,7 +437,48 @@ fn migrate(conn: &Connection) -> Result<()> {
         )
         .map_err(storage)?;
     }
+    if version < 3 {
+        // Version 3 keeps only recently used issues, not a copy of every
+        // issue. Keep the most recently changed ones and forget the old
+        // full sync's place.
+        conn.execute_batch(&format!(
+            "BEGIN;
+             ALTER TABLE issues ADD COLUMN touched_at INTEGER NOT NULL DEFAULT 0;
+             CREATE INDEX issues_by_touch ON issues (touched_at);
+             DELETE FROM issues WHERE id NOT IN
+               (SELECT id FROM issues ORDER BY updated_on DESC, id DESC LIMIT {keep});
+             DELETE FROM journals WHERE issue_id NOT IN (SELECT id FROM issues);
+             DELETE FROM kv WHERE key IN ('issues_cursor', 'issues_backfill');
+             PRAGMA user_version = 3;
+             COMMIT;",
+            keep = RECENT_ISSUES / 5
+        ))
+        .map_err(storage)?;
+    }
     Ok(())
+}
+
+/// Drops the issues used longest ago, past [`RECENT_ISSUES`].
+fn trim(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "DELETE FROM issues WHERE id NOT IN
+           (SELECT id FROM issues ORDER BY touched_at DESC, updated_on DESC LIMIT ?1)",
+        [RECENT_ISSUES as i64],
+    )
+    .map_err(storage)?;
+    conn.execute(
+        "DELETE FROM journals WHERE issue_id NOT IN (SELECT id FROM issues)",
+        [],
+    )
+    .map_err(storage)?;
+    Ok(())
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 fn storage(e: rusqlite::Error) -> Error {
@@ -598,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn upgrading_to_version_2_pulls_every_issue_again() {
+    fn upgrading_an_old_cache_forgets_the_full_sync() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("cache.sqlite");
         {
@@ -607,7 +684,15 @@ mod tests {
                 .set_value("issues_cursor", &"2026-11-02T00:00:00Z")
                 .unwrap();
             store.set_value("other", &1).unwrap();
-            store.conn().pragma_update(None, "user_version", 1).unwrap();
+            // Put it back the way version 1 left it.
+            store
+                .conn()
+                .execute_batch(
+                    "DROP INDEX issues_by_touch;
+                     ALTER TABLE issues DROP COLUMN touched_at;
+                     PRAGMA user_version = 1;",
+                )
+                .unwrap();
         }
         let store = Store::open(&path).unwrap();
         assert_eq!(store.get_value::<String>("issues_cursor").unwrap(), None);

@@ -185,7 +185,11 @@ export function ActivityView({ projectId }: { projectId: number }) {
                   {onlyMine || hidden.size ? "Nothing that matches" : "Nothing happened"} in {project.name} since {since}.
                 </p>
               )}
-              {capped && <p className="muted">Showing changes to the {MAX_ISSUES} most recently updated issues.</p>}
+              {capped && (
+                <p className="muted">
+                  Showing changes to the {MAX_ISSUES} most recently updated issues of each {ACTIVITY_DAYS} days.
+                </p>
+              )}
               <button type="button" className="button-secondary" onClick={showEarlier}>
                 Show earlier
               </button>

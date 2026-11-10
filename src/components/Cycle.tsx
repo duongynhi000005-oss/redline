@@ -5,6 +5,7 @@ import { matchesShortcut, shortcutLabel } from "../lib/platform";
 import { formatHours } from "../lib/time";
 import type { Metadata, Version, VersionChanges } from "../lib/types";
 import { useApp } from "../state/app";
+import { useCycleProgress } from "../state/counts";
 import { teamCycles, useDerived } from "../state/derived";
 import { Icon } from "./icons";
 import { useDialogFocus } from "./useDialogFocus";
@@ -53,16 +54,17 @@ export function dueIn(day: string, today = new Date()): string {
 /** What a cycle is, how far along it is, and what can be done with it, above its issues. */
 export function CycleHeader({ teamId, versionId }: { teamId: number; versionId: number }) {
   const meta = useApp((s) => s.meta);
-  const issues = useApp((s) => s.issues);
   const openVersionDialog = useApp((s) => s.openVersionDialog);
   const saveVersion = useApp((s) => s.saveVersion);
   const openInRedmine = useApp((s) => s.openInRedmine);
   const backend = useApp((s) => s.backend);
   const d = useDerived();
   const summary = useMemo(
-    () => (meta ? teamCycles(teamId, issues.values(), d, meta).find((c) => c.version.id === versionId) : undefined),
-    [meta, teamId, issues, d, versionId],
+    () => (meta ? teamCycles(teamId, d, meta).find((c) => c.version.id === versionId) : undefined),
+    [meta, teamId, d, versionId],
   );
+  const progress = useCycleProgress(summary ? versionId : null, d, meta);
+  const epoch = useApp((s) => s.countEpoch);
   // Redmine gives a version's hours only on its own page, so read them here.
   const [hours, setHours] = useState<{ id: number; estimated: number; spent: number } | null>(null);
   const current = summary?.version;
@@ -76,13 +78,14 @@ export function CycleHeader({ teamId, versionId }: { teamId: number; versionId: 
     return () => {
       live = false;
     };
-  }, [backend, versionId, current, issues]);
+  }, [backend, versionId, current, epoch]);
   if (!summary) return null;
   const { version } = summary;
   const spent = hours?.id === version.id ? hours.spent : 0;
   const estimated = hours?.id === version.id ? hours.estimated : 0;
   const manage = canManageVersions(meta, version.project.id);
-  const pct = summary.total ? Math.round((summary.done / summary.total) * 100) : 0;
+  const counted = progress ?? { total: 0, done: 0, started: 0 };
+  const pct = counted.total ? Math.round((counted.done / counted.total) * 100) : 0;
   const status = VERSION_STATUSES.find((s) => s.value === version.status)?.label ?? version.status;
   const sharing = VERSION_SHARING.find((s) => s.value === version.sharing);
   const project = d.projects.get(version.project.id);
@@ -156,11 +159,13 @@ export function CycleHeader({ teamId, versionId }: { teamId: number; versionId: 
           <span className="cycle-progress-done" style={{ width: `${pct}%` }} />
           <span
             className="cycle-progress-started"
-            style={{ width: `${summary.total ? Math.round((summary.started / summary.total) * 100) : 0}%` }}
+            style={{ width: `${counted.total ? Math.round((counted.started / counted.total) * 100) : 0}%` }}
           />
         </span>
         <span className="cycle-count">
-          {summary.done} of {summary.total} done{summary.started ? `, ${summary.started} in progress` : ""}
+          {progress
+            ? `${counted.done} of ${counted.total} done${counted.started ? `, ${counted.started} in progress` : ""}`
+            : "Counting…"}
         </span>
         {estimated || spent ? (
           <span className="cycle-count muted">

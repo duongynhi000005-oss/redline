@@ -23,7 +23,7 @@ describe("saved queries", () => {
     const ids = within(list)
       .getAllByRole("option")
       .map((r) => Number(r.id.replace("issue-row-", "")));
-    const expected = (await backend.runQuery(1)).items;
+    const expected = (await backend.runQuery(1)).items.map((i) => i.id);
     expect(ids).toEqual(expected);
     expect(ids.length).toBeGreaterThan(0);
     expect(within(nav).getByRole("button", { name: "Open bugs" })).toHaveAttribute("aria-current", "page");

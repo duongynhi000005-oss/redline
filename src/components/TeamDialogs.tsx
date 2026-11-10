@@ -3,6 +3,7 @@ import { projectTree } from "../lib/model";
 import { matchesShortcut, shortcutLabel } from "../lib/platform";
 import type { Project, ProjectChanges } from "../lib/types";
 import { useApp } from "../state/app";
+import { useIssueCount } from "../state/counts";
 import { useDialogFocus } from "./useDialogFocus";
 
 /** Redmine's rule for identifiers: a lowercase letter, then letters, digits, dashes or underscores, 100 at most. */
@@ -218,7 +219,6 @@ export function DeleteTeamDialog() {
 
 function DeleteTeamForm({ id, onClose }: { id: number; onClose: () => void }) {
   const meta = useApp((s) => s.meta);
-  const issues = useApp((s) => s.issues);
   const deleteProject = useApp((s) => s.deleteProject);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
@@ -226,12 +226,12 @@ function DeleteTeamForm({ id, onClose }: { id: number; onClose: () => void }) {
   useDialogFocus(ref);
   useEscape(onClose);
   const project = meta?.projects.find((p) => p.id === id);
+  // Every issue in the team, open or closed, as Redmine counts them.
+  const count = useIssueCount(project ? { projectId: id, conditions: [] } : null) ?? 0;
   if (!meta || !project) return null;
 
   const tree = projectTree(id, meta.projects);
   const subs = tree.size - 1;
-  let count = 0;
-  for (const i of issues.values()) if (tree.has(i.project.id)) count++;
   const also = [
     subs ? `${subs === 1 ? "its sub-team" : `its ${subs} sub-teams`}` : null,
     count ? `${count === 1 ? "1 issue" : `${count} issues`}` : null,

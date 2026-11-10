@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { App } from "../App";
 import { createDemoBackend } from "../lib/demoBackend";
@@ -25,13 +25,14 @@ describe("filtering a list", () => {
 
     const bar = screen.getByLabelText("Filters");
     expect(within(bar).getByRole("button", { name: /Status is Done/ })).toBeInTheDocument();
+    // Redmine filters the list, the way its own issue list does.
+    await waitFor(() => expect(count()).toBeLessThan(before));
     expect(count()).toBeGreaterThan(0);
-    expect(count()).toBeLessThan(before);
-    expect(within(bar).getByText(`${count()} of ${before}`)).toBeInTheDocument();
+    expect(within(bar).getByText(String(count()))).toBeInTheDocument();
 
     await user.click(within(bar).getByRole("button", { name: "Remove Status filter" }));
     expect(screen.queryByLabelText("Filters")).not.toBeInTheDocument();
-    expect(count()).toBe(before);
+    await waitFor(() => expect(count()).toBe(before));
   });
 
   it("offers Filter in the command menu", async () => {

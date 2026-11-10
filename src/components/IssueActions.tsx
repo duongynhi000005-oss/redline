@@ -3,24 +3,9 @@ import { allowed } from "../lib/permissions";
 import { formatHours } from "../lib/time";
 import type { Issue } from "../lib/types";
 import { useApp } from "../state/app";
+import { useIssueCount } from "../state/counts";
 import { MenuButton, type MenuItem } from "./Menu";
 import { useDialogFocus } from "./useDialogFocus";
-
-/** Ids of an issue's sub-issues, their sub-issues and so on, as far as the cache knows. */
-export function descendants(issues: Map<number, Issue>, id: number): number[] {
-  const found: number[] = [];
-  const queue = [id];
-  while (queue.length) {
-    const parent = queue.shift()!;
-    for (const i of issues.values()) {
-      if (i.parent?.id === parent && !found.includes(i.id)) {
-        found.push(i.id);
-        queue.push(i.id);
-      }
-    }
-  }
-  return found;
-}
 
 /** Whether the user may copy an issue, or delete it, as far as Redline knows. */
 export function issueActions(meta: ReturnType<typeof useApp.getState>["meta"], issue: Issue) {
@@ -57,7 +42,9 @@ export function DeleteIssueDialog() {
 
 function DeleteIssueForm({ id, onClose }: { id: number; onClose: () => void }) {
   const issue = useApp((s) => s.issues.get(id));
-  const issues = useApp((s) => s.issues);
+  // Sub-issues at any depth, open or closed, as Redmine counts them.
+  const subs =
+    useIssueCount({ conditions: [{ field: "parent_id", op: "~", values: [String(id)] }] }) ?? 0;
   const deleteIssue = useApp((s) => s.deleteIssue);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLFormElement>(null);
@@ -74,7 +61,6 @@ function DeleteIssueForm({ id, onClose }: { id: number; onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  const subs = descendants(issues, id).length;
   const spent = issue?.total_spent_hours ?? issue?.spent_hours ?? 0;
   const also = [
     subs ? `its ${subs === 1 ? "sub-issue" : `${subs} sub-issues`}` : null,

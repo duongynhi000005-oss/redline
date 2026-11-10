@@ -8,6 +8,7 @@ import type { RelationChoice } from "../lib/relations";
 import { RELATION_CHOICES, relatedGroups, subIssues } from "../lib/relations";
 import type { PickerKind } from "../state/app";
 import { useApp } from "../state/app";
+import { useIssueSearch, withFound } from "../state/search";
 import type { Derived } from "../state/derived";
 import { useDerived } from "../state/derived";
 import { Avatar } from "./Avatar";
@@ -430,6 +431,7 @@ export function relationCandidates(
   choice: RelationChoice,
   issues: Map<number, Issue>,
   query: string,
+  found: Issue[] = [],
 ): { id: number; issue?: Issue }[] {
   const taken = new Set<number>([issue.id]);
   if (choice === "parent") {
@@ -446,13 +448,13 @@ export function relationCandidates(
   }
   const q = query.trim().replace(/^#/, "");
   const wanted = /^\d+$/.test(q) ? Number(q) : null;
-  const list: { id: number; issue?: Issue }[] = [...issues.values()]
+  const list: { id: number; issue?: Issue }[] = [...withFound(issues, found)]
     .filter((i) => !taken.has(i.id) && (!q || matchesQuery(`#${i.id} ${i.subject}`, query)))
     .sort((a, b) => (b.id === wanted ? 1 : 0) - (a.id === wanted ? 1 : 0) || b.updated_on.localeCompare(a.updated_on))
     .slice(0, RELATION_PICKER_LIMIT)
     .map((i) => ({ id: i.id, issue: i }));
-  // An issue Redline hasn't synced (another project, say) can still be named by number.
-  if (wanted !== null && wanted > 0 && !taken.has(wanted) && !issues.has(wanted)) list.unshift({ id: wanted });
+  // An issue Redline hasn't loaded (another project, say) can still be named by number.
+  if (wanted !== null && wanted > 0 && !taken.has(wanted) && !list.some((i) => i.id === wanted)) list.unshift({ id: wanted });
   return list;
 }
 
@@ -467,9 +469,10 @@ function RelationPickerContent({ issueId, choice }: { issueId: number; choice: R
   const meta = useApp((s) => s.meta);
   const [query, setQuery] = useState("");
 
+  const { found } = useIssueSearch(query, !!choice);
   const candidates = useMemo(
-    () => (issue && choice ? relationCandidates(issue, choice, issues, query) : []),
-    [issue, choice, issues, query],
+    () => (issue && choice ? relationCandidates(issue, choice, issues, query, found) : []),
+    [issue, choice, issues, query, found],
   );
   if (!issue) return null;
 
@@ -515,7 +518,7 @@ function RelationPickerContent({ issueId, choice }: { issueId: number; choice: R
       {/* A new input, so focus is in it again after a click picked the kind of link. */}
       <Command.Input key={choice} autoFocus value={query} onValueChange={setQuery} placeholder={placeholder} />
       <Command.List>
-        <Command.Empty>No matching issues. Type an issue number to use one Redline hasn't synced.</Command.Empty>
+        <Command.Empty>No matching issues. Type an issue number to use one Redline hasn't loaded.</Command.Empty>
         {choice === "parent" && issue.parent && !query.trim() && (
           <Command.Item
             value="no-parent"

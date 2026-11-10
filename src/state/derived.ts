@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import type { CategoryMap, PriorityLevel, StatusCategory } from "../lib/model";
 import { categoryMap, issueCategory, priorityLevels, projectTree, teamOf } from "../lib/model";
 import { documentsAccess, filesAccess, forumsAccess, moduleEnabled, newsAccess, timeAccess, wikiAccess } from "../lib/permissions";
-import type { Issue, Metadata, Project, SavedQuery, Version } from "../lib/types";
+import type { Issue, IssueFilter, Metadata, Project, SavedQuery, Version } from "../lib/types";
+import { ACTIVE, statusIds } from "../lib/issueFilter";
 import type { ServerSettings } from "../lib/settings";
 import { DEFAULT_SETTINGS } from "../lib/settings";
 import type { Route } from "./app";
@@ -68,32 +69,19 @@ export function derive(meta: Metadata, settings: ServerSettings = DEFAULT_SETTIN
 
 export interface CycleSummary {
   version: Version;
-  total: number;
-  done: number;
-  started: number;
   current: boolean;
 }
 
-/** A team's cycles: its versions and its subprojects', soonest due first. */
-export function teamCycles(teamId: number, issues: Iterable<Issue>, d: Derived, meta: Metadata, today = new Date()): CycleSummary[] {
+/**
+ * A team's cycles: its versions and its subprojects', soonest due first.
+ * How far along each is comes from Redmine (see useCycleProgress).
+ */
+export function teamCycles(teamId: number, d: Derived, meta: Metadata, today = new Date()): CycleSummary[] {
   const versions = [...d.versions.values()].filter((v) => teamOf(v.project.id, meta) === teamId);
-  const counts = new Map<number, { total: number; done: number; started: number }>();
-  for (const issue of issues) {
-    const id = issue.fixed_version?.id;
-    if (id === undefined || !d.versions.has(id)) continue;
-    let c = counts.get(id);
-    if (!c) counts.set(id, (c = { total: 0, done: 0, started: 0 }));
-    const cat = issueCategory(issue, d.categories);
-    if (cat === "canceled") continue;
-    c.total++;
-    if (cat === "completed") c.done++;
-    else if (cat === "started") c.started++;
-  }
   versions.sort((a, b) => (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"));
   const day = today.toISOString().slice(0, 10);
   const current = versions.find((v) => v.status === "open" && (v.due_date ?? "9999") >= day);
-  return versions
-    .map((version) => ({ version, ...(counts.get(version.id) ?? { total: 0, done: 0, started: 0 }), current: version.id === current?.id }));
+  return versions.map((version) => ({ version, current: version.id === current?.id }));
 }
 
 const EMPTY: Derived = {
@@ -119,7 +107,33 @@ export function useDerived(): Derived {
   return useMemo(() => (meta ? derive(meta, settings) : EMPTY), [meta, settings]);
 }
 
-const ACTIVE: StatusCategory[] = ["triage", "started", "unstarted"];
+/**
+ * What a list route asks Redmine for, before its filters and sort: the
+ * same issues `issuesForRoute` keeps. Null for routes that aren't lists of
+ * issues, and for saved queries, which Redmine runs itself.
+ */
+export function routeFilter(route: Route, d: Derived, meta: Metadata): IssueFilter | null {
+  switch (route.view) {
+    case "my-issues":
+      return {
+        conditions: [{ field: route.tab === "assigned" ? "assigned_to_id" : "author_id", op: "=", values: ["me"] }],
+      };
+    case "team": {
+      const tab: StatusCategory[] | null = route.tab === "active" ? ACTIVE : route.tab === "backlog" ? ["backlog"] : null;
+      const ids = tab ? statusIds(tab, d, meta) : null;
+      return {
+        projectId: route.teamId,
+        conditions: ids ? [ids.length ? { field: "status_id", op: "=", values: ids } : { field: "status_id", op: "!*", values: [] }] : [],
+      };
+    }
+    case "project":
+      return { projectId: route.projectId, conditions: [] };
+    case "cycle":
+      return { conditions: [{ field: "fixed_version_id", op: "=", values: [String(route.versionId)] }] };
+    default:
+      return null;
+  }
+}
 
 /** The issues a route shows, before grouping. */
 export function issuesForRoute(
@@ -150,7 +164,7 @@ export function issuesForRoute(
       case "cycle":
         if (issue.fixed_version?.id === route.versionId) out.push(issue);
         break;
-      // A query's issues come from Redmine (see useRouteIssues); search isn't a list of issues.
+      // A query's issues come from Redmine (see useRouteList); search isn't a list of issues.
       case "query":
       case "search":
       case "overview":
