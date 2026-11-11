@@ -128,6 +128,13 @@ jobs:
             # Gatekeeper offer Open Anyway instead of calling the app damaged.
             echo "::warning::No APPLE_CERTIFICATE secret: building an ad-hoc signed macOS app."
             echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            echo "UNSIGNED_NOTICE<<EOF" >> "$GITHUB_ENV"
+            echo "" >> "$GITHUB_ENV"
+            echo "**Unsigned builds.** Until Redline is code-signed, your system warns the first time you open it:" >> "$GITHUB_ENV"
+            echo "" >> "$GITHUB_ENV"
+            echo "- **macOS:** open the .dmg and drag Redline to Applications. The first time, right-click Redline in Applications and choose Open, then Open again. If macOS only offers Move to Trash, go to System Settings > Privacy & Security and click Open Anyway. If it says Redline is damaged, run \`xattr -cr /Applications/Redline.app\` in Terminal and open it again." >> "$GITHUB_ENV"
+            echo "- **Windows:** run the installer. If SmartScreen says \"Windows protected your PC\", click More info, then Run anyway." >> "$GITHUB_ENV"
+            echo "EOF" >> "$GITHUB_ENV"
             exit 0
           fi
           for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY; do
@@ -147,9 +154,20 @@ jobs:
         env:
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_SIGN_COMMAND: ${{ secrets.WINDOWS_SIGN_COMMAND }}
         run: |
+          if ($env:WINDOWS_SIGN_COMMAND) {
+            # Cloud HSM / Azure Trusted Signing custom signCommand support
+            $config = @{ bundle = @{ windows = @{
+              signCommand = $env:WINDOWS_SIGN_COMMAND
+            } } } | ConvertTo-Json -Depth 5
+            Set-Content -Path src-tauri/tauri.signing.conf.json -Value $config
+            "TAURI_EXTRA_ARGS=--config src-tauri/tauri.signing.conf.json" | Out-File -FilePath $env:GITHUB_ENV -Append
+            exit 0
+          }
           if (-not $env:WINDOWS_CERTIFICATE) {
             Write-Output "::warning::No WINDOWS_CERTIFICATE secret: building unsigned Windows installers."
+            "UNSIGNED_NOTICE<<EOF`n`n**Unsigned builds.** Until Redline is code-signed, your system warns the first time you open it:`n`n- **macOS:** open the .dmg and drag Redline to Applications. The first time, right-click Redline in Applications and choose Open, then Open again. If macOS only offers Move to Trash, go to System Settings > Privacy & Security and click Open Anyway. If it says Redline is damaged, run ``xattr -cr /Applications/Redline.app`` in Terminal and open it again.`n- **Windows:** run the installer. If SmartScreen says `"Windows protected your PC`", click More info, then Run anyway.`nEOF" | Out-File -FilePath $env:GITHUB_ENV -Append
             exit 0
           }
           $pfx = Join-Path $env:RUNNER_TEMP "redline.pfx"
@@ -175,12 +193,7 @@ jobs:
           releaseBody: |
             See the assets below for the macOS (.dmg) and Windows (.msi and setup .exe) installers.
 
-            Redline needs Redmine 6.1 or later with the REST API turned on, and your own API key (My account > API access key).
-
-            **Unsigned builds.** Until Redline is code-signed, your system warns the first time you open it:
-
-            - **macOS:** open the .dmg and drag Redline to Applications. The first time, right-click Redline in Applications and choose Open, then Open again. If macOS only offers Move to Trash, go to System Settings > Privacy & Security and click Open Anyway. If it says Redline is damaged, run `xattr -cr /Applications/Redline.app` in Terminal and open it again.
-            - **Windows:** run the installer. If SmartScreen says "Windows protected your PC", click More info, then Run anyway.
+            Redline needs Redmine 6.1 or later with the REST API turned on, and your own API key (My account > API access key).${{ env.UNSIGNED_NOTICE }}
           releaseDraft: true
           # 0.x releases and tags with a hyphen (v0.2.0-beta.1) are pre-releases.
           prerelease: ${{ contains(env.TAG, '-') || startsWith(env.TAG, 'v0.') }}

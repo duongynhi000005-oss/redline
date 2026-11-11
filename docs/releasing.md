@@ -63,10 +63,11 @@ Needs a code-signing certificate from a certificate authority.
 | --- | --- |
 | `WINDOWS_CERTIFICATE` | The certificate as a `.pfx`, base64-encoded |
 | `WINDOWS_CERTIFICATE_PASSWORD` | The `.pfx` password |
+| `WINDOWS_SIGN_COMMAND` | Custom signing command for cloud HSM / Azure Trusted Signing |
 
 Certificates that live in a hardware token or a cloud service (such as Azure
-Trusted Signing) can't be exported as a `.pfx`; those need a custom
-`bundle.windows.signCommand` instead. Open an issue if you need that.
+Trusted Signing) can't be exported as a `.pfx`; set the `WINDOWS_SIGN_COMMAND`
+secret to automatically configure `bundle.windows.signCommand`.
 
 To base64-encode a file for a secret:
 
